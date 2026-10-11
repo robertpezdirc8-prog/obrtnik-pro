@@ -18,9 +18,10 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import {
   Camera, AlertTriangle, Zap, Ruler, Square, TriangleRight,
-  Crosshair, Check, X, Undo2, Maximize, Snowflake, Play, Sparkles, Trash2,
+  Crosshair, Check, X, Undo2, Maximize, Snowflake, Play, Sparkles, Trash2, Magnet,
 } from 'lucide-react';
 import { compressElement, type ProcessedImage } from '@/lib/image-quality';
+import { buildEdgeMap, snapPoint, type EdgeMap } from '@/lib/edge-detect';
 import type { PhotoMeasure, MeasureKind } from '@/lib/camera-types';
 import {
   angleAt, centroidPct, formatCm, formatDeg, formatM2, lengthCm,
@@ -59,6 +60,9 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
   const [calibOpen, setCalibOpen] = useState(false);
   const [calibInput, setCalibInput] = useState('');
   const [arMeasures, setArMeasures] = useState<PhotoMeasure[]>([]);
+  // Magnet (pripenjanje na robove) — deluje na zamrznjenem kadru
+  const [magnet, setMagnet] = useState(true);
+  const [edge, setEdge] = useState<EdgeMap | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -121,8 +125,9 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
   const countKind = (kind: MeasureKind, list: PhotoMeasure[]) => list.filter((m) => m.kind === kind).length;
 
   const addPoint = (e: React.MouseEvent<HTMLDivElement>) => {
-    const pt = ptFromEvent(e);
-    if (!pt) return;
+    const raw = ptFromEvent(e);
+    if (!raw) return;
+    const pt = snapPt(raw);
 
     if (mode === 'area' && pending.length >= 3) {
       const first = pending[0];
@@ -218,13 +223,61 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
   const freeze = () => {
     const video = videoRef.current;
     if (!video?.videoWidth) return;
-    setFrozen(compressElement(video, video.videoWidth, video.videoHeight));
+    const img = compressElement(video, video.videoWidth, video.videoHeight);
+    setFrozen(img);
     video.pause();
+    buildEdgeMap(img.dataUrl).then((m) => setEdge(m)).catch(() => setEdge(null));
   };
 
   const unfreeze = () => {
     setFrozen(null);
+    setEdge(null);
     void videoRef.current?.play().catch(() => {});
+  };
+
+  /** % prikaza (object-cover obrez) → % celotnega kadra. */
+  const displayToFrame = (p: Pt): Pt | null => {
+    if (!vSize) return null;
+    const el = wrapRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return null;
+    const scale = Math.max(rect.width / vSize.w, rect.height / vSize.h);
+    const visW = rect.width / scale;
+    const visH = rect.height / scale;
+    const offX = (vSize.w - visW) / 2;
+    const offY = (vSize.h - visH) / 2;
+    return {
+      x: ((offX + (p.x / 100) * visW) / vSize.w) * 100,
+      y: ((offY + (p.y / 100) * visH) / vSize.h) * 100,
+    };
+  };
+
+  const frameToDisplay = (p: Pt): Pt | null => {
+    if (!vSize) return null;
+    const el = wrapRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return null;
+    const scale = Math.max(rect.width / vSize.w, rect.height / vSize.h);
+    const visW = rect.width / scale;
+    const visH = rect.height / scale;
+    const offX = (vSize.w - visW) / 2;
+    const offY = (vSize.h - visH) / 2;
+    const fx = (p.x / 100) * vSize.w - offX;
+    const fy = (p.y / 100) * vSize.h - offY;
+    return { x: (fx / visW) * 100, y: (fy / visH) * 100 };
+  };
+
+  /** Pripni točko na rob (samo zamrznjen kadar). */
+  const snapPt = (p: Pt): Pt => {
+    if (!magnet || !frozen || !edge) return p;
+    const fr = displayToFrame(p);
+    if (!fr) return p;
+    const snapped = snapPoint(fr, edge);
+    if (!snapped.snapped) return p;
+    const back = frameToDisplay(snapped.point);
+    return back ?? p;
   };
 
   const sendToAi = () => {
@@ -312,6 +365,16 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
               </Badge>
             )}
             {frozen && <Badge variant="secondary">Kader zamrznjen</Badge>}
+            <button
+              onClick={() => setMagnet(!magnet)}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${magnet ? 'border-primary/50 bg-primary/10 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              aria-pressed={magnet}
+              aria-label="Magnet: pripenjanje točk na robove zamrznjenega kadra"
+              title={frozen ? 'Klik se pripne na najbližji rob' : 'Magnet deluje na zamrznjenem kadru'}
+            >
+              <Magnet className="h-4 w-4" />
+              Magnet
+            </button>
           </div>
 
           <p className="text-xs text-muted-foreground">{modeHint[mode]}</p>

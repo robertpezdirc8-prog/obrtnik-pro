@@ -5,7 +5,7 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Sparkles, CheckCircle2, AlertTriangle, Ruler, Calculator, PlusCircle, Info, Lightbulb } from 'lucide-react';
+import { Sparkles, CheckCircle2, AlertTriangle, Ruler, Calculator, PlusCircle, Info, Lightbulb, Layers3, Package, ShieldAlert, ClipboardList } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft } from '@/lib/store';
 import { formatEUR } from '@/lib/format';
@@ -86,6 +86,76 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
             ))}
           </div>
         </section>
+      )}
+
+      {/* Zaznane ravnine */}
+      {analysis.surfaces.length > 0 && (
+        <section aria-label="Zaznane ravnine">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold">
+            <Layers3 className="h-4 w-4 text-amber-600" />
+            Ravnine za merjenje ({analysis.surfaces.length})
+          </h3>
+          <div className="space-y-2">
+            {analysis.surfaces.map((s, i) => (
+              <div key={i} className="rounded-lg border border-amber-200 bg-amber-50/60 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{s.label}</p>
+                  {s.estAreaM2 !== null && (
+                    <Badge variant="outline" className="shrink-0 text-[10px]">≈ {s.estAreaM2.toLocaleString('sl-SI')} m²</Badge>
+                  )}
+                </div>
+                {s.note && <p className="mt-0.5 text-xs text-muted-foreground">{s.note}</p>}
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground">
+              Način „Ravnina“ na fotografiji: 4 oglišča + realna širina/višina → merjenje s perspektivno korekcijo.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Materiali */}
+      {analysis.materials.length > 0 && (
+        <section aria-label="Materiali">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold">
+            <Package className="h-4 w-4 text-primary" />
+            Materiali na objektu
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {analysis.materials.map((m, i) => (
+              <Badge key={i} variant="secondary" className="text-xs">{m}</Badge>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Tveganja / napake */}
+      {analysis.hazards.length > 0 && (
+        <section aria-label="Tveganja in napake">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold">
+            <ShieldAlert className="h-4 w-4 text-amber-600" />
+            Napake / tveganja ({analysis.hazards.length})
+          </h3>
+          <ul className="space-y-1.5">
+            {analysis.hazards.map((h, i) => (
+              <li key={i} className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                {h}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Obseg dela */}
+      {analysis.scope && (
+        <div className="flex items-start gap-2.5 rounded-xl border bg-card p-3">
+          <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p className="text-sm font-semibold">Obseg dela</p>
+            <p className="text-sm text-muted-foreground">{analysis.scope}</p>
+          </div>
+        </div>
       )}
 
       {/* Referenčni objekt za umerjanje */}

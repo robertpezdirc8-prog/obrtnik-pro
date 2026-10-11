@@ -33,6 +33,15 @@ export interface ReferenceObject {
   explanation: string;
 }
 
+/** Ravnina, ki jo je AI zaznal (stena, tla, terasa…) z oglišči v %. */
+export interface DetectedSurface {
+  label: string;
+  /** 4 oglišča v % slike (urnjeni po obodu) ali null */
+  quad: [number, number][] | null;
+  estAreaM2: number | null;
+  note?: string;
+}
+
 /** Polna AI analiza fotografije – vrne jo /api/analyze-photo. */
 export interface PhotoAnalysis {
   craft: AICraft;
@@ -40,6 +49,16 @@ export interface PhotoAnalysis {
   sceneDescription: string;
   objects: DetectedObject[];
   reference: ReferenceObject | null;
+  /** Okvir referenčnega objekta v % (za enoklikovno umerjanje). */
+  referenceBox: [number, number, number, number] | null;
+  /** Zaznane ravnine (stene, tla…) — uporabne za perspektivno kalibracijo. */
+  surfaces: DetectedSurface[];
+  /** Materiali, ki jih je AI videl (steklo, aluminij, keramika…). */
+  materials: string[];
+  /** Napake / tveganja na objektu (rja, vlaga, poškodbe…). */
+  hazards: string[];
+  /** Kaj bi delo obsegalo (1–2 povedi). */
+  scope: string;
   estimatedAreaM2: number | null;
   measurementsNeeded: string[];
   condition: { score: number; notes: string };
@@ -60,8 +79,33 @@ export interface AnalyzeResponse {
   suggestedProducts: SuggestedProduct[];
 }
 
-/** Vrsta meritve: daljica, površina, kot, laserski izmer, glasovni vnos. */
-export type MeasureKind = 'length' | 'area' | 'angle' | 'laser' | 'voice';
+/**
+ * Zapolni privzete vrednosti za polja, ki jih starejše shranjene
+ * analize (pred nadgradnjo) nimajo — prepreči crk UI-ja.
+ */
+export function normalizePhotoAnalysis(raw: unknown): PhotoAnalysis {
+  const a = (raw && typeof raw === 'object' ? raw : {}) as Partial<PhotoAnalysis>;
+  return {
+    craft: a.craft ?? 'drugo',
+    craftConfidence: typeof a.craftConfidence === 'number' ? a.craftConfidence : 50,
+    sceneDescription: a.sceneDescription ?? 'Fotografija je bila analizirana.',
+    objects: Array.isArray(a.objects) ? a.objects : [],
+    reference: a.reference ?? null,
+    referenceBox: a.referenceBox ?? null,
+    surfaces: Array.isArray(a.surfaces) ? a.surfaces : [],
+    materials: Array.isArray(a.materials) ? a.materials : [],
+    hazards: Array.isArray(a.hazards) ? a.hazards : [],
+    scope: a.scope ?? '',
+    estimatedAreaM2: a.estimatedAreaM2 ?? null,
+    measurementsNeeded: Array.isArray(a.measurementsNeeded) ? a.measurementsNeeded : [],
+    condition: a.condition ?? { score: 60, notes: '' },
+    recommendations: a.recommendations ?? '',
+    prefill: (a.prefill ?? {}) as Partial<CraftInputs>,
+  };
+}
+
+/** Vrsta meritve: daljica, površina, kot, laser, glas, pravi 3D AR (WebXR). */
+export type MeasureKind = 'length' | 'area' | 'angle' | 'laser' | 'voice' | 'xr';
 
 /** Ena izmerjena vrednost (kalibrirano merilo ali vnos). */
 export interface PhotoMeasure {

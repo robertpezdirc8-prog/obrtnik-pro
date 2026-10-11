@@ -6,14 +6,14 @@
 import { NextResponse } from 'next/server';
 import ZAI from 'z-ai-web-dev-sdk';
 import { db } from '@/lib/db';
-import { AI_CRAFTS, type AICraft, type PhotoAnalysis } from '@/lib/camera-types';
+import { AI_CRAFTS, type AICraft, type DetectedSurface, type PhotoAnalysis } from '@/lib/camera-types';
 import type { CraftInputs } from '@/lib/types';
 
 export const maxDuration = 120;
 
 const MAX_BASE64 = 7_500_000; // ≈ 5,5 MB slike
 
-const SYSTEM_PROMPT = `You are the AI vision engine of a Slovenian craftsman app (fences, stairs, tiles, decking, windows/doors, canopies, facades). A craftsman photographs a construction object to prepare a quotation.
+const SYSTEM_PROMPT = `You are the AI vision engine of a Slovenian craftsman app (fences, stairs, tiles, decking, windows/doors, canopies, facades). A craftsman photographs a construction object to prepare a quotation. You understand the scene LIKE AN EXPERIENCED CRAFTSMAN: you see every object, its rough size, the materials, flat surfaces that can be measured, damage/risks, and what the job would involve.
 
 Analyze the photo and respond with ONLY a valid JSON object — no markdown fences, no commentary, no extra text.
 
@@ -32,7 +32,19 @@ JSON structure (all free-text values IN SLOVENIAN):
       "note": "kratka opomba v slovenščini"
     }
   ],
+  "surfaces": [
+    {
+      "label": "stena / fasada / tla / terasa / površina (v slovenščini)",
+      "quad": [[x,y],[x,y],[x,y],[x,y]] — 4 OGLIŠČA ravnine v procentih (0-100), urnjena po obodu (začni zgornje levo, pomembna sta kot zaporedje), ali null če ni gotovo,
+      "estAreaM2": številka ali null,
+      "note": "kratka opomba"
+    }
+  ],
+  "materials": ["material v slovenščini", ...] — materiali, ki jih vidiš (npr. "aluminij", "steklo", "keramika", "WPC", "beton", "rja"),
+  "hazards": ["napaka/tveganje v slovenščini", ...] — rja, vlaga, poškodbe, nevarnosti; prazen seznam če nič,
+  "scope": "1 poved: kaj bi delo na tej fotografiji obsegalo",
   "reference": { "label": "ime referenčnega objekta", "assumedCm": 200, "explanation": "zakaj je to zanesljivo merilo" } ali null,
+  "referenceBox": [x, y, sirina, visina] v procentih slike (0-100) ali null — OKVIR referenčnega objekta iz "reference" (za enoklikovno umerjanje merila),
   "estimatedAreaM2": številka ali null,
   "measurementsNeeded": ["seznam meritev, ki jih mora obrtnik vzeti na terenu, v slovenščini"],
   "condition": { "score": 0-100 koliko je fotografija uporabna za oceno, "notes": "opomba v slovenščini" },
@@ -63,6 +75,8 @@ Pravila za "prefill" (SAMO polja prepoznane kategorije; neznane vrednosti = null
 Navodila za oceno dimenzij:
 - Uporabi znane referenčne velikosti: vrata 200×90 cm, okno 120×120 cm, ploščica 30×60 ali 60×60 cm, višina ograje 110 cm, etaža 280 cm, človek 170-180 cm.
 - "reference" postavi na objekt, katerega velikost je najbolj zanesljiva (najraje vrata, okno ali ploščica).
+- "referenceBox" naj bo okvir TEGA referenčnega objekta — če si dovolj gotov, ga VEDNO podaj (omogoča samodejno umerjanje merila).
+- "surfaces" naj vsebuje do 3 večje RAVNINE (stena/fasada/tla/terasa/polje ograje): pazi, da so oglišča "quad" PRVkO NA ROBOVIH ravnine in urnjena po obodu. To omogoča perspektivno korekcijo merjenja.
 - Bodi previden: če dimenzij ne moreš oceniti, daj null (ne ugibaj).
 - Za "box" poskusi dati okvirje glavnih objektov (prikazujejo se kot AR oznake); če si negotov, daj null.`;
 
@@ -172,6 +186,36 @@ function normalize(data: Record<string, unknown>): PhotoAnalysis {
       ? { label: str(refRaw.label, 120), assumedCm: num(refRaw.assumedCm, 1, 2000)!, explanation: str(refRaw.explanation, 300) }
       : null;
 
+  const refBoxRaw = asArray(data.referenceBox);
+  const referenceBox =
+    refBoxRaw.length === 4 && refBoxRaw.every((n) => Number.isFinite(Number(n)))
+      ? ([0, 1, 2, 3].map((i) => Math.max(0, Math.min(100, Number(refBoxRaw[i])))) as [number, number, number, number])
+      : null;
+
+  const surfaces: DetectedSurface[] = asArray(data.surfaces)
+    .slice(0, 3)
+    .map((s) => {
+      const sv = (s && typeof s === 'object' ? s : {}) as Record<string, unknown>;
+      const quadRaw = asArray(sv.quad);
+      const quadPts = quadRaw.filter(
+        (q): q is [number, number] =>
+          Array.isArray(q) && q.length >= 2 && Number.isFinite(Number(q[0])) && Number.isFinite(Number(q[1])),
+      );
+      const quad =
+        quadPts.length === 4
+          ? (quadPts.slice(0, 4).map((p) => [Math.max(0, Math.min(100, Number(p[0]))), Math.max(0, Math.min(100, Number(p[1])))]) as [number, number][])
+          : null;
+      return {
+        label: str(sv.label, 80) || 'Ravnina',
+        quad,
+        estAreaM2: num(sv.estAreaM2, 0.1, 10_000),
+        note: str(sv.note, 200) || undefined,
+      };
+    });
+
+  const materials = asArray(data.materials).slice(0, 6).map((m) => str(m, 40)).filter(Boolean);
+  const hazards = asArray(data.hazards).slice(0, 6).map((m) => str(m, 120)).filter(Boolean);
+
   const condRaw = (data.condition && typeof data.condition === 'object' ? data.condition : {}) as Record<string, unknown>;
 
   return {
@@ -180,6 +224,11 @@ function normalize(data: Record<string, unknown>): PhotoAnalysis {
     sceneDescription: str(data.sceneDescription, 600) || 'Fotografija je bila analizirana.',
     objects,
     reference,
+    referenceBox,
+    surfaces,
+    materials,
+    hazards,
+    scope: str(data.scope, 500),
     estimatedAreaM2: num(data.estimatedAreaM2, 0.1, 10000),
     measurementsNeeded: asArray(data.measurementsNeeded).slice(0, 8).map((m) => str(m, 160)).filter(Boolean),
     condition: {

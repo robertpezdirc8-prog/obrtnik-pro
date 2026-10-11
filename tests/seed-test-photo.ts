@@ -48,6 +48,19 @@ const analysis = {
       assumedCm: 200,
       explanation: 'Standardna višina balkonskih vrat je 200 cm — zanesljivo merilo.',
     },
+    referenceBox: [42, 31, 16, 42],
+    surfaces: [
+      {
+        label: 'Fasadna stena',
+        quad: [[2, 8], [98, 4], [99, 74], [1, 78]],
+        estAreaM2: 14.2,
+        note: 'Silikatna fasada, svetlo bež',
+      },
+    ],
+    materials: ['aluminij', 'steklo', 'les', 'silikatna fasada'],
+    hazards: ['Rja na spodnjem robu ene letve', 'Fuga med ploščami balkona je poškodovana'],
+    scope:
+      'Zamenjava balkonske ograje (~11,6 m²) z aluminijastimi vodoravnimi letvami, pritrditev v balkonsko ploščo, termo izolacija pritrdilnih točk.',
     estimatedAreaM2: 11.6,
     measurementsNeeded: [
       'Skupna dolžina ograje vzdolž balkona',

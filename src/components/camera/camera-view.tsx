@@ -18,11 +18,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download,
+  Ruler, Wrench, Copy, Download, Box,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useView } from '@/lib/store';
-import { CRAFT_LABELS, type AnalyzeResponse, type PhotoMeasure, type MeasureKind } from '@/lib/camera-types';
+import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind } from '@/lib/camera-types';
 import type { CraftId } from '@/lib/types';
 import type { ProcessedImage } from '@/lib/image-quality';
 import {
@@ -34,6 +34,8 @@ import { AnalysisPanel } from './analysis-panel';
 import { LiveAr } from './live-ar';
 import { LaserPanel } from './laser-panel';
 import { VoiceInput } from './voice-input';
+import { WebXrAr } from './webxr-ar';
+import { Measure3dPreview } from './preview-3d';
 
 interface PhotoRecord {
   id: string;
@@ -165,6 +167,8 @@ export function CameraView() {
   const removeAuxMeasure = (id: string) => setAuxMeasures((list) => list.filter((m) => m.id !== id));
 
   const allMeasures = [...measures, ...auxMeasures];
+  const aiHeightCm = result?.analysis.objects.find((o) => (o.estHeightCm ?? 0) >= 80)?.estHeightCm ?? null;
+  const aiDefaultHeightM = aiHeightCm ? Math.round((aiHeightCm / 100) * 10) / 10 : undefined;
 
   const openCalculator = (craft?: string) => {
     const c = craft && craft !== 'drugo' ? craft : null;
@@ -201,7 +205,13 @@ export function CameraView() {
   const reopenPhoto = (rec: PhotoRecord) => {
     let parsed: AnalyzeResponse | null = null;
     try {
-      if (rec.analysis) parsed = JSON.parse(rec.analysis) as AnalyzeResponse;
+      if (rec.analysis) {
+        const raw = JSON.parse(rec.analysis) as Partial<AnalyzeResponse>;
+        parsed = {
+          analysis: normalizePhotoAnalysis(raw.analysis),
+          suggestedProducts: Array.isArray(raw.suggestedProducts) ? raw.suggestedProducts : [],
+        };
+      }
     } catch { parsed = null; }
 
     setPhotoUrl(rec.dataUrl);
@@ -310,7 +320,9 @@ export function CameraView() {
                   {[
                     'Vrsto dela — ograja, stopnice, keramika, terasa…',
                     'Objekte in njihove približne dimenzije',
-                    'Referenčni objekt za umerjanje merila',
+                    'Ravnine (stene, tla) za merjenje s perspektivno korekcijo',
+                    'Materiale, napake in tveganja na objektu',
+                    'Referenčni objekt za enoklikovno umerjanje merila',
                     'Katere meritve še vzeti na terenu',
                     'Predlagane izdelke iz tvojega kataloga',
                   ].map((s) => (
@@ -382,8 +394,10 @@ export function CameraView() {
                 <PhotoCanvas
                   dataUrl={photoUrl}
                   objects={result.analysis.objects}
+                  surfaces={result.analysis.surfaces}
                   referenceLabel={result.analysis.reference?.label}
                   referenceCm={result.analysis.reference?.assumedCm}
+                  referenceBox={result.analysis.referenceBox}
                   measures={measures}
                   setMeasures={setMeasures}
                 />
@@ -395,6 +409,15 @@ export function CameraView() {
               </CardContent>
             </Card>
           </div>
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <h3 className="flex items-center gap-2 text-sm font-bold">
+                <Box className="h-4 w-4 text-primary" />
+                3D predogled meritev — vrti, primerjaj, pokaži stranki
+              </h3>
+              <Measure3dPreview measures={measures} defaultHeightM={aiDefaultHeightM} />
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -435,6 +458,24 @@ export function CameraView() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Pravi 3D AR (WebXR) — realni metri brez umerjanja */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Box className="h-4 w-4 text-primary" />
+                  Pravi 3D AR (WebXR) — meri v prostoru, brez umerjanja
+                </h3>
+                <Badge variant="secondary" className="text-[10px]">Beta</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Na telefonu (Chrome na Androidu z ARCore) tapni točki v prostoru — razdalja je realna,
+                brez umerjanja. Na namiznem računalniku uporabi 2D AR merjenje zgoraj.
+              </p>
+              <WebXrAr onAddMeasure={addAuxMeasure('xr')} />
+            </CardContent>
+          </Card>
         </div>
       )}
 

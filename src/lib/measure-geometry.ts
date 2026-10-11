@@ -140,6 +140,7 @@ const KIND_LABELS: Record<string, string> = {
   angle: 'Kot',
   laser: 'Laser',
   voice: 'Glas',
+  xr: 'AR 3D',
 };
 
 export function measuresToText(measures: PhotoMeasure[]): string {
