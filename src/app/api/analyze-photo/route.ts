@@ -222,7 +222,7 @@ async function callVision(image: string) {
           },
         ],
         thinking: { type: 'disabled' },
-      });
+      } as Parameters<typeof zai.chat.completions.createVision>[0]);
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);

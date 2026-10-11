@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Sparkles, CheckCircle2, AlertTriangle, Ruler, Calculator, PlusCircle, Info, Lightbulb } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useDraft, useView } from '@/lib/store';
+import { useDraft } from '@/lib/store';
 import { formatEUR } from '@/lib/format';
 import { CRAFT_LABELS, type AnalyzeResponse, type PhotoAnalysis } from '@/lib/camera-types';
 import type { CraftId } from '@/lib/types';
@@ -22,7 +22,6 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
   const { analysis, suggestedProducts } = result;
   const { toast } = useToast();
   const addItems = useDraft((s) => s.addItems);
-  const setView = useView((s) => s.setView);
 
   const craftLabel = CRAFT_LABELS[analysis.craft];
   const craftMeta = analysis.craft !== 'drugo' ? craftBySlug(analysis.craft as CraftId) : undefined;
@@ -33,17 +32,8 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
     toast({ title: 'Dodano v osnutek ✓', description: `${p.name} · ${formatEUR(p.unitPrice)} / ${p.unit}` });
   };
 
-  const openCalculator = () => {
-    if (analysis.craft !== 'drugo' && hasPrefill) {
-      const { setCameraPrefill } = useView.getState();
-      setCameraPrefill({
-        craft: analysis.craft as CraftId,
-        inputs: analysis.prefill,
-        photoTitle: analysis.sceneDescription.slice(0, 80),
-      });
-    }
-    onOpenCalculator();
-  };
+  // Združevanje predpolnitev (AI + izmerjene vrednosti) opravi camera-view.
+  const openCalculator = () => onOpenCalculator();
 
   return (
     <div className="space-y-4" data-testid="ai-analysis">

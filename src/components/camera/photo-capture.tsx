@@ -199,6 +199,21 @@ export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
               <p className="text-sm opacity-90">{camError}</p>
             </div>
           )}
+          {/* AR namigi: mreža tretjin + vogalniški okvir */}
+          <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-35">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="border-[0.5px] border-white/20" />
+              ))}
+            </div>
+            <span className="absolute left-3 top-3 h-8 w-8 rounded-tl-lg border-l-2 border-t-2 border-primary/80" />
+            <span className="absolute right-3 top-3 h-8 w-8 rounded-tr-lg border-r-2 border-t-2 border-primary/80" />
+            <span className="absolute bottom-3 left-3 h-8 w-8 rounded-bl-lg border-b-2 border-l-2 border-primary/80" />
+            <span className="absolute bottom-3 right-3 h-8 w-8 rounded-br-lg border-b-2 border-r-2 border-primary/80" />
+            <span className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium text-white">
+              Postavi objekt in referenco v okvir
+            </span>
+          </div>
           {camActive && (
             <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
               <button

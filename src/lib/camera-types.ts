@@ -60,12 +60,20 @@ export interface AnalyzeResponse {
   suggestedProducts: SuggestedProduct[];
 }
 
-/** Ena izmerjena dolžina na fotografiji (kalibrirano merilo). */
+/** Vrsta meritve: daljica, površina, kot, laserski izmer, glasovni vnos. */
+export type MeasureKind = 'length' | 'area' | 'angle' | 'laser' | 'voice';
+
+/** Ena izmerjena vrednost (kalibrirano merilo ali vnos). */
 export interface PhotoMeasure {
   id: string;
   label: string;
-  cm: number | null;
-  points: [[number, number], [number, number]]; // % koordinati slike
+  kind: MeasureKind;
+  /** Točke v % slike: daljica 2 · kot 3 (oglišče sredi) · površina N oglišč · laser/glas prazno. */
+  points: [number, number][];
+  /** dolžina/laser/glas: cm · površina: m² · kot: stopinje */
+  value: number | null;
+  /** dolžine strani poligona v cm (samo površina) */
+  sides?: number[];
 }
 
 /** Predpolnitev iz kamere za kalkulator. */
