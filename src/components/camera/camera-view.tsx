@@ -11,17 +11,19 @@
 // Meritve se samodejno shranjujejo v galerijo (PATCH) in se
 // preslikajo v predpolnitve kalkulatorja (buildPrefillFromMeasures).
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useView } from '@/lib/store';
+import { useDraft, useView } from '@/lib/store';
+import { buildProjectFromPhotos, type ProjectSummary } from '@/lib/photo-project';
+import { formatEUR } from '@/lib/format';
 import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind } from '@/lib/camera-types';
 import type { CraftId } from '@/lib/types';
 import type { ProcessedImage } from '@/lib/image-quality';
@@ -64,6 +66,7 @@ export function CameraView() {
   const setView = useView((s) => s.setView);
   const setActiveCraft = useView((s) => s.setActiveCraft);
   const setCameraPrefill = useView((s) => s.setCameraPrefill);
+  const addDraftItems = useDraft((s) => s.addItems);
 
   const [tab, setTab] = useState<CameraTab>('analiza');
   const [phase, setPhase] = useState<'capture' | 'analyzing' | 'result'>('capture');
@@ -252,6 +255,50 @@ export function CameraView() {
     } catch {
       return 0;
     }
+  };
+
+  // Slovensko oblikovanje števca: 1 fotografija / 2–4 fotografije / 5+ fotografij
+  const photoWord = (n: number): string =>
+    n === 1 ? 'fotografija' : n >= 2 && n <= 4 ? 'fotografije' : 'fotografij';
+
+  // Projekt iz fotografij — deterministični seštevek vseh analiz v osnutek ponudbe
+  const project: ProjectSummary | null = useMemo(() => {
+    if (!gallery || gallery.length === 0) return null;
+    const summary = buildProjectFromPhotos(
+      gallery.map((g) => ({
+        id: g.id,
+        title: g.title,
+        craftId: g.craftId,
+        analysis: g.analysis,
+        measurements: g.measurements,
+      })),
+    );
+    return summary.groups.length > 0 ? summary : null;
+  }, [gallery]);
+
+  const collectProject = () => {
+    if (!project) return;
+    // Stabilni ključi → ponovno zbiranje POSODOBI količine namesto podvajanja
+    const items = project.groups.flatMap((g) =>
+      g.lines.map((l) => ({
+        key: `proj-${g.craft}-${l.name}`,
+        name: l.name,
+        description: l.description,
+        quantity: l.quantity,
+        unit: l.unit,
+        unitPrice: l.unitPrice,
+      })),
+    );
+    if (items.length === 0) {
+      toast({ title: 'Ni postavk za zbiranje', variant: 'destructive' });
+      return;
+    }
+    addDraftItems(items);
+    toast({
+      title: `Projekt zbran: ${items.length} postavk ✓`,
+      description: `${formatEUR(project.total)} brez DDV — pregledaj in ustvari ponudbo.`,
+    });
+    setView('ponudbe');
   };
 
   const tabs: Array<[CameraTab, string, React.ReactNode]> = [
@@ -551,6 +598,46 @@ export function CameraView() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Projekt iz fotografij — seštevek vseh analiz ───── */}
+      {project && (
+        <Card data-testid="photo-project">
+          <CardContent className="p-4 sm:p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Layers className="h-4 w-4 text-primary" />
+                  Projekt iz fotografij — samodejni seštevek
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {project.usedPhotos} {photoWord(project.usedPhotos)} ·{' '}
+                  {project.groups.length} {project.groups.length === 1 ? 'dejavnost' : 'dejavnosti'} ·{' '}
+                  skupaj <strong className="text-foreground">{formatEUR(project.total)}</strong> brez DDV
+                  {project.skippedPhotos > 0 && <> · {project.skippedPhotos} preskočenih</>}
+                </p>
+              </div>
+              <Button size="sm" className="min-h-10" onClick={collectProject} data-testid="collect-project">
+                <PackagePlus className="mr-2 h-4 w-4" />
+                Zberi v ponudbo
+              </Button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {project.groups.map((g) => (
+                <div key={g.craft} className="rounded-lg border bg-secondary/40 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold truncate">{g.craftLabel}</p>
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">
+                      {g.photoCount} fot.
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{g.lines.length} postavk</p>
+                  <p className="text-sm font-bold text-primary">{formatEUR(g.subtotal)}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Galerija */}

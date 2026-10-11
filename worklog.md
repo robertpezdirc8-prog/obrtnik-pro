@@ -198,3 +198,24 @@ Stage Summary:
 - Ključni artefakti: src/lib/cv-engine.ts (nov), src/app/api/analyze-photo/route.ts (prepisan), src/lib/camera-types.ts (preimenovani tipi), 8 komponent (očiščena besedila), tests/e2e-noai-*.png.
 - API shema (PhotoAnalysis) nespremenjena — kalkulatorji, prefill, umerjanje in shranjevanje delujejo kot prej; obstoječe shranjene analize ostanejo združljive (normalizePhotoAnalysis).
 - z-ai-web-dev-sdk ni več uvožen nikjer v src/ (package odvisnost ostane, a je neuporabljena).
+
+---
+Task ID: 6
+Agent: main (Z.ai Code)
+Task: "Pushaj na GitHub, uredi in nadaljuj" — nastavitev GitHub repozitorija, popravilo 404 slik dejavnosti, nova skriptna funkcija "Projekt iz fotografij" (večfotografski seštevek → ponudba).
+
+Work Log:
+- Verificiral GitHub token (uporabnik robertpezdirc8-prog), prebral worklog (Task 1–5: AI popolnoma odstranjen, vse po skriptah).
+- Skanjal tracked datoteke za skrete (čisto; lažni pozitivi bun.lock), untrackal db/custom.db + dodal /db v .gitignore (recreatable via db:push + auto-seed).
+- Ustvaril javni repo robertpezdirc8-prog/obrtnik-pro prek API-ja, remote + push main (149 datotek).
+- Popravil 404: /crafts/*.jpg — generiral 7 profesionalnih slik (ograje, stopnice, keramika, wpc-terasa, okna-vrata, nadstreski, fasada; z-ai image CLI, 1344x768) → sharp resize 800px JPEG q82 → public/crafts/; crafts-meta.ts: ne-ASCII pot 'nadstreški.jpg' → 'nadstreski.jpg'.
+- NOVA FUNKCIJA "Projekt iz fotografij" (vse skripte, brez omrežja): src/lib/photo-project.ts — čisto deterministično: za vsako galerijsko fotografijo s prepoznavno dejavnostjo požene isti kalkulator (runCalculator) nad (privzete vrednosti + prefill analize + buildPrefillFromMeasures), nato postavke z enakim imenom SEŠTEJE po dejavnostih (2 fotki ograje = ena postavka z vsoto metrov), količine zaokrožene na 2 decimalki (odpravljeni Float32 artefakti tipa 10.31999969…), grupe sortirane po vrednosti.
+- src/lib/defaults.ts: CRAFT_INPUT_DEFAULTS izločeni iz crafts.tsx v skupni vir (kalkulatorji + projekt uporabljata iste privzete vrednosti).
+- camera-view.tsx: kartica "Projekt iz fotografij — samodejni seštevek" nad galerijo (uporabljene/preskočene fotografije, skupna vrednost brez DDV, grupe po dejavnostih z zneski), gumb "Zberi v ponudbo" → stabilni ključi proj-{craft}-{line} → ponovno zbiranje POSODOBI namesto podvaja; slovensko sklanjanje (1 fotografija / 2–4 fotografije / 5+ fotografij); po zbiranju skok na Ponudbe.
+- E2E z agent-browser: 3 fotografije → "3 fotografije · 2 dejavnosti · skupaj 2600,28 € brez DDV"; Ograje 2 fot. / 4 postavke / 3232,44 € + Keramika 1 fot. / 7 postavk / 276,84 €; klik Zberi → toast "Projekt zbran: 11 postavk ✓" → urejevalnik ponudbe z 11 postavkami, količine čiste (10.32, 3.98 — potrjeno v DOM in localStorage); ponovni klik ne podvoji; mobilni 390×844 kartica vidna, footer naravno potisnjen; konzola brez napak; tsc + eslint čisti.
+
+Stage Summary:
+- Repo: https://github.com/robertpezdirc8-prog/obrtnik-pro (main, javen, brez skretov, brez binarne baze).
+- Celoten poslovni tok zdaj deluje brez ročnega vnosa: N fotografij → skriptna analiza → "Zberi v ponudbo" → osnutek ponudbe z vsemi postavkami → PDF z DDV.
+- Ključni artefakti: src/lib/photo-project.ts, src/lib/defaults.ts, public/crafts/*.jpg (7), camera-view.tsx (+projekt kartica), crafts.tsx (skupni defaults).
+- Verifikacijske slike: tests/e2e-project-{card,card2,card-final,offer,mobile,desktop}.png.

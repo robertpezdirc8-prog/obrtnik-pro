@@ -3,23 +3,14 @@
 import { useState } from 'react';
 import { CraftCalculator, NumField, SelField, BoolField } from './shared';
 import { calculateOgraje, calculateStopnice, calculateKeramika, calculateWpcTerasa, calculateOknaVrata, calculateNadstresek, calculateFasada } from '@/lib/pricing';
+import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
 import { useView } from '@/lib/store';
 import type { CraftId, CraftInputs } from '@/lib/types';
-
-const DEFAULTS: CraftInputs = {
-  length: 6, height: 1.1, material: 'alu', gates: 0,
-  steps: 12, stepWidth: 1.1, stepMaterial: 'wpc', railingNeeded: true,
-  floorLength: 4, floorWidth: 3, wallHeight: 0, tilePricePerM2: 24, reservePercent: 10,
-  deckLength: 4, deckWidth: 3, joistSpacing: 0.4, boardPricePerM: 12.5,
-  windowCount: 3, windowSize: 2, windowMaterial: 'pvc', doorCount: 1, removeOld: true,
-  canopyWidth: 5, canopyDepth: 3, canopyCover: 'ploc', canopyPosts: 2, waterDrain: true,
-  facadePerimeter: 36, facadeHeight: 2.8, openingsM2: 12, cladding: 'wpc',
-};
 
 function useCraftInputs(craft: CraftId, initial: Partial<CraftInputs>) {
   const prefill = useView((s) => s.cameraPrefill);
   const applied = prefill && prefill.craft === craft ? prefill.inputs : null;
-  const [inputs, set] = useState<CraftInputs>({ ...DEFAULTS, ...initial, ...(applied ?? {}) });
+  const [inputs, set] = useState<CraftInputs>({ ...CRAFT_INPUT_DEFAULTS, ...initial, ...(applied ?? {}) });
   return { inputs, setInputs: (patch: Partial<CraftInputs>) => set((s) => ({ ...s, ...patch })), isPrefilled: !!applied };
 }
 

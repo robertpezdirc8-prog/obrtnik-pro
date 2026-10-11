@@ -16,7 +16,7 @@ export const CRAFTS: CraftMeta[] = [
   { slug: 'keramika', name: 'Keramika', short: 'Ploščice, lepilo, fuge — odmerek po m²', icon: Grid3X3, image: '/crafts/keramika.jpg', emoji: '◻️' },
   { slug: 'wpc-terasa', name: 'WPC terasa', short: 'Deske, nosilci, kljukice — razpored na mero', icon: LayoutPanelTop, image: '/crafts/wpc-terasa.jpg', emoji: '🟫' },
   { slug: 'okna-vrata', name: 'Okna in vrata', short: 'PVC in alu — števec kosov z montažo', icon: DoorOpen, image: '/crafts/okna-vrata.jpg', emoji: '🚪' },
-  { slug: 'nadstreški', name: 'Nadstreški', short: 'Konstrukcija, kritina, stebri, odvod vode', icon: Umbrella, image: '/crafts/nadstreški.jpg', emoji: '⛱️' },
+  { slug: 'nadstreški', name: 'Nadstreški', short: 'Konstrukcija, kritina, stebri, odvod vode', icon: Umbrella, image: '/crafts/nadstreski.jpg', emoji: '⛱️' },
   { slug: 'fasada', name: 'Fasade', short: 'Obloge WPC, les, pločevina — neto m²', icon: Building2, image: '/crafts/fasada.jpg', emoji: '🏢' },
 ];
 
