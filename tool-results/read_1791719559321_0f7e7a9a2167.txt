@@ -1,0 +1,1306 @@
+     1→     1→// Mera3D Pro - Computer Vision Utilities
+     2→     2→// Classical CV only - no neural networks
+     3→     3→
+     4→     4→export interface Point2D { x: number; y: number; }
+     5→     5→export interface FeatureDescriptor {
+     6→     6→  point: Point2D;
+     7→     7→  response: number;
+     8→     8→  scale: number;
+     9→     9→  angle: number;
+    10→    10→  descriptor: Uint8Array;
+    11→    11→}
+    12→    12→export interface MatchResult {
+    13→    13→  queryIdx: number;
+    14→    14→  trainIdx: number;
+    15→    15→  distance: number;
+    16→    16→}
+    17→    17→
+    18→    18→// Convert image to grayscale
+    19→    19→export function toGrayscale(imageData: ImageData): Float32Array {
+    20→    20→  const gray = new Float32Array(imageData.width * imageData.height);
+    21→    21→  for (let i = 0; i < gray.length; i++) {
+    22→    22→    const r = imageData.data[i * 4];
+    23→    23→    const g = imageData.data[i * 4 + 1];
+    24→    24→    const b = imageData.data[i * 4 + 2];
+    25→    25→    gray[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+    26→    26→  }
+    27→    27→  return gray;
+    28→    28→}
+    29→    29→
+    30→    30→// Gaussian blur
+    31→    31→export function gaussianBlur(gray: Float32Array, width: number, height: number, sigma: number): Float32Array {
+    32→    32→  const kernelSize = Math.ceil(sigma * 3) * 2 + 1;
+    33→    33→  const kernel = new Float32Array(kernelSize);
+    34→    34→  const half = Math.floor(kernelSize / 2);
+    35→    35→  let sum = 0;
+    36→    36→  for (let i = 0; i < kernelSize; i++) {
+    37→    37→    const x = i - half;
+    38→    38→    kernel[i] = Math.exp(-(x * x) / (2 * sigma * sigma));
+    39→    39→    sum += kernel[i];
+    40→    40→  }
+    41→    41→  for (let i = 0; i < kernelSize; i++) kernel[i] /= sum;
+    42→    42→
+    43→    43→  // Horizontal pass
+    44→    44→  const temp = new Float32Array(width * height);
+    45→    45→  for (let y = 0; y < height; y++) {
+    46→    46→    for (let x = 0; x < width; x++) {
+    47→    47→      let val = 0;
+    48→    48→      for (let k = -half; k <= half; k++) {
+    49→    49→        const sx = Math.min(Math.max(x + k, 0), width - 1);
+    50→    50→        val += gray[y * width + sx] * kernel[k + half];
+    51→    51→      }
+    52→    52→      temp[y * width + x] = val;
+    53→    53→    }
+    54→    54→  }
+    55→    55→
+    56→    56→  // Vertical pass
+    57→    57→  const result = new Float32Array(width * height);
+    58→    58→  for (let y = 0; y < height; y++) {
+    59→    59→    for (let x = 0; x < width; x++) {
+    60→    60→      let val = 0;
+    61→    61→      for (let k = -half; k <= half; k++) {
+    62→    62→        const sy = Math.min(Math.max(y + k, 0), height - 1);
+    63→    63→        val += temp[sy * width + x] * kernel[k + half];
+    64→    64→      }
+    65→    65→      result[y * width + x] = val;
+    66→    66→    }
+    67→    67→  }
+    68→    68→  return result;
+    69→    69→}
+    70→    70→
+    71→    71→// Harris corner detection on grid
+    72→    72→export function harrisCornerDetection(
+    73→    73→  gray: Float32Array, width: number, height: number,
+    74→    74→  blockSize: number = 5, k: number = 0.04, threshold: number = 0.01,
+    75→    75→  gridSize: number = 8
+    76→    76→): FeatureDescriptor[] {
+    77→    77→  const blurred = gaussianBlur(gray, width, height, 1.0);
+    78→    78→  const Ix = new Float32Array(width * height);
+    79→    79→  const Iy = new Float32Array(width * height);
+    80→    80→
+    81→    81→  // Sobel gradients
+    82→    82→  for (let y = 1; y < height - 1; y++) {
+    83→    83→    for (let x = 1; x < width - 1; x++) {
+    84→    84→      const idx = y * width + x;
+    85→    85→      Ix[idx] = (blurred[idx + 1] - blurred[idx - 1]) / 2;
+    86→    86→      Iy[idx] = (blurred[idx + width] - blurred[idx - width]) / 2;
+    87→    87→    }
+    88→    88→  }
+    89→    89→
+    90→    90→  const half = Math.floor(blockSize / 2);
+    91→    91→  const cellW = Math.floor(width / gridSize);
+    92→    92→  const cellH = Math.floor(height / gridSize);
+    93→    93→  const features: FeatureDescriptor[] = [];
+    94→    94→
+    95→    95→  for (let cy = 0; cy < gridSize; cy++) {
+    96→    96→    for (let cx = 0; cx < gridSize; cx++) {
+    97→    97→      const startX = cx * cellW;
+    98→    98→      const startY = cy * cellH;
+    99→    99→      let bestResponse = 0;
+   100→   100→      let bestPoint: Point2D = { x: 0, y: 0 };
+   101→   101→
+   102→   102→      for (let y = startY + half; y < startY + cellH - half; y++) {
+   103→   103→        for (let x = startX + half; x < startX + cellW - half; x++) {
+   104→   104→          let A = 0, B = 0, C = 0;
+   105→   105→          for (let dy = -half; dy <= half; dy++) {
+   106→   106→            for (let dx = -half; dx <= half; dx++) {
+   107→   107→              const idx = (y + dy) * width + (x + dx);
+   108→   108→              A += Ix[idx] * Ix[idx];
+   109→   109→              B += Iy[idx] * Iy[idx];
+   110→   110→              C += Ix[idx] * Iy[idx];
+   111→   111→            }
+   112→   112→          }
+   113→   113→          const det = A * B - C * C;
+   114→   114→          const trace = A + B;
+   115→   115→          const response = det - k * trace * trace;
+   116→   116→
+   117→   117→          if (response > bestResponse && response > threshold * 1e8) {
+   118→   118→            bestResponse = response;
+   119→   119→            bestPoint = { x, y };
+   120→   120→          }
+   121→   121→        }
+   122→   122→      }
+   123→   123→
+   124→   124→      if (bestResponse > 0) {
+   125→   125→        features.push({
+   126→   126→          point: bestPoint,
+   127→   127→          response: bestResponse,
+   128→   128→          scale: blockSize,
+   129→   129→          angle: Math.atan2(Iy[bestPoint.y * width + bestPoint.x], Ix[bestPoint.y * width + bestPoint.x]),
+   130→   130→          descriptor: new Uint8Array(32) // placeholder
+   131→   131→        });
+   132→   132→      }
+   133→   133→    }
+   134→   134→  }
+   135→   135→  return features;
+   136→   136→}
+   137→   137→
+   138→   138→// FAST corner detection
+   139→   139→export function fastCornerDetection(
+   140→   140→  gray: Float32Array, width: number, height: number,
+   141→   141→  threshold: number = 20, gridSize: number = 8
+   142→   142→): FeatureDescriptor[] {
+   143→   143→  const circle = [
+   144→   144→    [0, -3], [1, -3], [2, -2], [3, -1], [3, 0], [3, 1],
+   145→   145→    [2, 2], [1, 3], [0, 3], [-1, 3], [-2, 2], [-3, 1],
+   146→   146→    [-3, 0], [-3, -1], [-2, -2], [-1, -3]
+   147→   147→  ];
+   148→   148→  
+   149→   149→  const cellW = Math.floor(width / gridSize);
+   150→   150→  const cellH = Math.floor(height / gridSize);
+   151→   151→  const features: FeatureDescriptor[] = [];
+   152→   152→
+   153→   153→  for (let cy = 0; cy < gridSize; cy++) {
+   154→   154→    for (let cx = 0; cx < gridSize; cx++) {
+   155→   155→      const startX = cx * cellW + 3;
+   156→   156→      const startY = cy * cellH + 3;
+   157→   157→      let bestScore = 0;
+   158→   158→      let bestPoint: Point2D = { x: 0, y: 0 };
+   159→   159→
+   160→   160→      for (let y = startY; y < startY + cellH - 3 && y < height - 3; y++) {
+   161→   161→        for (let x = startX; x < startX + cellW - 3 && x < width - 3; x++) {
+   162→   162→          const center = gray[y * width + x];
+   163→   163→          let brighter = 0, darker = 0;
+   164→   164→          
+   165→   165→          for (const [dx, dy] of circle) {
+   166→   166→            const px = x + dx, py = y + dy;
+   167→   167→            const val = gray[py * width + px];
+   168→   168→            if (val > center + threshold) brighter++;
+   169→   169→            else if (val < center - threshold) darker++;
+   170→   170→          }
+   171→   171→
+   172→   172→          const score = Math.max(brighter, darker);
+   173→   173→          if (score >= 9 && score > bestScore) {
+   174→   174→            bestScore = score;
+   175→   175→            bestPoint = { x, y };
+   176→   176→          }
+   177→   177→        }
+   178→   178→      }
+   179→   179→
+   180→   180→      if (bestScore >= 9) {
+   181→   181→        features.push({
+   182→   182→          point: bestPoint,
+   183→   183→          response: bestScore,
+   184→   184→          scale: 3,
+   185→   185→          angle: 0,
+   186→   186→          descriptor: new Uint8Array(32)
+   187→   187→        });
+   188→   188→      }
+   189→   189→    }
+   190→   190→  }
+   191→   191→  return features;
+   192→   192→}
+   193→   193→
+   194→   194→// ORB-like descriptor computation (BRIEF pattern)
+   195→   195→export function computeDescriptors(
+   196→   196→  gray: Float32Array, width: number, height: number,
+   197→   197→  features: FeatureDescriptor[], patchSize: number = 31
+   198→   198→): void {
+   199→   199→  // Simple BRIEF-like pattern pairs
+   200→   200→  const pairs = [];
+   201→   201→  const seed = 42;
+   202→   202→  let s = seed;
+   203→   203→  const rand = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+   204→   204→  for (let i = 0; i < 256; i++) {
+   205→   205→    pairs.push([
+   206→   206→      Math.floor(rand() * patchSize) - patchSize / 2,
+   207→   207→      Math.floor(rand() * patchSize) - patchSize / 2,
+   208→   208→      Math.floor(rand() * patchSize) - patchSize / 2,
+   209→   209→      Math.floor(rand() * patchSize) - patchSize / 2
+   210→   210→    ]);
+   211→   211→  }
+   212→   212→
+   213→   213→  const half = Math.floor(patchSize / 2);
+   214→   214→  for (const f of features) {
+   215→   215→    const desc = new Uint8Array(32);
+   216→   216→    for (let i = 0; i < 256; i++) {
+   217→   217→      const [x1, y1, x2, y2] = pairs[i];
+   218→   218→      const px1 = Math.min(Math.max(Math.round(f.point.x + x1), 0), width - 1);
+   219→   219→      const py1 = Math.min(Math.max(Math.round(f.point.y + y1), 0), height - 1);
+   220→   220→      const px2 = Math.min(Math.max(Math.round(f.point.x + x2), 0), width - 1);
+   221→   221→      const py2 = Math.min(Math.max(Math.round(f.point.y + y2), 0), height - 1);
+   222→   222→      
+   223→   223→      if (gray[py1 * width + px1] < gray[py2 * width + px2]) {
+   224→   224→        desc[Math.floor(i / 8)] |= (1 << (i % 8));
+   225→   225→      }
+   226→   226→    }
+   227→   227→    f.descriptor = desc;
+   228→   228→  }
+   229→   229→}
+   230→   230→
+   231→   231→// Hamming distance for binary descriptors
+   232→   232→function hammingDistance(a: Uint8Array, b: Uint8Array): number {
+   233→   233→  let dist = 0;
+   234→   234→  for (let i = 0; i < a.length; i++) {
+   235→   235→    let xor = a[i] ^ b[i];
+   236→   236→    while (xor) { dist++; xor &= xor - 1; }
+   237→   237→  }
+   238→   238→  return dist;
+   239→   239→}
+   240→   240→
+   241→   241→// BF matching with ratio test
+   242→   242→export function bruteForceMatch(
+   243→   243→  features1: FeatureDescriptor[], features2: FeatureDescriptor[],
+   244→   244→  ratioThreshold: number = 0.75
+   245→   245→): MatchResult[] {
+   246→   246→  const matches: MatchResult[] = [];
+   247→   247→  
+   248→   248→  for (let i = 0; i < features1.length; i++) {
+   249→   249→    let bestDist = Infinity, secondBest = Infinity;
+   250→   250→    let bestIdx = -1;
+   251→   251→    
+   252→   252→    for (let j = 0; j < features2.length; j++) {
+   253→   253→      const dist = hammingDistance(features1[i].descriptor, features2[j].descriptor);
+   254→   254→      if (dist < bestDist) {
+   255→   255→        secondBest = bestDist;
+   256→   256→        bestDist = dist;
+   257→   257→        bestIdx = j;
+   258→   258→      } else if (dist < secondBest) {
+   259→   259→        secondBest = dist;
+   260→   260→      }
+   261→   261→    }
+   262→   262→    
+   263→   263→    if (bestIdx >= 0 && bestDist < ratioThreshold * secondBest) {
+   264→   264→      matches.push({ queryIdx: i, trainIdx: bestIdx, distance: bestDist });
+   265→   265→    }
+   266→   266→  }
+   267→   267→  return matches;
+   268→   268→}
+   269→   269→
+   270→   270→// Cross-check matching
+   271→   271→export function crossCheckMatch(
+   272→   272→  features1: FeatureDescriptor[], features2: FeatureDescriptor[],
+   273→   273→  ratioThreshold: number = 0.75
+   274→   274→): MatchResult[] {
+   275→   275→  const fwd = bruteForceMatch(features1, features2, ratioThreshold);
+   276→   276→  const bwd = bruteForceMatch(features2, features1, ratioThreshold);
+   277→   277→  
+   278→   278→  const bwdMap = new Map<number, number>();
+   279→   279→  for (const m of bwd) bwdMap.set(m.queryIdx, m.trainIdx);
+   280→   280→  
+   281→   281→  return fwd.filter(m => bwdMap.get(m.trainIdx) === m.queryIdx);
+   282→   282→}
+   283→   283→
+   284→   284→// Estimate homography using DLT (Direct Linear Transform)
+   285→   285→export function estimateHomography(
+   286→   286→  srcPoints: Point2D[], dstPoints: Point2D[]
+   287→   287→): { matrix: number[]; inliers: boolean[]; rmse: number } | null {
+   288→   288→  if (srcPoints.length < 4) return null;
+   289→   289→  
+   290→   290→  const n = srcPoints.length;
+   291→   291→  
+   292→   292→  // Normalize points for numerical stability
+   293→   293→  const srcMean = { x: 0, y: 0 };
+   294→   294→  const dstMean = { x: 0, y: 0 };
+   295→   295→  for (let i = 0; i < n; i++) {
+   296→   296→    srcMean.x += srcPoints[i].x;
+   297→   297→    srcMean.y += srcPoints[i].y;
+   298→   298→    dstMean.x += dstPoints[i].x;
+   299→   299→    dstMean.y += dstPoints[i].y;
+   300→   300→  }
+   301→   301→  srcMean.x /= n; srcMean.y /= n;
+   302→   302→  dstMean.x /= n; dstMean.y /= n;
+   303→   303→  
+   304→   304→  let srcScale = 0, dstScale = 0;
+   305→   305→  for (let i = 0; i < n; i++) {
+   306→   306→    srcScale += Math.sqrt((srcPoints[i].x - srcMean.x) ** 2 + (srcPoints[i].y - srcMean.y) ** 2);
+   307→   307→    dstScale += Math.sqrt((dstPoints[i].x - dstMean.x) ** 2 + (dstPoints[i].y - dstMean.y) ** 2);
+   308→   308→  }
+   309→   309→  srcScale = (srcScale > 0) ? (n * Math.SQRT2) / srcScale : 1;
+   310→   310→  dstScale = (dstScale > 0) ? (n * Math.SQRT2) / dstScale : 1;
+   311→   311→  
+   312→   312→  // Normalized points
+   313→   313→  const srcNorm = srcPoints.map(p => ({
+   314→   314→    x: (p.x - srcMean.x) * srcScale,
+   315→   315→    y: (p.y - srcMean.y) * srcScale
+   316→   316→  }));
+   317→   317→  const dstNorm = dstPoints.map(p => ({
+   318→   318→    x: (p.x - dstMean.x) * dstScale,
+   319→   319→    y: (p.y - dstMean.y) * dstScale
+   320→   320→  }));
+   321→   321→  
+   322→   322→  // Build A matrix for DLT (Ah = 0)
+   323→   323→  const A: number[][] = [];
+   324→   324→  for (let i = 0; i < n; i++) {
+   325→   325→    const x = srcNorm[i].x, y = srcNorm[i].y;
+   326→   326→    const u = dstNorm[i].x, v = dstNorm[i].y;
+   327→   327→    A.push([-x, -y, -1, 0, 0, 0, u * x, u * y, u]);
+   328→   328→    A.push([0, 0, 0, -x, -y, -1, v * x, v * y, v]);
+   329→   329→  }
+   330→   330→  
+   331→   331→  // Solve Ah = 0 using eigenvalue decomposition of A^T * A
+   332→   332→  const h = solveHomogeneousSystem(A);
+   333→   333→  if (!h) return null;
+   334→   334→  
+   335→   335→  // Denormalize: H = T_dst^-1 * H_norm * T_src
+   336→   336→  const T_src = [srcScale, 0, -srcMean.x * srcScale, 0, srcScale, -srcMean.y * srcScale, 0, 0, 1];
+   337→   337→  const T_dst_inv = [1/dstScale, 0, dstMean.x, 0, 1/dstScale, dstMean.y, 0, 0, 1];
+   338→   338→  
+   339→   339→  const H_norm = h;
+   340→   340→  const H_temp = matMul3x3(T_dst_inv, H_norm);
+   341→   341→  const H = matMul3x3(H_temp, T_src);
+   342→   342→  
+   343→   343→  // Normalize so H[8] = 1, but check for near-zero values
+   344→   344→  if (Math.abs(H[8]) < 1e-10) {
+   345→   345→    // H[8] is too small - this indicates a degenerate or invalid solution
+   346→   346→    return null;
+   347→   347→  }
+   348→   348→  const scale = H[8];
+   349→   349→  const H_normalized = H.map((v: number) => v / scale);
+   350→   350→  
+   351→   351→  // Compute inliers and RMSE
+   352→   352→  const inliers: boolean[] = [];
+   353→   353→  let sumSquaredError = 0;
+   354→   354→  let inlierCount = 0;
+   355→   355→  const threshold = 3.0;
+   356→   356→  
+   357→   357→  for (let i = 0; i < n; i++) {
+   358→   358→    const x = srcPoints[i].x, y = srcPoints[i].y;
+   359→   359→    const w = H_normalized[6] * x + H_normalized[7] * y + H_normalized[8];
+   360→   360→    
+   361→   361→    // Check for division by zero or invalid w
+   362→   362→    if (Math.abs(w) < 1e-10 || !isFinite(w)) {
+   363→   363→      inliers.push(false);
+   364→   364→      continue;
+   365→   365→    }
+   366→   366→    
+   367→   367→    const u = (H_normalized[0] * x + H_normalized[1] * y + H_normalized[2]) / w;
+   368→   368→    const v = (H_normalized[3] * x + H_normalized[4] * y + H_normalized[5]) / w;
+   369→   369→    
+   370→   370→    // Check for invalid projected coordinates
+   371→   371→    if (!isFinite(u) || !isFinite(v)) {
+   372→   372→      inliers.push(false);
+   373→   373→      continue;
+   374→   374→    }
+   375→   375→    
+   376→   376→    const err = Math.sqrt((u - dstPoints[i].x) ** 2 + (v - dstPoints[i].y) ** 2);
+   377→   377→    const isInlier = err < threshold;
+   378→   378→    inliers.push(isInlier);
+   379→   379→    
+   380→   380→    // RMSE: sum of squared errors, then divide, then sqrt
+   381→   381→    if (isInlier) {
+   382→   382→      sumSquaredError += err * err;
+   383→   383→      inlierCount++;
+   384→   384→    }
+   385→   385→  }
+   386→   386→  
+   387→   387→  // RMSE = sqrt(mean(squared_errors))
+   388→   388→  const rmse = inlierCount > 0 ? Math.sqrt(sumSquaredError / inlierCount) : Infinity;
+   389→   389→  return { matrix: H_normalized, inliers, rmse };
+   390→   390→}
+   391→   391→
+   392→   392→// Solve homogeneous system Ah = 0
+   393→   393→// For tall/square matrices (m >= n): one-sided Jacobi SVD on A
+   394→   394→// For wide matrices (m < n): QR-based null space computation (stable, no squaring)
+   395→   395→// For homography with 4 points: m=8 rows, n=9 columns (valid minimal case, underdetermined)
+   396→   396→function solveHomogeneousSystem(A: number[][]): number[] | null {
+   397→   397→  const m = A.length;
+   398→   398→  const n = A[0].length;
+   399→   399→  
+   400→   400→  // For homography: need at least 4 points = 8 equations, 9 unknowns
+   401→   401→  if (m < 4) return null;
+   402→   402→  if (n !== 9) return null;
+   403→   403→  
+   404→   404→  // Check for invalid values
+   405→   405→  for (let i = 0; i < m; i++) {
+   406→   406→    for (let j = 0; j < n; j++) {
+   407→   407→      if (!isFinite(A[i][j])) return null;
+   408→   408→    }
+   409→   409→  }
+   410→   410→  
+   411→   411→  let v: number[];
+   412→   412→  
+   413→   413→  if (m >= n) {
+   414→   414→    // Tall or square matrix: use one-sided Jacobi SVD on A
+   415→   415→    const result = oneSidedJacobiSVD(A, 100, 1e-10);
+   416→   416→    if (!result) return null;
+   417→   417→    
+   418→   418→    const { singularValues, V } = result;
+   419→   419→    
+   420→   420→    // Find index of smallest singular value
+   421→   421→    let minIdx = 0;
+   422→   422→    let minVal = Math.abs(singularValues[0]);
+   423→   423→    for (let i = 1; i < singularValues.length; i++) {
+   424→   424→      if (Math.abs(singularValues[i]) < minVal) {
+   425→   425→        minVal = Math.abs(singularValues[i]);
+   426→   426→        minIdx = i;
+   427→   427→      }
+   428→   428→    }
+   429→   429→    
+   430→   430→    // Extract right singular vector
+   431→   431→    v = [];
+   432→   432→    for (let i = 0; i < n; i++) {
+   433→   433→      v.push(V[i][minIdx]);
+   434→   434→    }
+   435→   435→  } else {
+   436→   436→    // Wide matrix (underdetermined system, e.g., 8x9 for 4 points)
+   437→   437→    // Use QR-based null space computation (stable, doesn't square condition number)
+   438→   438→    const nullSpaceResult = computeNullSpaceQR(A);
+   439→   439→    if (!nullSpaceResult) return null;
+   440→   440→    v = nullSpaceResult;
+   441→   441→  }
+   442→   442→  
+   443→   443→  // Verify result is valid
+   444→   444→  if (v.some(x => !isFinite(x))) return null;
+   445→   445→  
+   446→   446→  // Check residual ||A * v||
+   447→   447→  const residual = computeResidual(A, v);
+   448→   448→  if (residual > 1e-6) return null; // Poor solution
+   449→   449→  
+   450→   450→  return v;
+   451→   451→}
+   452→   452→
+   453→   453→// One-sided Jacobi SVD for matrix A (m x n, m >= n)
+   454→   454→// Computes A = U * Σ * V^T by rotating columns of A
+   455→   455→// Returns singular values and right singular vectors V
+   456→   456→// This is more stable than eigendecomposition of A^T*A because it doesn't square condition number
+   457→   457→function oneSidedJacobiSVD(
+   458→   458→  A: number[][],
+   459→   459→  maxIterations: number = 100,
+   460→   460→  tolerance: number = 1e-10
+   461→   461→): { singularValues: number[]; V: number[][] } | null {
+   462→   462→  const m = A.length;
+   463→   463→  const n = A[0].length;
+   464→   464→  
+   465→   465→  if (m < n) return null;
+   466→   466→  
+   467→   467→  // Create copy of A
+   468→   468→  const B = A.map(row => [...row]);
+   469→   469→  
+   470→   470→  // Initialize V as identity matrix (right singular vectors)
+   471→   471→  const V: number[][] = Array.from({ length: n }, (_, i) => 
+   472→   472→    Array.from({ length: n }, (_, j) => i === j ? 1 : 0)
+   473→   473→  );
+   474→   474→  
+   475→   475→  for (let iter = 0; iter < maxIterations; iter++) {
+   476→   476→    // Check convergence: compute off-diagonal norm of B^T * B
+   477→   477→    let offDiagNorm = 0;
+   478→   478→    for (let p = 0; p < n; p++) {
+   479→   479→      for (let q = p + 1; q < n; q++) {
+   480→   480→        // Compute dot product of columns p and q
+   481→   481→        let dot = 0;
+   482→   482→        for (let i = 0; i < m; i++) {
+   483→   483→          dot += B[i][p] * B[i][q];
+   484→   484→        }
+   485→   485→        offDiagNorm += dot * dot;
+   486→   486→      }
+   487→   487→    }
+   488→   488→    
+   489→   489→    if (Math.sqrt(offDiagNorm) < tolerance) break;
+   490→   490→    
+   491→   491→    // Apply Jacobi rotations to all pairs (p, q)
+   492→   492→    for (let p = 0; p < n; p++) {
+   493→   493→      for (let q = p + 1; q < n; q++) {
+   494→   494→        // Compute alpha = ||B_p||^2, beta = ||B_q||^2, gamma = B_p^T * B_q
+   495→   495→        let alpha = 0, beta = 0, gamma = 0;
+   496→   496→        for (let i = 0; i < m; i++) {
+   497→   497→          alpha += B[i][p] * B[i][p];
+   498→   498→          beta += B[i][q] * B[i][q];
+   499→   499→          gamma += B[i][p] * B[i][q];
+   500→   500→        }
+   501→   501→        
+   502→   502→        // Skip if columns are already orthogonal
+   503→   503→        if (Math.abs(gamma) < 1e-15) continue;
+   504→   504→        
+   505→   505→        // Compute rotation angle
+   506→   506→        const zeta = (beta - alpha) / (2 * gamma);
+   507→   507→        
+   508→   508→        // Handle zeta = 0 case (alpha = beta)
+   509→   509→        // When zeta = 0, we need a 45-degree rotation
+   510→   510→        let t: number;
+   511→   511→        if (Math.abs(zeta) < 1e-15) {
+   512→   512→          t = 1; // 45-degree rotation
+   513→   513→        } else {
+   514→   514→          t = Math.sign(zeta) / (Math.abs(zeta) + Math.sqrt(zeta * zeta + 1));
+   515→   515→        }
+   516→   516→        
+   517→   517→        const c = 1 / Math.sqrt(t * t + 1);
+   518→   518→        const s = t * c;
+   519→   519→        
+   520→   520→        // Rotate columns p and q of B
+   521→   521→        for (let i = 0; i < m; i++) {
+   522→   522→          const Bip = B[i][p];
+   523→   523→          const Biq = B[i][q];
+   524→   524→          B[i][p] = c * Bip - s * Biq;
+   525→   525→          B[i][q] = s * Bip + c * Biq;
+   526→   526→        }
+   527→   527→        
+   528→   528→        // Update V
+   529→   529→        for (let i = 0; i < n; i++) {
+   530→   530→          const Vip = V[i][p];
+   531→   531→          const Viq = V[i][q];
+   532→   532→          V[i][p] = c * Vip - s * Viq;
+   533→   533→          V[i][q] = s * Vip + c * Viq;
+   534→   534→        }
+   535→   535→      }
+   536→   536→    }
+   537→   537→  }
+   538→   538→  
+   539→   539→  // Compute singular values (norms of columns of B)
+   540→   540→  const singularValues: number[] = [];
+   541→   541→  for (let j = 0; j < n; j++) {
+   542→   542→    let norm = 0;
+   543→   543→    for (let i = 0; i < m; i++) {
+   544→   544→      norm += B[i][j] * B[i][j];
+   545→   545→    }
+   546→   546→    singularValues.push(Math.sqrt(norm));
+   547→   547→  }
+   548→   548→  
+   549→   549→  // Verify convergence: check if columns are sufficiently orthogonal
+   550→   550→  let maxOffDiagonal = 0;
+   551→   551→  for (let p = 0; p < n; p++) {
+   552→   552→    for (let q = p + 1; q < n; q++) {
+   553→   553→      let dot = 0;
+   554→   554→      for (let i = 0; i < m; i++) {
+   555→   555→        dot += B[i][p] * B[i][q];
+   556→   556→      }
+   557→   557→      maxOffDiagonal = Math.max(maxOffDiagonal, Math.abs(dot));
+   558→   558→    }
+   559→   559→  }
+   560→   560→  
+   561→   561→  // If not converged, return null to reject unstable result
+   562→   562→  if (maxOffDiagonal > 1e-8) {
+   563→   563→    return null;
+   564→   564→  }
+   565→   565→  
+   566→   566→  // Verify V is orthogonal
+   567→   567→  for (let i = 0; i < n; i++) {
+   568→   568→    for (let j = i + 1; j < n; j++) {
+   569→   569→      let dot = 0;
+   570→   570→      for (let k = 0; k < n; k++) {
+   571→   571→        dot += V[k][i] * V[k][j];
+   572→   572→      }
+   573→   573→      if (Math.abs(dot) > 1e-8) {
+   574→   574→        return null; // V is not orthogonal
+   575→   575→      }
+   576→   576→    }
+   577→   577→  }
+   578→   578→  
+   579→   579→  return { singularValues, V };
+   580→   580→}
+   581→   581→
+   582→   582→// Jacobi eigenvalue algorithm for symmetric matrices
+   583→   583→// Returns eigenvalues and eigenvectors
+   584→   584→function jacobiEigenSolver(
+   585→   585→  A: number[][], 
+   586→   586→  maxIterations: number = 100, 
+   587→   587→  tolerance: number = 1e-10
+   588→   588→): { eigenvalues: number[]; eigenvectors: number[][] } | null {
+   589→   589→  const n = A.length;
+   590→   590→  
+   591→   591→  // Create copy of A
+   592→   592→  const S = A.map(row => [...row]);
+   593→   593→  
+   594→   594→  // Initialize eigenvector matrix as identity
+   595→   595→  const V: number[][] = Array.from({ length: n }, (_, i) => 
+   596→   596→    Array.from({ length: n }, (_, j) => i === j ? 1 : 0)
+   597→   597→  );
+   598→   598→  
+   599→   599→  for (let iter = 0; iter < maxIterations; iter++) {
+   600→   600→    // Find largest off-diagonal element
+   601→   601→    let maxVal = 0;
+   602→   602→    let p = 0, q = 1;
+   603→   603→    for (let i = 0; i < n; i++) {
+   604→   604→      for (let j = i + 1; j < n; j++) {
+   605→   605→        if (Math.abs(S[i][j]) > maxVal) {
+   606→   606→          maxVal = Math.abs(S[i][j]);
+   607→   607→          p = i;
+   608→   608→          q = j;
+   609→   609→        }
+   610→   610→      }
+   611→   611→    }
+   612→   612→    
+   613→   613→    // Check convergence
+   614→   614→    if (maxVal < tolerance) break;
+   615→   615→    
+   616→   616→    // Compute rotation angle
+   617→   617→    const theta = (S[q][q] - S[p][p]) / (2 * S[p][q]);
+   618→   618→    const t = Math.sign(theta) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+   619→   619→    const c = 1 / Math.sqrt(t * t + 1);
+   620→   620→    const s = t * c;
+   621→   621→    
+   622→   622→    // Update S (only affected rows/columns)
+   623→   623→    const Sp = [...S[p]];
+   624→   624→    const Sq = [...S[q]];
+   625→   625→    
+   626→   626→    for (let i = 0; i < n; i++) {
+   627→   627→      if (i !== p && i !== q) {
+   628→   628→        const Sip = S[i][p];
+   629→   629→        const Siq = S[i][q];
+   630→   630→        S[i][p] = S[p][i] = c * Sip - s * Siq;
+   631→   631→        S[i][q] = S[q][i] = s * Sip + c * Siq;
+   632→   632→      }
+   633→   633→    }
+   634→   634→    
+   635→   635→    S[p][p] = c * c * Sp[p] - 2 * s * c * Sp[q] + s * s * Sq[q];
+   636→   636→    S[q][q] = s * s * Sp[p] + 2 * s * c * Sp[q] + c * c * Sq[q];
+   637→   637→    S[p][q] = S[q][p] = 0;
+   638→   638→    
+   639→   639→    // Update eigenvector matrix
+   640→   640→    for (let i = 0; i < n; i++) {
+   641→   641→      const Vip = V[i][p];
+   642→   642→      const Viq = V[i][q];
+   643→   643→      V[i][p] = c * Vip - s * Viq;
+   644→   644→      V[i][q] = s * Vip + c * Viq;
+   645→   645→    }
+   646→   646→  }
+   647→   647→  
+   648→   648→  // Extract eigenvalues from diagonal
+   649→   649→  const eigenvalues: number[] = [];
+   650→   650→  for (let i = 0; i < n; i++) {
+   651→   651→    eigenvalues.push(S[i][i]);
+   652→   652→  }
+   653→   653→  
+   654→   654→  return { eigenvalues, eigenvectors: V };
+   655→   655→}
+   656→   656→
+   657→   657→// Compute null space of wide matrix A (m x n, m < n) using rank-revealing QR with pivoting
+   658→   658→// Returns basis vector for 1D null space (for homography with 4 points)
+   659→   659→// This is stable and doesn't square the condition number
+   660→   660→function computeNullSpaceQR(A: number[][]): number[] | null {
+   661→   661→  const m = A.length;
+   662→   662→  const n = A[0].length;
+   663→   663→  
+   664→   664→  if (m >= n) return null; // Only for wide matrices
+   665→   665→  if (m < 4) return null; // Need at least 4 equations for homography
+   666→   666→  
+   667→   667→  // Check for degenerate input: verify points are not collinear
+   668→   668→  // For homography DLT, we need at least 4 non-collinear point pairs
+   669→   669→  // Check if all source points are collinear (first 4 pairs)
+   670→   670→  const isCollinear = checkCollinearity(A);
+   671→   671→  if (isCollinear) return null; // Degenerate configuration
+   672→   672→  
+   673→   673→  // Transpose A to get A^T (n x m)
+   674→   674→  const AT: number[][] = Array.from({ length: n }, () => new Array(m).fill(0));
+   675→   675→  for (let i = 0; i < m; i++) {
+   676→   676→    for (let j = 0; j < n; j++) {
+   677→   677→      AT[j][i] = A[i][j];
+   678→   678→    }
+   679→   679→  }
+   680→   680→  
+   681→   681→  // Rank-revealing QR with column pivoting
+   682→   682→  // A^T * P = Q * R, where P is permutation matrix
+   683→   683→  const Q: number[][] = Array.from({ length: n }, (_, i) => 
+   684→   684→    Array.from({ length: n }, (_, j) => i === j ? 1 : 0)
+   685→   685→  );
+   686→   686→  const R = AT.map(row => [...row]);
+   687→   687→  const pivot: number[] = Array.from({ length: m }, (_, i) => i);
+   688→   688→  
+   689→   689→  for (let k = 0; k < m; k++) {
+   690→   690→    // Column pivoting: find column with largest norm from position k onwards
+   691→   691→    let maxNorm = 0;
+   692→   692→    let maxCol = k;
+   693→   693→    for (let j = k; j < m; j++) {
+   694→   694→      let norm = 0;
+   695→   695→      for (let i = k; i < n; i++) {
+   696→   696→        norm += R[i][j] * R[i][j];
+   697→   697→      }
+   698→   698→      norm = Math.sqrt(norm);
+   699→   699→      if (norm > maxNorm) {
+   700→   700→        maxNorm = norm;
+   701→   701→        maxCol = j;
+   702→   702→      }
+   703→   703→    }
+   704→   704→    
+   705→   705→    // Swap columns k and maxCol
+   706→   706→    if (maxCol !== k) {
+   707→   707→      for (let i = 0; i < n; i++) {
+   708→   708→        [R[i][k], R[i][maxCol]] = [R[i][maxCol], R[i][k]];
+   709→   709→      }
+   710→   710→      [pivot[k], pivot[maxCol]] = [pivot[maxCol], pivot[k]];
+   711→   711→    }
+   712→   712→    
+   713→   713→    // Check for rank deficiency
+   714→   714→    if (maxNorm < 1e-10) {
+   715→   715→      return null; // Rank deficient, null space is not 1D
+   716→   716→    }
+   717→   717→    
+   718→   718→    // Compute Householder vector for column k
+   719→   719→    let norm = 0;
+   720→   720→    for (let i = k; i < n; i++) {
+   721→   721→      norm += R[i][k] * R[i][k];
+   722→   722→    }
+   723→   723→    norm = Math.sqrt(norm);
+   724→   724→    
+   725→   725→    const sign = R[k][k] >= 0 ? 1 : -1;
+   726→   726→    const alpha = -sign * norm;
+   727→   727→    
+   728→   728→    const v: number[] = new Array(n).fill(0);
+   729→   729→    for (let i = k; i < n; i++) {
+   730→   730→      v[i] = R[i][k];
+   731→   731→    }
+   732→   732→    v[k] -= alpha;
+   733→   733→    
+   734→   734→    // Normalize v
+   735→   735→    let vNorm = 0;
+   736→   736→    for (let i = k; i < n; i++) {
+   737→   737→      vNorm += v[i] * v[i];
+   738→   738→    }
+   739→   739→    vNorm = Math.sqrt(vNorm);
+   740→   740→    
+   741→   741→    if (vNorm < 1e-15) return null; // Degenerate
+   742→   742→    
+   743→   743→    for (let i = k; i < n; i++) {
+   744→   744→      v[i] /= vNorm;
+   745→   745→    }
+   746→   746→    
+   747→   747→    // Apply Householder reflection to R
+   748→   748→    for (let j = k; j < m; j++) {
+   749→   749→      let dot = 0;
+   750→   750→      for (let i = k; i < n; i++) {
+   751→   751→        dot += v[i] * R[i][j];
+   752→   752→      }
+   753→   753→      for (let i = k; i < n; i++) {
+   754→   754→        R[i][j] -= 2 * v[i] * dot;
+   755→   755→      }
+   756→   756→    }
+   757→   757→    
+   758→   758→    // Apply Householder reflection to Q
+   759→   759→    for (let i = 0; i < n; i++) {
+   760→   760→      let dot = 0;
+   761→   761→      for (let j = k; j < n; j++) {
+   762→   762→        dot += Q[i][j] * v[j];
+   763→   763→      }
+   764→   764→      for (let j = k; j < n; j++) {
+   765→   765→        Q[i][j] -= 2 * dot * v[j];
+   766→   766→      }
+   767→   767→    }
+   768→   768→  }
+   769→   769→  
+   770→   770→  // Check diagonal elements of R for rank
+   771→   771→  for (let i = 0; i < m; i++) {
+   772→   772→    if (Math.abs(R[i][i]) < 1e-10) {
+   773→   773→      return null; // Rank deficient
+   774→   774→    }
+   775→   775→  }
+   776→   776→  
+   777→   777→  // The last column of Q (index n-1) is in the null space of A
+   778→   778→  // For homography with 4 points: n=9, m=8, null space is 1D
+   779→   779→  const nullVector: number[] = [];
+   780→   780→  for (let i = 0; i < n; i++) {
+   781→   781→    nullVector.push(Q[i][n - 1]);
+   782→   782→  }
+   783→   783→  
+   784→   784→  // Verify it's actually in null space: ||A * nullVector|| should be small
+   785→   785→  const residual = computeResidual(A, nullVector);
+   786→   786→  if (residual > 1e-6) return null;
+   787→   787→  
+   788→   788→  // Verify null vector is normalized
+   789→   789→  let norm = 0;
+   790→   790→  for (let i = 0; i < n; i++) {
+   791→   791→    norm += nullVector[i] * nullVector[i];
+   792→   792→  }
+   793→   793→  norm = Math.sqrt(norm);
+   794→   794→  if (Math.abs(norm - 1) > 1e-6) return null; // Not normalized
+   795→   795→  
+   796→   796→  return nullVector;
+   797→   797→}
+   798→   798→
+   799→   799→// Check if point configuration is degenerate (collinear points)
+   800→   800→function checkCollinearity(A: number[][]): boolean {
+   801→   801→  // For homography DLT with 4 points, extract point coordinates
+   802→   802→  // A is 8x9, each pair of rows corresponds to one point
+   803→   803→  // Check if source points are collinear
+   804→   804→  if (A.length < 8) return false;
+   805→   805→  
+   806→   806→  // Extract approximate point positions from DLT matrix structure
+   807→   807→  // This is a simplified check - in practice, we'd need the original points
+   808→   808→  // For now, check if the matrix has very small singular values
+   809→   809→  let sumSquares = 0;
+   810→   810→  for (let i = 0; i < A.length; i++) {
+   811→   811→    for (let j = 0; j < A[0].length; j++) {
+   812→   812→      sumSquares += A[i][j] * A[i][j];
+   813→   813→    }
+   814→   814→  }
+   815→   815→  
+   816→   816→  // If matrix is essentially zero, points are degenerate
+   817→   817→  if (sumSquares < 1e-10) return true;
+   818→   818→  
+   819→   819→  return false;
+   820→   820→}
+   821→   821→
+   822→   822→// Compute residual ||A * v|| for validation
+   823→   823→function computeResidual(A: number[][], v: number[]): number {
+   824→   824→  const m = A.length;
+   825→   825→  const n = v.length;
+   826→   826→  let sum = 0;
+   827→   827→  for (let i = 0; i < m; i++) {
+   828→   828→    let rowSum = 0;
+   829→   829→    for (let j = 0; j < n; j++) {
+   830→   830→      rowSum += A[i][j] * v[j];
+   831→   831→    }
+   832→   832→    sum += rowSum * rowSum;
+   833→   833→  }
+   834→   834→  return Math.sqrt(sum);
+   835→   835→}
+   836→   836→
+   837→   837→function vectorNorm(v: number[]): number {
+   838→   838→  let sum = 0;
+   839→   839→  for (const x of v) sum += x * x;
+   840→   840→  return Math.sqrt(sum);
+   841→   841→}
+   842→   842→
+   843→   843→function normalize(v: number[]): void {
+   844→   844→  let norm = 0;
+   845→   845→  for (const x of v) norm += x * x;
+   846→   846→  norm = Math.sqrt(norm);
+   847→   847→  if (norm > 0) for (let i = 0; i < v.length; i++) v[i] /= norm;
+   848→   848→}
+   849→   849→
+   850→   850→// Matrix multiplication for 3x3 matrices (stored as 9-element arrays)
+   851→   851→function matMul3x3(A: number[], B: number[]): number[] {
+   852→   852→  const C = new Array(9).fill(0);
+   853→   853→  for (let i = 0; i < 3; i++) {
+   854→   854→    for (let j = 0; j < 3; j++) {
+   855→   855→      for (let k = 0; k < 3; k++) {
+   856→   856→        C[i * 3 + j] += A[i * 3 + k] * B[k * 3 + j];
+   857→   857→      }
+   858→   858→    }
+   859→   859→  }
+   860→   860→  return C;
+   861→   861→}
+   862→   862→
+   863→   863→// Simple least squares solver
+   864→   864→function solveLeastSquares(A: number[][]): number[] | null {
+   865→   865→  const m = A.length;
+   866→   866→  const n = A[0].length;
+   867→   867→  if (m < n) return null;
+   868→   868→  
+   869→   869→  // A^T * A * x = A^T * b (b = last column)
+   870→   870→  const ATA: number[][] = Array.from({ length: n - 1 }, () => new Array(n - 1).fill(0));
+   871→   871→  const ATb: number[] = new Array(n - 1).fill(0);
+   872→   872→  
+   873→   873→  for (let i = 0; i < n - 1; i++) {
+   874→   874→    for (let j = 0; j < n - 1; j++) {
+   875→   875→      for (let k = 0; k < m; k++) {
+   876→   876→        ATA[i][j] += A[k][i] * A[k][j];
+   877→   877→      }
+   878→   878→    }
+   879→   879→    for (let k = 0; k < m; k++) {
+   880→   880→      ATb[i] += A[k][i] * A[k][n - 1];
+   881→   881→    }
+   882→   882→  }
+   883→   883→  
+   884→   884→  return gaussianElimination(ATA, ATb);
+   885→   885→}
+   886→   886→
+   887→   887→function gaussianElimination(A: number[][], b: number[]): number[] | null {
+   888→   888→  const n = A.length;
+   889→   889→  const aug = A.map((row, i) => [...row, b[i]]);
+   890→   890→  
+   891→   891→  for (let i = 0; i < n; i++) {
+   892→   892→    let maxRow = i;
+   893→   893→    for (let k = i + 1; k < n; k++) {
+   894→   894→      if (Math.abs(aug[k][i]) > Math.abs(aug[maxRow][i])) maxRow = k;
+   895→   895→    }
+   896→   896→    [aug[i], aug[maxRow]] = [aug[maxRow], aug[i]];
+   897→   897→    
+   898→   898→    if (Math.abs(aug[i][i]) < 1e-10) return null;
+   899→   899→    
+   900→   900→    for (let k = i + 1; k < n; k++) {
+   901→   901→      const factor = aug[k][i] / aug[i][i];
+   902→   902→      for (let j = i; j <= n; j++) {
+   903→   903→        aug[k][j] -= factor * aug[i][j];
+   904→   904→      }
+   905→   905→    }
+   906→   906→  }
+   907→   907→  
+   908→   908→  const x = new Array(n);
+   909→   909→  for (let i = n - 1; i >= 0; i--) {
+   910→   910→    x[i] = aug[i][n];
+   911→   911→    for (let j = i + 1; j < n; j++) {
+   912→   912→      x[i] -= aug[i][j] * x[j];
+   913→   913→    }
+   914→   914→    x[i] /= aug[i][i];
+   915→   915→  }
+   916→   916→  return x;
+   917→   917→}
+   918→   918→
+   919→   919→// RANSAC homography estimation
+   920→   920→export function ransacHomography(
+   921→   921→  srcPoints: Point2D[], dstPoints: Point2D[],
+   922→   922→  maxIterations: number = 1000, threshold: number = 3.0
+   923→   923→): { matrix: number[]; inliers: boolean[]; inlierCount: number; rmse: number } | null {
+   924→   924→  if (srcPoints.length < 4) return null;
+   925→   925→  
+   926→   926→  let bestInliers: boolean[] = [];
+   927→   927→  let bestCount = 0;
+   928→   928→  let bestMatrix: number[] = [];
+   929→   929→  let bestRMSE = Infinity;
+   930→   930→  
+   931→   931→  for (let iter = 0; iter < maxIterations; iter++) {
+   932→   932→    // Random 4 points
+   933→   933→    const indices = new Set<number>();
+   934→   934→    while (indices.size < 4) indices.add(Math.floor(Math.random() * srcPoints.length));
+   935→   935→    const idxArr = Array.from(indices);
+   936→   936→    
+   937→   937→    const src4 = idxArr.map(i => srcPoints[i]);
+   938→   938→    const dst4 = idxArr.map(i => dstPoints[i]);
+   939→   939→    
+   940→   940→    const result = estimateHomography(src4, dst4);
+   941→   941→    if (!result) continue;
+   942→   942→    
+   943→   943→    // Count inliers
+   944→   944→    const inliers: boolean[] = [];
+   945→   945→    let count = 0;
+   946→   946→    for (let i = 0; i < srcPoints.length; i++) {
+   947→   947→      const x = srcPoints[i].x, y = srcPoints[i].y;
+   948→   948→      const w = result.matrix[6] * x + result.matrix[7] * y + result.matrix[8];
+   949→   949→      if (Math.abs(w) < 1e-10) { inliers.push(false); continue; }
+   950→   950→      const u = (result.matrix[0] * x + result.matrix[1] * y + result.matrix[2]) / w;
+   951→   951→      const v = (result.matrix[3] * x + result.matrix[4] * y + result.matrix[5]) / w;
+   952→   952→      const err = Math.sqrt((u - dstPoints[i].x) ** 2 + (v - dstPoints[i].y) ** 2);
+   953→   953→      const isInlier = err < threshold;
+   954→   954→      inliers.push(isInlier);
+   955→   955→      if (isInlier) count++;
+   956→   956→    }
+   957→   957→    
+   958→   958→    if (count > bestCount) {
+   959→   959→      bestCount = count;
+   960→   960→      bestInliers = inliers;
+   961→   961→      bestMatrix = result.matrix;
+   962→   962→    }
+   963→   963→  }
+   964→   964→  
+   965→   965→  if (bestCount < 4) return null;
+   966→   966→  
+   967→   967→  // Refit on all inliers
+   968→   968→  const inlierSrc = srcPoints.filter((_, i) => bestInliers[i]);
+   969→   969→  const inlierDst = dstPoints.filter((_, i) => bestInliers[i]);
+   970→   970→  const refined = estimateHomography(inlierSrc, inlierDst);
+   971→   971→  
+   972→   972→  if (!refined) {
+   973→   973→    // Refinement failed, return best model from RANSAC iterations
+   974→   974→    return { matrix: bestMatrix, inliers: bestInliers, inlierCount: bestCount, rmse: bestRMSE };
+   975→   975→  }
+   976→   976→  
+   977→   977→  // After refinement, recompute inliers, count, and RMSE for the final model
+   978→   978→  bestMatrix = refined.matrix;
+   979→   979→  const finalInliers: boolean[] = [];
+   980→   980→  let finalCount = 0;
+   981→   981→  let finalSumSquaredError = 0;
+   982→   982→  
+   983→   983→  for (let i = 0; i < srcPoints.length; i++) {
+   984→   984→    const x = srcPoints[i].x, y = srcPoints[i].y;
+   985→   985→    const w = bestMatrix[6] * x + bestMatrix[7] * y + bestMatrix[8];
+   986→   986→    
+   987→   987→    if (Math.abs(w) < 1e-10 || !isFinite(w)) {
+   988→   988→      finalInliers.push(false);
+   989→   989→      continue;
+   990→   990→    }
+   991→   991→    
+   992→   992→    const u = (bestMatrix[0] * x + bestMatrix[1] * y + bestMatrix[2]) / w;
+   993→   993→    const v = (bestMatrix[3] * x + bestMatrix[4] * y + bestMatrix[5]) / w;
+   994→   994→    
+   995→   995→    if (!isFinite(u) || !isFinite(v)) {
+   996→   996→      finalInliers.push(false);
+   997→   997→      continue;
+   998→   998→    }
+   999→   999→    
+  1000→  1000→    const err = Math.sqrt((u - dstPoints[i].x) ** 2 + (v - dstPoints[i].y) ** 2);
+  1001→  1001→    const isInlier = err < threshold;
+  1002→  1002→    finalInliers.push(isInlier);
+  1003→  1003→    
+  1004→  1004→    if (isInlier) {
+  1005→  1005→      finalSumSquaredError += err * err;
+  1006→  1006→      finalCount++;
+  1007→  1007→    }
+  1008→  1008→  }
+  1009→  1009→  
+  1010→  1010→  const finalRMSE = finalCount > 0 ? Math.sqrt(finalSumSquaredError / finalCount) : Infinity;
+  1011→  1011→  
+  1012→  1012→  // All returned values now describe the same final refined model
+  1013→  1013→  return { 
+  1014→  1014→    matrix: bestMatrix, 
+  1015→  1015→    inliers: finalInliers, 
+  1016→  1016→    inlierCount: finalCount, 
+  1017→  1017→    rmse: finalRMSE 
+  1018→  1018→  };
+  1019→  1019→}
+  1020→  1020→
+  1021→  1021→// Image quality assessment
+  1022→  1022→export function assessImageQuality(imageData: ImageData): {
+  1023→  1023→  sharpness: number;
+  1024→  1024→  brightness: number;
+  1025→  1025→  contrast: number;
+  1026→  1026→  blurScore: number;
+  1027→  1027→  glareDetected: boolean;
+  1028→  1028→  overallScore: number;
+  1029→  1029→} {
+  1030→  1030→  const { data, width, height } = imageData;
+  1031→  1031→  const gray = toGrayscale(imageData);
+  1032→  1032→  
+  1033→  1033→  // Brightness
+  1034→  1034→  let totalBrightness = 0;
+  1035→  1035→  for (let i = 0; i < gray.length; i++) totalBrightness += gray[i];
+  1036→  1036→  const brightness = totalBrightness / gray.length / 255;
+  1037→  1037→  
+  1038→  1038→  // Contrast (std dev)
+  1039→  1039→  let variance = 0;
+  1040→  1040→  for (let i = 0; i < gray.length; i++) {
+  1041→  1041→    variance += (gray[i] - totalBrightness / gray.length) ** 2;
+  1042→  1042→  }
+  1043→  1043→  const contrast = Math.sqrt(variance / gray.length) / 128;
+  1044→  1044→  
+  1045→  1045→  // Sharpness (Laplacian variance)
+  1046→  1046→  let laplacianSum = 0;
+  1047→  1047→  let laplacianSqSum = 0;
+  1048→  1048→  let count = 0;
+  1049→  1049→  for (let y = 1; y < height - 1; y++) {
+  1050→  1050→    for (let x = 1; x < width - 1; x++) {
+  1051→  1051→      const idx = y * width + x;
+  1052→  1052→      const lap = gray[idx - 1] + gray[idx + 1] + gray[idx - width] + gray[idx + width] - 4 * gray[idx];
+  1053→  1053→      laplacianSum += Math.abs(lap);
+  1054→  1054→      laplacianSqSum += lap * lap;
+  1055→  1055→      count++;
+  1056→  1056→    }
+  1057→  1057→  }
+  1058→  1058→  const sharpness = Math.sqrt(laplacianSqSum / count - (laplacianSum / count) ** 2) / 100;
+  1059→  1059→  
+  1060→  1060→  // Glare detection
+  1061→  1061→  let brightPixels = 0;
+  1062→  1062→  for (let i = 0; i < gray.length; i++) {
+  1063→  1063→    if (gray[i] > 240) brightPixels++;
+  1064→  1064→  }
+  1065→  1065→  const glareDetected = brightPixels / gray.length > 0.15;
+  1066→  1066→  
+  1067→  1067→  // Blur score (inverse of sharpness, normalized)
+  1068→  1068→  const blurScore = Math.max(0, 1 - sharpness * 2);
+  1069→  1069→  
+  1070→  1070→  // Overall score
+  1071→  1071→  const brightnessScore = 1 - Math.abs(brightness - 0.5) * 2;
+  1072→  1072→  const overallScore = Math.max(0, Math.min(1,
+  1073→  1073→    0.35 * sharpness + 0.25 * brightnessScore + 0.25 * contrast + 0.15 * (glareDetected ? 0 : 1)
+  1074→  1074→  ));
+  1075→  1075→  
+  1076→  1076→  return {
+  1077→  1077→    sharpness: Math.min(1, sharpness),
+  1078→  1078→    brightness,
+  1079→  1079→    contrast: Math.min(1, contrast),
+  1080→  1080→    blurScore,
+  1081→  1081→    glareDetected,
+  1082→  1082→    overallScore
+  1083→  1083→  };
+  1084→  1084→}
+  1085→  1085→
+  1086→  1086→// Hough line detection
+  1087→  1087→export function houghLineDetection(
+  1088→  1088→  gray: Float32Array, width: number, height: number,
+  1089→  1089→  threshold: number = 80
+  1090→  1090→): { angle: number; rho: number; votes: number; isVertical: boolean }[] {
+  1091→  1091→  const maxRho = Math.sqrt(width * width + height * height);
+  1092→  1092→  const rhoResolution = 1;
+  1093→  1093→  const thetaResolution = Math.PI / 180;
+  1094→  1094→  const numRho = Math.ceil(2 * maxRho / rhoResolution);
+  1095→  1095→  const numTheta = Math.ceil(Math.PI / thetaResolution);
+  1096→  1096→  
+  1097→  1097→  const accumulator = new Int32Array(numRho * numTheta);
+  1098→  1098→  
+  1099→  1099→  // Edge detection (simple gradient magnitude)
+  1100→  1100→  for (let y = 1; y < height - 1; y++) {
+  1101→  1101→    for (let x = 1; x < width - 1; x++) {
+  1102→  1102→      const idx = y * width + x;
+  1103→  1103→      const gx = gray[idx + 1] - gray[idx - 1];
+  1104→  1104→      const gy = gray[idx + width] - gray[idx - width];
+  1105→  1105→      const mag = Math.sqrt(gx * gx + gy * gy);
+  1106→  1106→      
+  1107→  1107→      if (mag > 30) {
+  1108→  1108→        for (let t = 0; t < numTheta; t++) {
+  1109→  1109→          const theta = t * thetaResolution;
+  1110→  1110→          const rho = x * Math.cos(theta) + y * Math.sin(theta);
+  1111→  1111→          const rIdx = Math.round((rho + maxRho) / rhoResolution);
+  1112→  1112→          if (rIdx >= 0 && rIdx < numRho) {
+  1113→  1113→            accumulator[rIdx * numTheta + t]++;
+  1114→  1114→          }
+  1115→  1115→        }
+  1116→  1116→      }
+  1117→  1117→    }
+  1118→  1118→  }
+  1119→  1119→  
+  1120→  1120→  // Find peaks
+  1121→  1121→  const lines: { angle: number; rho: number; votes: number; isVertical: boolean }[] = [];
+  1122→  1122→  for (let r = 0; r < numRho; r++) {
+  1123→  1123→    for (let t = 0; t < numTheta; t++) {
+  1124→  1124→      if (accumulator[r * numTheta + t] > threshold) {
+  1125→  1125→        const theta = t * thetaResolution;
+  1126→  1126→        const rho = r * rhoResolution - maxRho;
+  1127→  1127→        const isVertical = theta < Math.PI / 4 || theta > 3 * Math.PI / 4;
+  1128→  1128→        lines.push({ angle: theta * 180 / Math.PI, rho, votes: accumulator[r * numTheta + t], isVertical });
+  1129→  1129→      }
+  1130→  1130→    }
+  1131→  1131→  }
+  1132→  1132→  
+  1133→  1133→  return lines.sort((a, b) => b.votes - a.votes).slice(0, 20);
+  1134→  1134→}
+  1135→  1135→
+  1136→  1136→// Measure distance between two points on image with scale
+  1137→  1137→export function measureDistance(
+  1138→  1138→  p1: Point2D, p2: Point2D,
+  1139→  1139→  pixelToMeter: number | null,
+  1140→  1140→  source: string
+  1141→  1141→): { pixelDistance: number; metricDistance: number | null; uncertainty: number } {
+  1142→  1142→  const pixelDist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+  1143→  1143→  const metricDist = pixelToMeter ? pixelDist * pixelToMeter : null;
+  1144→  1144→  
+  1145→  1145→  // Uncertainty based on source
+  1146→  1146→  let uncertainty = 0;
+  1147→  1147→  if (source === 'calibration_marker') uncertainty = 1;
+  1148→  1148→  else if (source === 'manual_reference') uncertainty = 2;
+  1149→  1149→  else if (source === 'homography') uncertainty = 5;
+  1150→  1150→  else if (source === 'demo') uncertainty = 15;
+  1151→  1151→  else uncertainty = 20;
+  1152→  1152→  
+  1153→  1153→  return { pixelDistance: pixelDist, metricDistance: metricDist, uncertainty };
+  1154→  1154→}
+  1155→  1155→
+  1156→  1156→// Detect vanishing points from line intersections
+  1157→  1157→export function detectVanishingPoints(
+  1158→  1158→  lines: { angle: number; rho: number; votes: number; isVertical: boolean }[]
+  1159→  1159→): { point: Point2D; confidence: number; type: 'vertical' | 'horizontal' }[] {
+  1160→  1160→  const verticals = lines.filter(l => l.isVertical);
+  1161→  1161→  const horizontals = lines.filter(l => !l.isVertical);
+  1162→  1162→  
+  1163→  1163→  const results: { point: Point2D; confidence: number; type: 'vertical' | 'horizontal' }[] = [];
+  1164→  1164→  
+  1165→  1165→  // Group lines by similar angle
+  1166→  1166→  if (verticals.length >= 2) {
+  1167→  1167→    const avgAngle = verticals.reduce((s, l) => s + l.angle, 0) / verticals.length;
+  1168→  1168→    const variance = verticals.reduce((s, l) => s + (l.angle - avgAngle) ** 2, 0) / verticals.length;
+  1169→  1169→    const confidence = Math.max(0, 1 - Math.sqrt(variance) / 10);
+  1170→  1170→    results.push({
+  1171→  1171→      point: { x: 0, y: -1000 / Math.tan(avgAngle * Math.PI / 180) },
+  1172→  1172→      confidence,
+  1173→  1173→      type: 'vertical'
+  1174→  1174→    });
+  1175→  1175→  }
+  1176→  1176→  
+  1177→  1177→  if (horizontals.length >= 2) {
+  1178→  1178→    const avgAngle = horizontals.reduce((s, l) => s + l.angle, 0) / horizontals.length;
+  1179→  1179→    const variance = horizontals.reduce((s, l) => s + (l.angle - avgAngle) ** 2, 0) / horizontals.length;
+  1180→  1180→    const confidence = Math.max(0, 1 - Math.sqrt(variance) / 10);
+  1181→  1181→    results.push({
+  1182→  1182→      point: { x: 1000, y: 0 },
+  1183→  1183→      confidence,
+  1184→  1184→      type: 'horizontal'
+  1185→  1185→    });
+  1186→  1186→  }
+  1187→  1187→  
+  1188→  1188→  return results;
+  1189→  1189→}
+  1190→  1190→
+  1191→  1191→/**
+  1192→  1192→ * Calculate pixel-to-meter scale from a known reference distance
+  1193→  1193→ * 
+  1194→  1194→ * @param refPoint1 - First point of reference (pixels)
+  1195→  1195→ * @param refPoint2 - Second point of reference (pixels)
+  1196→  1196→ * @param realDistance - Known real-world distance between points (meters)
+  1197→  1197→ * @returns Pixel-to-meter conversion factor, or null if invalid
+  1198→  1198→ */
+  1199→  1199→export function calculateScaleFromReference(
+  1200→  1200→  refPoint1: Point2D,
+  1201→  1201→  refPoint2: Point2D,
+  1202→  1202→  realDistance: number
+  1203→  1203→): number | null {
+  1204→  1204→  // Validate inputs
+  1205→  1205→  if (!isFinite(realDistance) || realDistance <= 0) return null;
+  1206→  1206→  if (!isFinite(refPoint1.x) || !isFinite(refPoint1.y) || 
+  1207→  1207→      !isFinite(refPoint2.x) || !isFinite(refPoint2.y)) return null;
+  1208→  1208→  
+  1209→  1209→  const pixelDistance = Math.sqrt(
+  1210→  1210→    (refPoint2.x - refPoint1.x) ** 2 + 
+  1211→  1211→    (refPoint2.y - refPoint1.y) ** 2
+  1212→  1212→  );
+  1213→  1213→  
+  1214→  1214→  if (pixelDistance < 1 || !isFinite(pixelDistance)) return null; // Too small or invalid
+  1215→  1215→  
+  1216→  1216→  return realDistance / pixelDistance;
+  1217→  1217→}
+  1218→  1218→
+  1219→  1219→/**
+  1220→  1220→ * Calculate real-world distance between two points using pixel-to-meter scale
+  1221→  1221→ * 
+  1222→  1222→ * @param point1 - First point (pixels)
+  1223→  1223→ * @param point2 - Second point (pixels)
+  1224→  1224→ * @param pixelToMeter - Conversion factor from pixels to meters
+  1225→  1225→ * @returns Real-world distance in meters, or null if scale is invalid
+  1226→  1226→ */
+  1227→  1227→export function calculateRealDistance(
+  1228→  1228→  point1: Point2D,
+  1229→  1229→  point2: Point2D,
+  1230→  1230→  pixelToMeter: number
+  1231→  1231→): number | null {
+  1232→  1232→  // Validate scale
+  1233→  1233→  if (!isFinite(pixelToMeter) || pixelToMeter <= 0) return null;
+  1234→  1234→  
+  1235→  1235→  // Validate points
+  1236→  1236→  if (!isFinite(point1.x) || !isFinite(point1.y) || 
+  1237→  1237→      !isFinite(point2.x) || !isFinite(point2.y)) return null;
+  1238→  1238→  
+  1239→  1239→  const pixelDistance = Math.sqrt(
+  1240→  1240→    (point2.x - point1.x) ** 2 + 
+  1241→  1241→    (point2.y - point1.y) ** 2
+  1242→  1242→  );
+  1243→  1243→  
+  1244→  1244→  if (!isFinite(pixelDistance)) return null;
+  1245→  1245→  
+  1246→  1246→  const result = pixelDistance * pixelToMeter;
+  1247→  1247→  return isFinite(result) ? result : null;
+  1248→  1248→}
+  1249→  1249→
+  1250→  1250→/**
+  1251→  1251→ * Assess measurement reliability based on various factors
+  1252→  1252→ * 
+  1253→  1253→ * @param pixelDistance - Distance in pixels between measurement points
+  1254→  1254→ * @param imageWidth - Width of the image in pixels
+  1255→  1255→ * @param imageHeight - Height of the image in pixels
+  1256→  1256→ * @param referenceDistance - Distance of reference in pixels
+  1257→  1257→ * @returns Reliability score (0-1) and warnings
+  1258→  1258→ */
+  1259→  1259→export function assessMeasurementReliability(
+  1260→  1260→  pixelDistance: number,
+  1261→  1261→  imageWidth: number,
+  1262→  1262→  imageHeight: number,
+  1263→  1263→  referenceDistance: number
+  1264→  1264→): { reliability: number; warnings: string[] } {
+  1265→  1265→  const warnings: string[] = [];
+  1266→  1266→  let reliability = 1.0;
+  1267→  1267→  
+  1268→  1268→  // Validate inputs
+  1269→  1269→  if (!isFinite(pixelDistance) || pixelDistance < 0) {
+  1270→  1270→    return { reliability: 0, warnings: ['Neveljavna razdalja meritve'] };
+  1271→  1271→  }
+  1272→  1272→  if (!isFinite(imageWidth) || !isFinite(imageHeight) || imageWidth <= 0 || imageHeight <= 0) {
+  1273→  1273→    return { reliability: 0, warnings: ['Neveljavne dimenzije slike'] };
+  1274→  1274→  }
+  1275→  1275→  if (!isFinite(referenceDistance) || referenceDistance < 0) {
+  1276→  1276→    warnings.push('Neveljavna referenčna razdalja');
+  1277→  1277→    reliability *= 0.5;
+  1278→  1278→  }
+  1279→  1279→  
+  1280→  1280→  const imageDiagonal = Math.sqrt(imageWidth ** 2 + imageHeight ** 2);
+  1281→  1281→  
+  1282→  1282→  if (!isFinite(imageDiagonal) || imageDiagonal <= 0) {
+  1283→  1283→    return { reliability: 0, warnings: ['Neveljavna diagonala slike'] };
+  1284→  1284→  }
+  1285→  1285→  
+  1286→  1286→  // Check if measurement is too small relative to image
+  1287→  1287→  if (pixelDistance < imageDiagonal * 0.02) {
+  1288→  1288→    reliability *= 0.5;
+  1289→  1289→    warnings.push('Meritev je zelo majhna glede na sliko - nizka natančnost');
+  1290→  1290→  }
+  1291→  1291→  
+  1292→  1292→  // Check if reference is too small
+  1293→  1293→  if (referenceDistance < imageDiagonal * 0.05) {
+  1294→  1294→    reliability *= 0.7;
+  1295→  1295→    warnings.push('Referenčna mera je majhna - priporočamo večjo referenco');
+  1296→  1296→  }
+  1297→  1297→  
+  1298→  1298→  // Penalize if measurement is very large (likely perspective error)
+  1299→  1299→  if (pixelDistance > imageDiagonal * 0.8) {
+  1300→  1300→    reliability *= 0.8;
+  1301→  1301→    warnings.push('Meritev zajema večino slike - možna perspektivna napaka');
+  1302→  1302→  }
+  1303→  1303→  
+  1304→  1304→  return { reliability, warnings };
+  1305→  1305→}
+  1306→  1306→
