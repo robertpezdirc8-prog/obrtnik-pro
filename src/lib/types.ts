@@ -1,0 +1,141 @@
+// ─── Skupni tipi za Obrtnik Pro ─────────────────────────────
+
+export type CraftId =
+  | 'ograje'
+  | 'stopnice'
+  | 'keramika'
+  | 'wpc-terasa'
+  | 'okna-vrata'
+  | 'nadstreški'
+  | 'fasada';
+
+export interface CategoryDTO {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string;
+  products: ProductDTO[];
+}
+
+export interface ProductDTO {
+  id: string;
+  categoryId: string;
+  name: string;
+  description: string | null;
+  unit: string;
+  unitPrice: number;
+}
+
+export interface DraftItem {
+  key: string;
+  name: string;
+  description?: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  productId?: string;
+}
+
+export interface OfferDTO {
+  id: string;
+  number: string;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  objectAddress: string | null;
+  note: string | null;
+  status: OfferStatus;
+  subtotal: number;
+  vatRate: number;
+  vatAmount: number;
+  total: number;
+  createdAt: string;
+  items: OfferItemDTO[];
+}
+
+export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'rejected';
+
+export interface OfferItemDTO {
+  id: string;
+  name: string;
+  description: string | null;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  total: number;
+  sortOrder: number;
+}
+
+export interface SettingsDTO {
+  companyName: string;
+  ownerName: string;
+  address: string;
+  phone: string;
+  email: string;
+  taxNumber: string;
+  iban: string;
+  vatRate: number;
+  laborRate: number;
+  logoUrl: string | null;
+}
+
+// ─── Izračunski rezultat ────────────────────────────────────
+
+export interface CalcLine {
+  name: string;
+  description?: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  productId?: string;
+}
+
+export interface CalcResult {
+  lines: CalcLine[];
+  summary: { label: string; value: string }[];
+}
+
+/** Uporabniški vnos kalkulatorja – vsi podatki, ki jih bere engine. */
+export interface CraftInputs {
+  // Ograje
+  length?: number;            // m
+  height?: number;            // m
+  material?: 'alu' | 'steklo' | 'inox';
+  gates?: number;             // št. prehodov
+  // Stopnice
+  steps?: number;
+  stepWidth?: number;         // m
+  stepMaterial?: 'wpc' | 'hrast';
+  railingLength?: number;     // m (0 = izračun)
+  railingNeeded?: boolean;
+  // Keramika
+  floorLength?: number;       // m
+  floorWidth?: number;        // m
+  wallHeight?: number;        // m (0 = samo tla)
+  tilePricePerM2?: number;
+  reservePercent?: number;
+  // WPC terasa
+  deckLength?: number;        // m
+  deckWidth?: number;         // m
+  joistSpacing?: number;      // m (privzeto 0,4)
+  boardPricePerM?: number;
+  // Okna/vrata
+  windowCount?: number;
+  windowSize?: number;        // m²
+  windowMaterial?: 'pvc' | 'alu';
+  doorCount?: number;
+  removeOld?: boolean;
+  // Nadstrešek
+  canopyWidth?: number;       // m
+  canopyDepth?: number;       // m
+  canopyCover?: 'ploc' | 'polikar' | 'steklo';
+  canopyPosts?: number;
+  waterDrain?: boolean;
+  // Fasada
+  facadePerimeter?: number;   // m (ali skupna dolžina stene)
+  facadeHeight?: number;      // m
+  openingsM2?: number;        // m² odprtin
+  cladding?: 'wpc' | 'les' | 'ploc';
+}

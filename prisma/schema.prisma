@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,80 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── Katalog ────────────────────────────────────────────────
+
+model Category {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  icon        String    @default("hammer")
+  sortOrder   Int       @default(0)
+  products    Product[]
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Product {
+  id          String      @id @default(cuid())
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  unit        String      @default("kos")
+  unitPrice   Float
+  sku         String?
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  offerItems  OfferItem[]
+}
+
+// ─── Ponudbe ────────────────────────────────────────────────
+
+model Offer {
+  id              String      @id @default(cuid())
+  number          String      @unique
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerAddress String?
+  objectAddress   String?
+  note            String?
+  status          String      @default("draft")
+  subtotal        Float
+  vatRate         Float       @default(22)
+  vatAmount       Float
+  total           Float
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OfferItem[]
+}
+
+model OfferItem {
+  id          String   @id @default(cuid())
+  offerId     String
+  offer       Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  name        String
+  description String?
+  quantity    Float
+  unit        String
+  unitPrice   Float
+  total       Float
+  sortOrder   Int      @default(0)
+}
+
+// ─── Nastavitve podjetja ────────────────────────────────────
+
+model Settings {
+  id          String  @id @default("default")
+  companyName String  @default("Moj Obrt s.p.")
+  ownerName   String  @default("")
+  address     String  @default("")
+  phone       String  @default("")
+  email       String  @default("")
+  taxNumber   String  @default("")
+  iban        String  @default("")
+  vatRate     Float   @default(22)
+  laborRate   Float   @default(35)
+  logoUrl     String?
 }

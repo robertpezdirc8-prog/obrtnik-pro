@@ -45,24 +45,24 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.993 0.004 90);
+  --foreground: oklch(0.24 0.015 60);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.24 0.015 60);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.24 0.015 60);
+  --primary: oklch(0.52 0.115 55);
+  --primary-foreground: oklch(0.985 0.006 85);
+  --secondary: oklch(0.96 0.012 85);
+  --secondary-foreground: oklch(0.35 0.045 55);
+  --muted: oklch(0.962 0.008 85);
+  --muted-foreground: oklch(0.52 0.02 60);
+  --accent: oklch(0.94 0.035 85);
+  --accent-foreground: oklch(0.36 0.06 55);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.912 0.012 80);
+  --input: oklch(0.912 0.012 80);
+  --ring: oklch(0.6 0.1 55);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -79,14 +79,14 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --background: oklch(0.19 0.01 60);
+  --foreground: oklch(0.97 0.005 85);
+  --card: oklch(0.24 0.012 60);
+  --card-foreground: oklch(0.97 0.005 85);
+  --popover: oklch(0.24 0.012 60);
+  --popover-foreground: oklch(0.97 0.005 85);
+  --primary: oklch(0.72 0.12 70);
+  --primary-foreground: oklch(0.2 0.02 55);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
@@ -118,5 +118,37 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Prilagojen scroll za dolge sezname */
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: oklch(0.75 0.05 70 / 0.6);
+  border-radius: 8px;
+}
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.6 0.09 60 / 0.8);
+}
+
+/* Tiskanje ponudbe */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-offer,
+  .print-offer * {
+    visibility: visible;
+  }
+  .print-offer {
+    position: absolute;
+    inset: 0;
+    padding: 0;
   }
 }
