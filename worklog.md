@@ -284,3 +284,23 @@ Stage Summary:
 - 6 novih skriptnih funkcij iz 2. raziskovalnega cikla (vse deterministične, 0 AI): GBB opcije z Leap cenovnim pasom, akontacija end-to-end (DB→nastavitve→PDF→urejevalnik→SMS), dodatna dela s samodejnim številčenjem, zapisnik o predaji (garancijski zapis), sklad ostankov z best-fit povezovanjem, SMS/WhatsApp povzetek.
 - Ključni artefakti: src/lib/{gbb,paperwork,leftovers}.ts, calculators/gbb-panel.tsx, store.ts (useChangeOrders, useLeftovers), prisma (depositPercent), pdf.ts (depositRows, openHandoverPrint), offers-list.tsx (3 nova dokumenta na ponudbo).
 - Raziskava: research/task8/ (11 JSON + findings.md).
+
+---
+Task ID: 9
+Agent: main (Z.ai Code)
+Task: 3. raziskovalna runda (papirnatica po sprejemu ponudbe: računi, termini, nabava) + implementacija — strogo skriptno, brez AI.
+
+Work Log:
+- Raziskava (5 poizvedb, research/task9/): ambrook/projul/contractorforeman (»estimate converts directly to invoice« — sprejeta ponudba kot komercialna osnova), contractortalk/RUBI/estimationpro (produktivnost keramike 0,5–1 man-h/m²), racun123/gzs/data.si (rok plačila 15/30 dni, DDV obračun na dan dobave), OZ (sprejem ponudbe).
+- RAČUN: Prisma model Invoice (offerId, RAC-LETO-NNN strežniško deterministično številčenje, vsote iz shranjene ponudbe) + /api/invoices GET/POST + db:push + restart dev servera (znan problem Prisma client v pomnilniku) + pdf.ts buildInvoiceHTML/openInvoicePDF (IBAN, referenca ponudbe, rok plačila = izdaja + paymentDays, akontacijska opomba, klavzula o obračunu DDV) + offers-list: gumb »Račun« (poudarjen za sprejete), dialog (seznam izdanih + izdaja + ponovni tisk), značka »Račun RAC-2026-001« na kartici ponudbe.
+- OCENA TRAJANJA: src/lib/labor.ts — LABOR_NORMS po 7 dejavnostih (man-ure/enoto) + estimateDuration(craft, inputs) → dni za ekipo 2 monterja (8 h/dan); vrstica »Trajanje montaže: ≈ N delovnih dni (X man-ur, ekipa 2 monterja)« v CraftCalculator pod povzetkom (data-testid=duration-row). Isti geometrijski vhodi kot kalkulatorji.
+- NABAVNI LIST: offer-editor buildBuyList + isLaborItem (deterministični vzorci: /montaža/, /polaganje/, /fugiran/, /vgradnj/, /betoniran/); dialog s pripravljenim besedilom za dobavitelja (datum, objekt, samo materialne postavke, prošnja za potrditev zaloge) + kopiranje.
+- STRUKTURA CENE: split material/delo v urejevalniku (barvna vrstica, % + €) z opozorilom, ko je material < 35 % ali > 80 % (konsistentna marža pred oddajo).
+- ROK PLAČILA: Settings.paymentDays (Prisma, nastavitve polje, API route) — izpiše se na računu.
+- Popravek razporeda kartice ponudbe na namiznem (6 gumbov stiskalo levi stolpec): md:flex-wrap + md:flex-1 na desnem bloku → gumbi se premeščejo v 2 vrsti, besedilo ostane berljivo.
+- Verifikacija: tsc (src) 0 napak, eslint čist; E2E agent-browser: ograje 6 m → »≈ 1 delovni dan (7,2 man-ur, ekipa 2 monterja)« ✓; struktura cene: material 2454 €/85 % + delo 420 €/15 % (ročno preverjeno iz osnutka 8 postavk) + opozorilo > 80 % ✓; nabavni list: 6 materialnih vrstic, dela izpuščena ✓; račun: izdan RAC-2026-001 (1476 € + DDV 324,72 = 1800,72 € točno), značka + seznam v dialogu ✓, PDF okno odprto z naslovom »Račun RAC-2026-001«, ZA PLAČILO 1800,72 €, rok 26. 10. (izdaja 11. 10. + 15 dni) ✓; nastavitve: rok plačila 15 ✓; mobilni 390×844: značka + 6 gumbov se lepo prelomi, sw=390 ✓; namizni 1440: urejen razpored ✓; dev.log 0 napak. Posnetki: tests/e2e-{invoice-badge,invoice-dialog,offers-mobile-t9,offers-desktop-t9b}.png.
+
+Stage Summary:
+- Zaključena celotna poslovna veriga: fotka → meritev → kalkulator → ponudba (z opcijami/akontacijo) → sprejem → DODATNA DELA → PREDAJA (zapisnik) → RAČUN (PDF s plačilnimi podatki). Vse deterministične skripte, 0 AI.
+- Ključni artefakti: src/lib/labor.ts, src/app/api/invoices/route.ts, prisma (Invoice, paymentDays), pdf.ts (buildInvoiceHTML/openInvoicePDF/dueDate), offers-list (računi), offer-editor (nabavni list + struktura cene), shared.tsx (trajanje).
+- Raziskava: research/task9/ (5 JSON + findings.md).

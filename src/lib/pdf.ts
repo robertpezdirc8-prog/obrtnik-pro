@@ -1,4 +1,4 @@
-import type { OfferDTO, SettingsDTO } from './types';
+import type { InvoiceDTO, OfferDTO, SettingsDTO } from './types';
 import { formatDate, formatNum } from './format';
 import type { HandoverData } from './paperwork';
 import { buildHandoverDoc } from './paperwork';
@@ -205,6 +205,146 @@ export function openHandoverPrint(offer: OfferDTO, settings: SettingsDTO, opts: 
 <pre>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
 </body>
 </html>`;
+  const w = window.open('', '_blank', 'width=900,height=1000');
+  if (!w) return false;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  w.setTimeout(() => {
+    w.focus();
+    w.print();
+  }, 400);
+  return true;
+}
+
+// ─── Račun (iz sprejete ponudbe) ────────────────────────────
+
+/** Datum zapadlosti = izdaja + paymentDays dni. */
+export function dueDate(createdAtIso: string, paymentDays: number): string {
+  const t = new Date(createdAtIso).getTime();
+  const days = Number.isFinite(paymentDays) && paymentDays > 0 ? Math.floor(paymentDays) : 15;
+  const d = new Date((Number.isFinite(t) ? t : Date.now()) + days * 86_400_000);
+  return new Intl.DateTimeFormat('sl-SI', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(d);
+}
+
+/** Račun gradi iz podatkov računa (server izračuna iz ponudbe) +
+ *  podrobnosti ponudbe za referenco in postavke. */
+export function buildInvoiceHTML(invoice: InvoiceDTO, offer: OfferDTO | null, settings: SettingsDTO): string {
+  const items = (offer?.items ?? [])
+    .map(
+      (item, i) => `
+      <tr>
+        <td class="c">${i + 1}</td>
+        <td><strong>${esc(item.name)}</strong>${item.description ? `<div class="desc">${esc(item.description)}</div>` : ''}</td>
+        <td class="r">${formatNum(item.quantity)} ${esc(item.unit)}</td>
+        <td class="r">${formatNum(item.unitPrice)} €</td>
+        <td class="r"><strong>${formatNum(item.total)} €</strong></td>
+      </tr>`,
+    )
+    .join('');
+
+  const pct = Math.max(0, Math.min(100, Math.floor(settings.depositPercent ?? 0)));
+  const deposit = invoice.total * (pct / 100);
+
+  return `<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<title>Račun ${esc(invoice.number)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #292524; margin: 0; padding: 32px; font-size: 13px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #a16207; padding-bottom: 16px; margin-bottom: 24px; }
+  .company h1 { margin: 0 0 4px; font-size: 20px; color: #854d0e; }
+  .company p { margin: 2px 0; color: #57534e; }
+  .meta { text-align: right; }
+  .meta .num { font-size: 22px; font-weight: 700; color: #854d0e; }
+  .meta p { margin: 2px 0; color: #57534e; }
+  h2 { font-size: 14px; color: #854d0e; text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 8px; }
+  .parties { display: flex; gap: 24px; margin-bottom: 8px; }
+  .parties > div { flex: 1; background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px 14px; }
+  .parties p { margin: 3px 0; }
+  .label { font-size: 10px; text-transform: uppercase; color: #a8a29e; letter-spacing: 0.5px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { background: #854d0e; color: #fff; text-align: left; padding: 8px 10px; font-size: 12px; }
+  th.r, td.r { text-align: right; }
+  th.c, td.c { text-align: center; width: 32px; }
+  td { padding: 8px 10px; border-bottom: 1px solid #e7e5e4; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafaf9; }
+  .desc { color: #78716c; font-size: 11px; margin-top: 2px; }
+  .pay { background: #fefce8; border-left: 3px solid #d97706; padding: 12px 14px; border-radius: 0 6px 6px 0; margin-top: 16px; color: #44403c; }
+  .pay p { margin: 3px 0; }
+  .totals { margin-top: 16px; display: flex; justify-content: flex-end; }
+  .totals table { width: 320px; }
+  .totals td { padding: 6px 10px; }
+  .totals .grand td { background: #fef3c7; font-weight: 700; font-size: 15px; color: #854d0e; border-top: 2px solid #a16207; }
+  .foot { margin-top: 32px; color: #78716c; font-size: 11px; border-top: 1px solid #e7e5e4; padding-top: 12px; }
+  @media print { body { padding: 16px; } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="company">
+      <h1>${esc(settings.companyName)}</h1>
+      ${settings.address ? `<p>${esc(settings.address)}</p>` : ''}
+      ${settings.phone || settings.email ? `<p>${[settings.phone, settings.email].filter(Boolean).map(esc).join(' · ')}</p>` : ''}
+      ${settings.taxNumber ? `<p>Davčna št.: ${esc(settings.taxNumber)}</p>` : ''}
+    </div>
+    <div class="meta">
+      <div class="num">RAČUN ${esc(invoice.number)}</div>
+      <p>Datum izdaje: ${formatDate(invoice.createdAt)}</p>
+      <p>Rok plačila: ${dueDate(invoice.createdAt, settings.paymentDays)}</p>
+    </div>
+  </div>
+
+  <div class="parties">
+    <div>
+      <div class="label">Kupec</div>
+      <p><strong>${esc(invoice.customerName)}</strong></p>
+      ${offer?.customerAddress ? `<p>${esc(offer.customerAddress)}</p>` : ''}
+    </div>
+    <div>
+      <div class="label">Objekt / lokacija</div>
+      <p>${offer?.objectAddress ? esc(offer.objectAddress) : '—'}</p>
+      <p style="margin-top:8px">Izdano na podlagi ponudbe: <strong>${esc(invoice.offerNumber ?? offer?.number ?? '')}</strong></p>
+    </div>
+  </div>
+
+  <h2>Postavke računa</h2>
+  <table>
+    <thead>
+      <tr><th class="c">Št.</th><th>Opis</th><th class="r">Količina</th><th class="r">Cena/en.</th><th class="r">Vrednost</th></tr>
+    </thead>
+    <tbody>${items || `<tr><td colspan="5">Postavke po ponudbi ${esc(invoice.offerNumber ?? '')} — skupna vrednost.</td></tr>`}</tbody>
+  </table>
+
+  <div class="totals">
+    <table>
+      <tr><td>Osnova (brez DDV)</td><td class="r">${formatNum(invoice.subtotal)} €</td></tr>
+      <tr><td>DDV ${formatNum(invoice.vatRate)} %</td><td class="r">${formatNum(invoice.vatAmount)} €</td></tr>
+      <tr class="grand"><td>ZA PLAČILO</td><td class="r">${formatNum(invoice.total)} €</td></tr>
+    </table>
+  </div>
+
+  <div class="pay">
+    <strong>Plačilni podatki</strong>
+    ${settings.iban ? `<p>IBAN: <strong>${esc(settings.iban)}</strong></p>` : '<p>IBAN: — (dopolni v nastavitvah)</p>'}
+    ${settings.taxNumber ? `<p>Referenca: ${esc(invoice.number)} · Davčna št. izdajatelja: ${esc(settings.taxNumber)}</p>` : ''}
+    ${pct > 0 && invoice.total > 0 ? `<p>Akontacija ${pct} % (${formatNum(deposit)} €) je že plačana ob naročilu — za plačilo je preostanek ${formatNum(invoice.total - deposit)} € (če akontacija ni bila plačana, za plačilo velja celoten znesek).</p>` : ''}
+    <p>Rok za plačilo: ${dueDate(invoice.createdAt, settings.paymentDays)} (${Math.max(1, Math.floor(settings.paymentDays) || 15)} dni od izdaje).</p>
+  </div>
+
+  <div class="foot">
+    Račun je izdan na podlagi sprejete ponudbe ${esc(invoice.offerNumber ?? offer?.number ?? '')}. Ob objavi računa nastane obveznost obračuna DDV (dan dobave blaga / opravljene storitve).
+  </div>
+</body>
+</html>`;
+}
+
+export function openInvoicePDF(invoice: InvoiceDTO, offer: OfferDTO | null, settings: SettingsDTO): boolean {
+  const html = buildInvoiceHTML(invoice, offer, settings);
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) return false;
   w.document.open();

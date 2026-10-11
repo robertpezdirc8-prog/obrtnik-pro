@@ -150,6 +150,15 @@ export function SettingsView() {
               (raziskave: priporočilo 10–50 % glede na velikost projekta).
             </p>
           </div>
+          <div className="space-y-1.5">
+            <Label>Rok plačila računa (dni)</Label>
+            <Input
+              type="number" min={1} max={90} step={1}
+              value={settings.paymentDays}
+              onChange={(e) => patch('paymentDays', Number(e.target.value) || 15)}
+            />
+            <p className="text-xs text-muted-foreground">Izpiše se na računu kot datum zapadlosti (tipično 15 ali 30 dni)</p>
+          </div>
         </CardContent>
       </Card>
 

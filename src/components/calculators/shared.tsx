@@ -8,11 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { PlusCircle, Sparkles } from 'lucide-react';
+import { PlusCircle, Sparkles, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
 import { formatEUR, formatNum } from '@/lib/format';
 import { craftInstallPlan } from '@/lib/install-plan';
+import { estimateDuration } from '@/lib/labor';
 import { MaterialPanel } from './material-panel';
 import { GbbPanel } from './gbb-panel';
 import type { CalcLine, CraftId, CraftInputs } from '@/lib/types';
@@ -123,6 +124,7 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
   const setView = useView((s) => s.setView);
   const result = useMemo(() => compute(inputs), [compute, inputs]);
   const plan = useMemo(() => craftInstallPlan(craft, inputs), [craft, inputs]);
+  const duration = useMemo(() => estimateDuration(craft, inputs), [craft, inputs]);
   const [priceOverrides, setPriceOverrides] = useState<Record<number, number>>({});
   const [laborRate, setLaborRate] = useState(35);
 
@@ -198,6 +200,18 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
                 ))}
               </CardContent>
             </Card>
+          )}
+
+          {/* Ocena trajanja — deterministični normativi (lib/labor.ts),
+              orientacijska pomoč za terminiranje ekipe. */}
+          {duration && (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2" data-testid="duration-row">
+              <Clock className="h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-tight">Trajanje montaže: {duration.summary}</p>
+                <p className="text-xs text-muted-foreground">orientacijski normativ — začni planiranje terminov od tega</p>
+              </div>
+            </div>
           )}
 
           {result.lines.length > 0 && (

@@ -21,14 +21,14 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import {
   FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy,
-  MessageCircle, FilePlus2, FileCheck2,
+  MessageCircle, FilePlus2, FileCheck2, Receipt,
 } from 'lucide-react';
 import { formatDate, formatEUR, formatNum, STATUS_LABELS } from '@/lib/format';
-import { openOfferPDF, openHandoverPrint } from '@/lib/pdf';
+import { openOfferPDF, openHandoverPrint, openInvoicePDF } from '@/lib/pdf';
 import { validUntil } from '@/lib/pdf';
 import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
 import { useChangeOrders, type ChangeOrderEntry } from '@/lib/store';
-import type { OfferDTO, SettingsDTO, OfferStatus } from '@/lib/types';
+import type { OfferDTO, SettingsDTO, OfferStatus, InvoiceDTO } from '@/lib/types';
 
 /** Dni brez odgovora, po katerih ponudba zasluži opomnik (raziskave: hitro
  *  spremljanje neodgovorjenih ponudb najbolj vpliva na konverzijo). */
@@ -75,6 +75,9 @@ export function OffersList() {
   const [followUpOffer, setFollowUpOffer] = useState<OfferDTO | null>(null);
   const [changeOffer, setChangeOffer] = useState<OfferDTO | null>(null);
   const [handoverOffer, setHandoverOffer] = useState<OfferDTO | null>(null);
+  const [invoiceOffer, setInvoiceOffer] = useState<OfferDTO | null>(null);
+  const [invoices, setInvoices] = useState<InvoiceDTO[]>([]);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
 
   // Dodatna dela (change orders) — lokalni zapis po ponudbah
   const changeOrdersByOffer = useChangeOrders((s) => s.byOffer);
@@ -93,12 +96,14 @@ export function OffersList() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [o, s] = await Promise.all([
+      const [o, s, inv] = await Promise.all([
         fetch('/api/offers').then((r) => r.json()),
         fetch('/api/settings').then((r) => r.json()),
+        fetch('/api/invoices').then((r) => r.json()).catch(() => ({ invoices: [] })),
       ]);
       setOffers(o.offers ?? []);
       setSettings(s.settings ?? null);
+      setInvoices(inv.invoices ?? []);
     } catch {
       toast({ title: 'Napaka', description: 'Ponudb ni bilo mogoče naložiti.', variant: 'destructive' });
     } finally {
@@ -210,6 +215,39 @@ export function OffersList() {
     setHandoverOffer(offer);
   };
 
+  /** Izdaj račun iz ponudbe — server številči deterministično
+   *  (RAC-LETO-NNN), vsote izračuna iz shranjene ponudbe. */
+  const createInvoice = async (offer: OfferDTO) => {
+    if (!settings) return;
+    setCreatingInvoice(true);
+    try {
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offerId: offer.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Napaka pri izdaji računa');
+      const invoice: InvoiceDTO = data.invoice;
+      setInvoices((prev) => [invoice, ...prev]);
+      const opened = openInvoicePDF(invoice, offer, settings);
+      toast({
+        title: `Račun ${invoice.number} izdan ✓`,
+        description: opened
+          ? `${formatEUR(invoice.total)} z DDV — odpiram za tiskanje.`
+          : `${formatEUR(invoice.total)} z DDV. Dovoli pojavna okna in ponovno odpri račun za tiskanje.`,
+      });
+    } catch (e) {
+      toast({
+        title: 'Napaka pri izdaji računa',
+        description: e instanceof Error ? e.message : 'Poskusi ponovno.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCreatingInvoice(false);
+    }
+  };
+
   const buildHandoverText = (offer: OfferDTO): string => {
     if (!settings) return '';
     return buildHandoverDoc({
@@ -251,6 +289,14 @@ export function OffersList() {
       o.number.toLowerCase().includes(query.toLowerCase()),
   );
 
+  /** Zemljevid: offerId → računi. */
+  const invoicesByOffer = new Map<string, InvoiceDTO[]>();
+  for (const inv of invoices) {
+    const list = invoicesByOffer.get(inv.offerId) ?? [];
+    list.push(inv);
+    invoicesByOffer.set(inv.offerId, list);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -285,9 +331,10 @@ export function OffersList() {
         <div className="space-y-2">
           {filtered.map((offer) => {
             const changeOrders = changeOrdersByOffer[offer.id] ?? [];
+            const offerInvoices = invoicesByOffer.get(offer.id) ?? [];
             return (
               <Card key={offer.id} className="transition-shadow hover:shadow-sm">
-                <CardContent className="flex flex-col md:flex-row md:items-center gap-3 p-4">
+                <CardContent className="flex flex-col md:flex-row md:items-center md:flex-wrap gap-3 p-4">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="rounded-lg bg-accent p-2.5 shrink-0">
                       <FileText className="h-5 w-5 text-accent-foreground" />
@@ -308,6 +355,12 @@ export function OffersList() {
                             {changeOrders.length} {changeOrders.length === 1 ? 'dodatno delo' : 'dodatni deli'}
                           </Badge>
                         )}
+                        {(invoicesByOffer.get(offer.id) ?? []).map((inv) => (
+                          <Badge key={inv.id} variant="outline" className="border-sky-600/40 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300" data-testid={`invoice-badge-${inv.number}`}>
+                            <Receipt className="mr-1 h-3 w-3" />
+                            Račun {inv.number}
+                          </Badge>
+                        ))}
                       </div>
                       <p className="text-sm truncate">{offer.customerName}</p>
                       <p className="text-xs text-muted-foreground">
@@ -316,7 +369,7 @@ export function OffersList() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 md:justify-end flex-wrap">
+                  <div className="flex items-center gap-2 md:justify-end md:flex-1 flex-wrap">
                     <span className="font-bold text-primary mr-1">{formatEUR(offer.total)}</span>
                     <Select value={offer.status} onValueChange={(v) => changeStatus(offer.id, v as OfferStatus)}>
                       <SelectTrigger className="h-9 w-32" aria-label="Status ponudbe">
@@ -367,6 +420,17 @@ export function OffersList() {
                     >
                       <FileCheck2 className="mr-1.5 h-4 w-4" />
                       Zapisnik
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`min-h-9 ${offer.status === 'accepted' ? 'border-sky-600/40 text-sky-700 hover:bg-sky-50 dark:text-sky-300 dark:hover:bg-sky-950' : ''}`}
+                      aria-label={`Račun za ponudbo ${offer.number}`}
+                      data-testid={`invoice-${offer.number}`}
+                      onClick={() => setInvoiceOffer(offer)}
+                    >
+                      <Receipt className="mr-1.5 h-4 w-4" />
+                      Račun
                     </Button>
                     {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
                       <Button
@@ -603,6 +667,68 @@ export function OffersList() {
           )}
         </DialogContent>
       </Dialog>
+      {/* Računi — izdaja iz sprejete ponudbe (estimate → invoice workflow) */}
+      <Dialog open={!!invoiceOffer} onOpenChange={(open) => !open && setInvoiceOffer(null)}>
+        <DialogContent className="max-w-lg">
+          {invoiceOffer && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Receipt className="h-5 w-5 text-sky-600" />
+                  Računi za ponudbo {invoiceOffer.number}
+                </DialogTitle>
+                <DialogDescription>
+                  Sprejeta ponudba je komercialna osnova računa — vsote in DDV se prenesejo,
+                  št. računa dodeli strežnik (RAC-LETO-NNN).
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                {(invoicesByOffer.get(invoiceOffer.id) ?? []).length > 0 && (
+                  <div className="rounded-lg border bg-secondary/40 p-2.5 space-y-1.5" data-testid="invoice-list">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Izdani računi</p>
+                    {(invoicesByOffer.get(invoiceOffer.id) ?? []).map((inv) => (
+                      <div key={inv.id} className="flex items-center justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <span className="font-medium">{inv.number}</span>{' '}
+                          <span className="text-xs text-muted-foreground">{formatDate(inv.createdAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs font-semibold">{formatEUR(inv.total)}</span>
+                          {settings && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              aria-label={`Odpri račun ${inv.number} za tiskanje`}
+                              onClick={() => openInvoicePDF(inv, invoiceOffer, settings)}
+                            >
+                              <FileDown className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Button
+                  className="w-full min-h-11"
+                  size="lg"
+                  disabled={creatingInvoice}
+                  onClick={() => void createInvoice(invoiceOffer)}
+                  data-testid="invoice-create"
+                >
+                  {creatingInvoice ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Receipt className="mr-2 h-4 w-4" />}
+                  Izdaj račun iz ponudbe {invoiceOffer.number}
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Račun se nanaša na {invoiceOffer.items.length} postavk · DDV {formatNum(invoiceOffer.vatRate)} % · skupaj {formatEUR(invoiceOffer.total)}
+                </p>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

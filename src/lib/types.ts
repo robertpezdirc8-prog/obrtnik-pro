@@ -57,6 +57,19 @@ export interface OfferDTO {
 
 export type OfferStatus = 'draft' | 'sent' | 'accepted' | 'rejected';
 
+export interface InvoiceDTO {
+  id: string;
+  number: string;
+  offerId: string;
+  offerNumber?: string;
+  customerName: string;
+  subtotal: number;
+  vatRate: number;
+  vatAmount: number;
+  total: number;
+  createdAt: string;
+}
+
 export interface OfferItemDTO {
   id: string;
   name: string;
@@ -82,6 +95,8 @@ export interface SettingsDTO {
   quoteValidDays: number;
   /** Akontacija v % skupne vrednosti (izpiše se na PDF in v SMS povzetku). */
   depositPercent: number;
+  /** Rok plačila računa v dneh (izpiše se na računu). */
+  paymentDays: number;
   logoUrl: string | null;
 }
 

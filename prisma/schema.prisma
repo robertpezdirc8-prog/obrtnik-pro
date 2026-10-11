@@ -52,6 +52,22 @@ model Offer {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   items           OfferItem[]
+  invoices        Invoice[]
+}
+
+// ─── Računi (iz sprejete ponudbe) ───────────────────────
+
+model Invoice {
+  id           String   @id @default(cuid())
+  number       String   @unique
+  offerId      String
+  offer        Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  customerName String
+  subtotal     Float
+  vatRate      Float
+  vatAmount    Float
+  total        Float
+  createdAt    DateTime @default(now())
 }
 
 model OfferItem {
@@ -96,5 +112,6 @@ model Settings {
   laborRate       Float   @default(35)
   quoteValidDays  Int     @default(15)
   depositPercent  Float   @default(30)
+  paymentDays     Int     @default(15)
   logoUrl         String?
 }

@@ -1,18 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useMemo, useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Trash2, Save, ShoppingCart, Loader2 } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Trash2, Save, ShoppingCart, Loader2, Copy, Boxes, ChartPie } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft } from '@/lib/store';
 import { calcTotals } from '@/lib/pricing';
 import { formatEUR, formatNum } from '@/lib/format';
 import type { SettingsDTO } from '@/lib/types';
+
+// ─── Razlikovanje dela od materiala (deterministično) ────────
+// Delovne postavke v kalkulatorjih imajo stalna imena: »Montaža …«,
+// »Polaganje …«, »Fugiranje …«, »Vgradnja …«, »Betoniranje …«.
+// Sprememba imen v pricing.ts zahteva posodobitev tega vzorca.
+const LABOR_PATTERNS: RegExp[] = [/montaža/i, /polaganje/i, /fugiran/i, /vgradnj/i, /betoniran/i];
+
+export function isLaborItem(name: string): boolean {
+  return LABOR_PATTERNS.some((re) => re.test(name));
+}
+
+/** Nabavni list za dobavitelja — samo materialne postavke osnutka. */
+export function buildBuyList(items: { name: string; quantity: number; unit: string }[], customerName: string): string {
+  const materials = items.filter((i) => !isLaborItem(i.name));
+  if (materials.length === 0) return '';
+  const lines = materials.map((m) => `- ${m.name} — ${m.quantity} ${m.unit}`);
+  return [
+    `NAROČILO MATERIALA — ${new Date().toLocaleDateString('sl-SI')}`,
+    `Objekt: ${customerName || '(vnos objekta)'}`,
+    '',
+    ...lines,
+    '',
+    'Prosimo za potrditev zaloge in rok dostave. Hvala!',
+  ].join('\n');
+}
 
 export function OfferEditor() {
   const { toast } = useToast();
@@ -34,6 +62,7 @@ export function OfferEditor() {
   const [saving, setSaving] = useState(false);
   const [laborRate, setLaborRate] = useState(35);
   const [depositPercent, setDepositPercent] = useState(30);
+  const [buyListOpen, setBuyListOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -49,6 +78,30 @@ export function OfferEditor() {
   }, []);
 
   const totals = calcTotals(items, vatRate);
+
+  // Struktura cene: material vs delo (deterministično po imenih)
+  const split = useMemo(() => {
+    let material = 0;
+    let labor = 0;
+    for (const i of items) {
+      const value = i.quantity * i.unitPrice;
+      if (isLaborItem(i.name)) labor += value;
+      else material += value;
+    }
+    const sum = material + labor;
+    return {
+      material,
+      labor,
+      materialPct: sum > 0 ? Math.round((material / sum) * 100) : 0,
+      laborPct: sum > 0 ? Math.round((labor / sum) * 100) : 0,
+      has: sum > 0,
+    };
+  }, [items]);
+
+  const buyListText = useMemo(
+    () => buildBuyList(items, customerName),
+    [items, customerName],
+  );
 
   const handleSave = async () => {
     if (!customerName.trim()) {
@@ -106,9 +159,21 @@ export function OfferEditor() {
             Postavke iz kalkulatorjev so že tukaj — preveri cene in dodaj stranko.
           </p>
         </div>
-        <Button variant="outline" onClick={goAddItems} className="min-h-10">
-          + Dodaj postavke
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={goAddItems} className="min-h-10">
+            + Dodaj postavke
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setBuyListOpen(true)}
+            className="min-h-10"
+            disabled={items.length === 0}
+            data-testid="buy-list-button"
+          >
+            <Boxes className="mr-2 h-4 w-4" />
+            Nabavni list
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -297,6 +362,34 @@ export function OfferEditor() {
                 <span className="text-sm font-medium">Skupaj z DDV</span>
                 <span className="text-xl font-bold text-primary">{formatEUR(totals.total)}</span>
               </div>
+              {/* Struktura cene — material vs delo (raziskava: konsistentna
+                  marža zahteva vidno razdelitev pred oddajo). */}
+              {split.has && (
+                <div className="rounded-lg bg-secondary/60 px-3 py-2" data-testid="price-split">
+                  <div className="flex items-center justify-between text-xs font-medium">
+                    <span className="flex items-center gap-1">
+                      <ChartPie className="h-3 w-3 text-muted-foreground" />
+                      Struktura cene
+                    </span>
+                    <span className="text-muted-foreground">material {split.materialPct} % · delo {split.laborPct} %</span>
+                  </div>
+                  <div className="mt-1.5 flex h-2.5 overflow-hidden rounded-full bg-secondary">
+                    <div className="bg-primary" style={{ width: `${split.materialPct}%` }} aria-label={`Material ${split.materialPct} %`} />
+                    <div className="bg-amber-500" style={{ width: `${split.laborPct}%` }} aria-label={`Delo ${split.laborPct} %`} />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Material {formatEUR(split.material)}</span>
+                    <span>Delo {formatEUR(split.labor)}</span>
+                  </div>
+                  {(split.materialPct < 35 || split.materialPct > 80) && (
+                    <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                      {split.materialPct < 35
+                        ? 'Delo prevladuje — preveri, ali so materialne postavke brez nadomestka.'
+                        : 'Material prevladuje — preveri, ali je delo podcenjeno.'}
+                    </p>
+                  )}
+                </div>
+              )}
               {/* Akontacija — raziskava: jasno dogovorjena akontacija (10–50 %)
                   zmanjša nepoplačila; izpiše se tudi na PDF. */}
               {depositPercent > 0 && totals.total > 0 && (
@@ -322,6 +415,44 @@ export function OfferEditor() {
           </Card>
         </div>
       </div>
+      {/* Nabavni list za dobavitelja — samo materialne postavke */}
+      <Dialog open={buyListOpen} onOpenChange={setBuyListOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Boxes className="h-5 w-5 text-primary" />
+              Nabavni list za dobavitelja
+            </DialogTitle>
+            <DialogDescription>
+              Samo materialne postavke (delo je izpuščeno). Kopiraj in pošlji po e-pošti
+              dobavitelju — potrdi zalogo in rok dostave pred sprejemom ponudbe.
+            </DialogDescription>
+          </DialogHeader>
+          {buyListText ? (
+            <div className="space-y-3">
+              <Textarea value={buyListText} readOnly rows={10} className="text-sm bg-secondary/40 font-mono" data-testid="buy-list-preview" />
+              <Button
+                className="w-full min-h-11"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(buyListText);
+                    toast({ title: 'Nabavni list kopiran ✓', description: 'Prilepi v e-pošto dobavitelju.' });
+                  } catch {
+                    toast({ title: 'Odložišče ni dostopno', variant: 'destructive' });
+                  }
+                }}
+                data-testid="buy-list-copy"
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Kopiraj naročilo
+              </Button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">V osnutku ni materialnih postavk.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
