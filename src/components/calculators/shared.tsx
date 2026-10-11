@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
 import { formatEUR, formatNum } from '@/lib/format';
@@ -110,10 +110,11 @@ export interface CraftCalcProps {
   inputs: CraftInputs;
   setInputs: (patch: Partial<CraftInputs>) => void;
   compute: (inputs: CraftInputs) => { lines: CalcLine[]; summary: { label: string; value: string }[] };
+  prefilled?: boolean;
   children: React.ReactNode;
 }
 
-export function CraftCalculator({ craft, title, description, inputs, setInputs, compute, children }: CraftCalcProps) {
+export function CraftCalculator({ craft, title, description, inputs, setInputs, compute, prefilled, children }: CraftCalcProps) {
   const { toast } = useToast();
   const addItem = useDraft((s) => s.addItems);
   const setView = useView((s) => s.setView);
@@ -153,6 +154,12 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
       <div>
         <h2 className="text-xl font-bold tracking-tight">{title}</h2>
         <p className="text-sm text-muted-foreground">{description}</p>
+        {prefilled && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+            <Sparkles className="h-3.5 w-3.5" />
+            Vrednosti predpolnjene s pametne kamere — preveri jih in po potrebi popravi.
+          </div>
+        )}
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

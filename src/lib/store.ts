@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DraftItem } from './types';
+import type { CameraPrefill } from './camera-types';
 
 // ─── Osnutek ponudbe (traja tudi po osvežitvi) ──────────────
 
@@ -65,18 +66,23 @@ export const useDraft = create<DraftState>()(
 
 // ─── Aktivni zavihek aplikacije ─────────────────────────────
 
-export type AppView = 'domov' | 'kalkulatorji' | 'ponudbe' | 'katalog' | 'nastavitve';
+export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'ponudbe' | 'katalog' | 'nastavitve';
 
 interface ViewState {
   view: AppView;
   activeCraft: string | null; // slug dejavnosti v kalkulatorjih
+  /** Predpolnitve iz pametne kamere za kalkulator. */
+  cameraPrefill: CameraPrefill | null;
   setView: (v: AppView) => void;
   setActiveCraft: (c: string | null) => void;
+  setCameraPrefill: (p: CameraPrefill | null) => void;
 }
 
 export const useView = create<ViewState>()((set) => ({
   view: 'domov',
   activeCraft: null,
+  cameraPrefill: null,
   setView: (view) => set({ view }),
   setActiveCraft: (activeCraft) => set({ activeCraft }),
+  setCameraPrefill: (cameraPrefill) => set({ cameraPrefill }),
 }));

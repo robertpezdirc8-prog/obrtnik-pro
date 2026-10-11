@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, ClipboardList, Euro, FileCheck2, Hammer } from 'lucide-react';
+import { ArrowRight, ClipboardList, Euro, FileCheck2, Hammer, ScanSearch } from 'lucide-react';
 import { CRAFTS } from '@/lib/crafts-meta';
 import { useDraft, useView } from '@/lib/store';
 import { formatEUR } from '@/lib/format';
@@ -40,17 +40,19 @@ export function Dashboard() {
             Od fotke do podpisanega naročila
           </h1>
           <p className="mt-3 text-muted-foreground sm:text-lg">
+            Fotografiraj objekt — pametna kamera prepozna, kaj je in koliko veliko.
             Kalkulatorji odmerka in profesionalne ponudbe za ograje, stopnice,
             keramiko, WPC terase, okna in vrata, nadstreške in fasade —
             kar na terenu, v 10 minutah.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button size="lg" className="min-h-12" onClick={() => { setActiveCraft(null); setView('kalkulatorji'); }}>
-              <ClipboardList className="mr-2 h-5 w-5" />
-              Nova ponudba
+            <Button size="lg" className="min-h-12" onClick={() => setView('kamera')}>
+              <ScanSearch className="mr-2 h-5 w-5" />
+              Fotografiraj — AI prepozna
             </Button>
-            <Button size="lg" variant="outline" className="min-h-12" onClick={() => setView('katalog')}>
-              Katalog materialov
+            <Button size="lg" variant="outline" className="min-h-12" onClick={() => { setActiveCraft(null); setView('kalkulatorji'); }}>
+              <ClipboardList className="mr-2 h-5 w-5" />
+              Ročni izračun
             </Button>
           </div>
           {draftCount > 0 && (

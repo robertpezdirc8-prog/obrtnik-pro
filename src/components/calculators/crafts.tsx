@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { CraftCalculator, NumField, SelField, BoolField } from './shared';
 import { calculateOgraje, calculateStopnice, calculateKeramika, calculateWpcTerasa, calculateOknaVrata, calculateNadstresek, calculateFasada } from '@/lib/pricing';
-import type { CraftInputs } from '@/lib/types';
+import { useView } from '@/lib/store';
+import type { CraftId, CraftInputs } from '@/lib/types';
 
 const DEFAULTS: CraftInputs = {
   length: 6, height: 1.1, material: 'alu', gates: 0,
@@ -15,22 +16,25 @@ const DEFAULTS: CraftInputs = {
   facadePerimeter: 36, facadeHeight: 2.8, openingsM2: 12, cladding: 'wpc',
 };
 
-function useCraftInputs(initial: Partial<CraftInputs>) {
-  const [inputs, set] = useState<CraftInputs>({ ...DEFAULTS, ...initial });
-  return { inputs, setInputs: (patch: Partial<CraftInputs>) => set((s) => ({ ...s, ...patch })) };
+function useCraftInputs(craft: CraftId, initial: Partial<CraftInputs>) {
+  const prefill = useView((s) => s.cameraPrefill);
+  const applied = prefill && prefill.craft === craft ? prefill.inputs : null;
+  const [inputs, set] = useState<CraftInputs>({ ...DEFAULTS, ...initial, ...(applied ?? {}) });
+  return { inputs, setInputs: (patch: Partial<CraftInputs>) => set((s) => ({ ...s, ...patch })), isPrefilled: !!applied };
 }
 
 // ─── 1. OGRAJE ──────────────────────────────────────────────
 
 export function OgrajeCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('ograje', {});
   return (
     <CraftCalculator
       craft="ograje"
       title="Balkonske ograje in ograje"
-      description="Stebri se izračunajo na vsakih ~1,5 m, steklo po m², montáža na meter."
+      description="Stebri se izračunajo na vsakih ~1,5 m, steklo po m², montaža na meter."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateOgraje(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -55,7 +59,7 @@ export function OgrajeCalc() {
 // ─── 2. STOPNICE ────────────────────────────────────────────
 
 export function StopniceCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('stopnice', {});
   return (
     <CraftCalculator
       craft="stopnice"
@@ -63,6 +67,7 @@ export function StopniceCalc() {
       description="Stopnice po kosu, nosilna konstrukcija, ograja in montaža."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateStopnice(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -91,14 +96,15 @@ export function StopniceCalc() {
 // ─── 3. KERAMIKA ────────────────────────────────────────────
 
 export function KeramikaCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('keramika', {});
   return (
     <CraftCalculator
       craft="keramika"
       title="Keramika"
-      description="Ploščice z rezervo, lepilo, fuga, prižice in polaganje."
+      description="Ploščice z rezervo, lepilo, fuga, priključki in polaganje."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateKeramika(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -117,7 +123,7 @@ export function KeramikaCalc() {
 // ─── 4. WPC TERASA ──────────────────────────────────────────
 
 export function WpcTerasaCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('wpc-terasa', {});
   return (
     <CraftCalculator
       craft="wpc-terasa"
@@ -125,6 +131,7 @@ export function WpcTerasaCalc() {
       description="Deske po smeri polaganja, nosilci na razmak, skrite kljukice."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateWpcTerasa(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -142,7 +149,7 @@ export function WpcTerasaCalc() {
 // ─── 5. OKNA IN VRATA ───────────────────────────────────────
 
 export function OknaVrataCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('okna-vrata', {});
   return (
     <CraftCalculator
       craft="okna-vrata"
@@ -150,6 +157,7 @@ export function OknaVrataCalc() {
       description="Števec kosov z montažo, zatesnitvijo in odstranitvijo starih."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateOknaVrata(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -181,7 +189,7 @@ export function OknaVrataCalc() {
 // ─── 6. NADSTREŠKI ──────────────────────────────────────────
 
 export function NadstresekCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('nadstreški', {});
   return (
     <CraftCalculator
       craft="nadstreški"
@@ -189,6 +197,7 @@ export function NadstresekCalc() {
       description="Konstrukcija, kritina s preklopi, stebri in odvod vode."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateNadstresek(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
@@ -221,14 +230,15 @@ export function NadstresekCalc() {
 // ─── 7. FASADE ──────────────────────────────────────────────
 
 export function FasadaCalc() {
-  const { inputs, setInputs } = useCraftInputs({});
+  const { inputs, setInputs, isPrefilled } = useCraftInputs('fasada', {});
   return (
     <CraftCalculator
       craft="fasada"
       title="Fasade"
-      description="Neto površina minus odprtine, letve na 40 cm, montáža."
+      description="Neto površina minus odprtine, letve na 40 cm, montaža."
       inputs={inputs}
       setInputs={setInputs}
+      prefilled={isPrefilled}
       compute={(i) => calculateFasada(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">

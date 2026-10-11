@@ -71,6 +71,18 @@ model OfferItem {
 
 // ─── Nastavitve podjetja ────────────────────────────────────
 
+// ─── Pametna kamera ─────────────────────────────────────────
+
+model Photo {
+  id           String   @id @default(cuid())
+  title        String?
+  craftId      String?
+  dataUrl      String
+  analysis     String?
+  measurements String?
+  createdAt    DateTime @default(now())
+}
+
 model Settings {
   id          String  @id @default("default")
   companyName String  @default("Moj Obrt s.p.")

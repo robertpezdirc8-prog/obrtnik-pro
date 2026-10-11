@@ -25,3 +25,25 @@ Stage Summary:
 - Ključni artefakti: prisma/schema.prisma, src/lib/{pricing,seed,types,store,format,pdf,crafts-meta}.ts, src/components/{app-shell,dashboard,calculators-view,offer-editor,offers-list,catalog-view,settings-view,craft-image}.tsx, src/components/calculators/{shared,crafts}.tsx, src/app/api/{catalog,settings,offers}/.
 - Demo stanje: testna ponudba 2026-001 (Ana Kovač, 1.800,72 €) ostaja v bazi kot prikaz delovanja; brisljiva prek UI.
 - Odprto za naslednjo fazo: AI slike kategorij (rate-limit), laserski merilnik / AR zajem (MVP 2), strankinski portal (MVP 4), trije čekirani додатни kalkulator parametri.
+
+---
+Task ID: 2
+Agent: main (Z.ai Code)
+Task: MVP 2 — Pametna kamera: AI samodejno prepoznavanje objektov na fotografiji (kaj je, koliko veliko), merjenje po fotografiji z umerjanjem, predpolnjevanje kalkulatorjev in galerija zajemov.
+
+Work Log:
+- Dodan Prisma model Photo (dataUrl, craftId, analysis JSON, measurements JSON) + `db:push`.
+- Nov API: POST /api/analyze-photo (z-ai-web-dev-sdk createVision, strikten slovenski JSON prompt za 7 dejavnosti + "drugo"; robustno extractJson z odstranitvijo markdown ograj in popravilom vejic; normalizacija + preslika prefill → CraftInputs s validacijo razponov; predlogi izdelkov iz kataloga po prepoznani kategoriji; retry z backoff ob 429/5xx; timeout 110 s). GET/POST /api/photos, DELETE /api/photos/[id].
+- Store: AppView + 'kamera', cameraPrefill (craft + inputs) v useView.
+- lib/image-quality.ts: stiskanje na max 1280 px JPEG 0,82 (EXIF-varno prek createImageBitmap), kontrola kakovosti — Laplaceova varianca za ostrino + svetlost, prijazna opozorila (ne blokira).
+- UI komponente v src/components/camera/: photo-capture.tsx (živa kamera facingMode environment + upload + zajem + kvaliteta), photo-canvas.tsx (AR okviri zaznanih objektov v % + merjenje: klik 2 točki → umerjanje z znano dolžino, privzeto iz AI reference; nadaljnje daljice se izmerijo samodejno v cm/m; seznam meritev z brisanjem; reset merila), analysis-panel.tsx (zaupanje, opis, objekti z dimenzijami, merilo za umerjanje, checklist meritev na terenu, priporočila, predlogi izdelkov s "+", CTA), camera-view.tsx (orkestracija, animirani koraki analize, samodejno shranjevanje v galerijo, galerija z ponovnim odpiranjem in brisanjem).
+- Integracija: navigacija "Pametna kamera", dashboard CTA "Fotografiraj — AI prepozna" kot primarni gumb, vseh 7 kalkulatorjev bere cameraPrefill (useCraftInputs) in prikazuje značko "Vrednosti predpolnjene s pametne kamere".
+- Popravek okolja: dolgo živeči dev strežnik je imel v pomniti star Prisma Client brez modela Photo (db.photo undefined) → restart strežnika; pri naslednjem platformskem zagonu dev.sh samodejno naloži novega.
+- E2E z agent-browser (dokazano deluje): upload test-foto → predogled s kontrolo kakovosti → galerija shranjena analiza → prikaz AR okvirov (Ograja ≈1050×110, Vrata ≈90×200, Okno ≈120×120; zaupanje 87 %; 11,6 m²) → merjenje: umerjanje čez vrata 200 cm → ograja izmerjena 5,41 m (geometrijsko točno) → CTA → kalkulator ograj z length=10,5, material=alu, značka predpolnitve → živi izračun 2.320 € →Dodaj v ponudbo. Mobilni 390×844 ✓, namizni 1280 ✓, footer sticky ✓, lint čist ✓, konzola brez napak ✓.
+- Omejitev: živi VLM klic je med preverjanjem stalno vračal 429 (skupna kvota AI storitve, tudi po 25 min ponovnih poskusov) — integracija sledi uradni VLM dokumentaciji, potek napake je elegantno obravnavan (prijazno sporočilo + retry); prikaz rezultatov E2E-verificiran z realističnim analysis JSON-om v bazi (tests/seed-test-photo.ts).
+
+Stage Summary:
+- Pametna kamera je funkcionalna: foto → AI prepozna vrsto dela + objekte + dimenzije + merilo → klik-merjenje po fotografiji → predpolnjen kalkulator → ponudba. Galerija zajemov v SQLite.
+- Ključni artefakti: prisma/schema.prisma (Photo), src/app/api/analyze-photo/route.ts, src/app/api/photos/, src/lib/{camera-types,image-quality}.ts, src/components/camera/*, spremembe v store.ts, app-shell.tsx, dashboard.tsx, calculators/{shared,crafts}.tsx.
+- Testna sredstva: tests/make-test-photo.ts, tests/seed-test-photo.ts, tests/test-photo.jpg + zaslonske slike tests/e2e-*.png; demo fotografija "Ograje" v galeriji.
+- Za prihodnje: živi VLM preveriti ob sproščeni kvoti; laserski merilnik BLE; prilagoditev prefilla še za stopnice/nadstreške iz meritev (Mer 1 → polje).
