@@ -80,6 +80,8 @@ export interface SettingsDTO {
   laborRate: number;
   /** Koliko dni je ponudba veljavna (izpiše se na PDF). */
   quoteValidDays: number;
+  /** Akontacija v % skupne vrednosti (izpiše se na PDF in v SMS povzetku). */
+  depositPercent: number;
   logoUrl: string | null;
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { useDraft, useView } from '@/lib/store';
 import { formatEUR, formatNum } from '@/lib/format';
 import { craftInstallPlan } from '@/lib/install-plan';
 import { MaterialPanel } from './material-panel';
+import { GbbPanel } from './gbb-panel';
 import type { CalcLine, CraftId, CraftInputs } from '@/lib/types';
 
 // ─── Vnosna polja ───────────────────────────────────────────
@@ -123,6 +124,16 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
   const result = useMemo(() => compute(inputs), [compute, inputs]);
   const plan = useMemo(() => craftInstallPlan(craft, inputs), [craft, inputs]);
   const [priceOverrides, setPriceOverrides] = useState<Record<number, number>>({});
+  const [laborRate, setLaborRate] = useState(35);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.settings?.laborRate != null) setLaborRate(d.settings.laborRate);
+      })
+      .catch(() => {});
+  }, []);
 
   const subtotal = result.lines.reduce(
     (s, l, i) => s + l.quantity * (priceOverrides[i] ?? l.unitPrice),
@@ -164,8 +175,8 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
           </div>
         )}
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <Card className="min-w-0">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Vnos dimenzij</CardTitle>
           </CardHeader>
@@ -238,7 +249,8 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
             </Card>
           )}
 
-          <MaterialPanel plan={plan} />
+          <MaterialPanel plan={plan} craft={craft} />
+          {result.lines.length > 0 && <GbbPanel craft={craft} inputs={inputs} laborRate={laborRate} />}
         </div>
       </div>
     </div>

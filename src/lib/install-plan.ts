@@ -25,6 +25,10 @@ export interface PlanCut {
   summary: string;
   /** Podroben razpored po batih. */
   bars: string[];
+  /** Zahtevani kosi (m) — za sklad ostankov. */
+  pieces: number[];
+  /** Uporabni ostanki (m) — za sklad ostankov. */
+  leftovers: number[];
 }
 
 export interface InstallPlan {
@@ -87,7 +91,14 @@ export interface CutPlan1D {
   wastePct: number;
   /** "Bat 1: 2,50 m + 1,20 m → ostanek 0,28 m". */
   barsDetail: string[];
+  /** Zahtevani kosi (padajoče) — za povezovanje s skladiščem ostankov. */
+  pieces: number[];
+  /** Uporabni ostanki po batih (≥ 0,4 m) — za sklad ostankov. */
+  leftovers: number[];
 }
+
+/** Najmanjša dolžina ostanka, ki ga vredno shrani (krajši gre v odpad). */
+const LEFTOVER_MIN_M = 0.4;
 
 /** First-Fit-Decreasing 1D rezalni načrt — determinističen.
  *  Kosi uredi padajoče, vsak spravi v prvi bat, kamor se še prilega.
@@ -135,6 +146,10 @@ export function cutPlan1D(piecesM: number[], stockM: number, kerfM = 0.004): Cut
     wasteM,
     wastePct: purchased > 0 ? Math.round((wasteM / purchased) * 100) : 0,
     barsDetail,
+    pieces: [...pieces].sort((a, b) => b - a),
+    leftovers: bars
+      .map((b) => r2(stockM - b.used))
+      .filter((rem) => rem >= LEFTOVER_MIN_M - 0.0005),
   };
 }
 
@@ -178,6 +193,8 @@ function ograjePlan(i: CraftInputs): InstallPlan {
         title: `Ročajni profil (${RAIL_STOCK_M} m)`,
         summary: `${rails.bars} ${plural(rails.bars, BAT)} · ${rails.cuts} ${plural(rails.cuts, REZ)} · odpadek ${rails.wastePct} %`,
         bars: rails.barsDetail,
+        pieces: rails.pieces,
+        leftovers: rails.leftovers,
       },
     ],
     checks: [
@@ -232,6 +249,8 @@ function stopnicePlan(i: CraftInputs): InstallPlan {
         title: `Stopnične deske (${BOARD_STOCK_M} m)`,
         summary: `${desks.bars} ${plural(desks.bars, BAT)} · ${desks.cuts} ${plural(desks.cuts, REZ)} · odpadek ${desks.wastePct} %`,
         bars: desks.barsDetail,
+        pieces: desks.pieces,
+        leftovers: desks.leftovers,
       },
     ],
     checks,
@@ -291,6 +310,8 @@ function wpcTerasaPlan(i: CraftInputs): InstallPlan {
         title: `Nosilci (${JOIST_STOCK_M} m)`,
         summary: `${joists.bars} ${plural(joists.bars, BAT)} · ${joists.cuts} ${plural(joists.cuts, REZ)} · odpadek ${joists.wastePct} %`,
         bars: joists.barsDetail,
+        pieces: joists.pieces,
+        leftovers: joists.leftovers,
       },
     ],
     checks: [

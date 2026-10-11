@@ -1,5 +1,7 @@
 import type { OfferDTO, SettingsDTO } from './types';
 import { formatDate, formatNum } from './format';
+import type { HandoverData } from './paperwork';
+import { buildHandoverDoc } from './paperwork';
 
 // ─── Tiskalni prikaz ponudbe (odpre okno → shrani kot PDF) ──
 
@@ -117,6 +119,7 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
       <tr><td>Plačljiva vrednost (brez DDV)</td><td class="r">${formatNum(offer.subtotal)} €</td></tr>
       <tr><td>DDV ${formatNum(offer.vatRate)} %</td><td class="r">${formatNum(offer.vatAmount)} €</td></tr>
       <tr class="grand"><td>SKUPAJ Z DDV</td><td class="r">${formatNum(offer.total)} €</td></tr>
+      ${depositRows(offer, settings)}
     </table>
   </div>
 
@@ -135,6 +138,19 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
 </html>`;
 }
 
+/** Akontacijske vrstice za tabelo vsot — raziskava (Joist, sweeten,
+ *  angi): jasno dogovorjena akontacija 10–50 % zmanjša nepoplačila.
+ *  Deterministični izračun iz settings.depositPercent. */
+function depositRows(offer: OfferDTO, settings: SettingsDTO): string {
+  const pct = Math.max(0, Math.min(100, Math.floor(settings.depositPercent ?? 0)));
+  if (pct <= 0 || offer.total <= 0) return '';
+  const deposit = offer.total * (pct / 100);
+  const rest = offer.total - deposit;
+  return `
+      <tr><td style="color:#78716c">— od tega akontacija ${pct} % (ob naročilu)</td><td class="r" style="color:#78716c">${formatNum(deposit)} €</td></tr>
+      <tr><td style="color:#78716c">— ostanek po zaključku in prevzemu dela</td><td class="r" style="color:#78716c">${formatNum(rest)} €</td></tr>`;
+}
+
 export function openOfferPDF(offer: OfferDTO, settings: SettingsDTO): boolean {
   const html = buildOfferHTML(offer, settings);
   const w = window.open('', '_blank', 'width=900,height=1000');
@@ -143,6 +159,57 @@ export function openOfferPDF(offer: OfferDTO, settings: SettingsDTO): boolean {
   w.document.write(html);
   w.document.close();
   // Počakaj, da brskalnik izriše vsebino, potem odpri print dialog
+  w.setTimeout(() => {
+    w.focus();
+    w.print();
+  }, 400);
+  return true;
+}
+
+/** Zapisnik o predaji dela — odpre okno za tisk (istega obdobja kot
+ *  PDF ponudbe). Vsebino gradi čista funkcija buildHandoverDoc. */
+export function openHandoverPrint(offer: OfferDTO, settings: SettingsDTO, opts: {
+  dateIso: string; warrantyMonths: number; photoCount: number; notes: string;
+}): boolean {
+  const data: HandoverData = {
+    companyName: settings.companyName,
+    ownerName: settings.ownerName,
+    taxNumber: settings.taxNumber,
+    offerNumber: offer.number,
+    customerName: offer.customerName,
+    customerPhone: offer.customerPhone,
+    objectAddress: offer.objectAddress,
+    itemNames: offer.items.map((i) => `${i.name} (${formatNum(i.quantity)} ${i.unit})`),
+    dateIso: opts.dateIso,
+    warrantyMonths: opts.warrantyMonths,
+    photoCount: opts.photoCount,
+    notes: opts.notes,
+  };
+  const text = buildHandoverDoc(data);
+  const html = `<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<title>Zapisnik o predaji dela — ${offer.number}</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #292524; margin: 0; padding: 40px; font-size: 13px; }
+  h1 { font-size: 18px; color: #854d0e; margin: 0 0 4px; }
+  .sub { color: #78716c; margin: 0 0 20px; }
+  pre { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+  @media print { body { padding: 16px; } }
+</style>
+</head>
+<body>
+<h1>${settings.companyName}</h1>
+<p class="sub">Zapisnik o predaji in prevzemu dela · ponudba ${offer.number}</p>
+<pre>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+</body>
+</html>`;
+  const w = window.open('', '_blank', 'width=900,height=1000');
+  if (!w) return false;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
   w.setTimeout(() => {
     w.focus();
     w.print();

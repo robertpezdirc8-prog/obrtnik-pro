@@ -107,3 +107,80 @@ export const useFieldMode = create<FieldModeState>()(
     { name: 'obrtnik-field-mode' },
   ),
 );
+
+// ─── Dodatna dela (change orders) po ponudbah ────────────────
+// Raziskava (clearstory, bakertilly): »no additional work proceeds
+// without a fully executed change order« — brez zapisa dodatno
+// delo izgine v papirjih in sproži spore. Številčenje je
+// deterministično iz št. ponudbe (glej lib/paperwork.ts).
+
+export interface ChangeOrderEntry {
+  id: string;
+  /** Št. dokumenta, npr. "2026-001-D1". */
+  docNumber: string;
+  date: string;
+  description: string;
+  /** Vrednost brez DDV. */
+  amount: number;
+  vatRate: number;
+}
+
+interface ChangeOrdersState {
+  byOffer: Record<string, ChangeOrderEntry[]>;
+  add: (offerId: string, entry: ChangeOrderEntry) => void;
+  remove: (offerId: string, entryId: string) => void;
+}
+
+export const useChangeOrders = create<ChangeOrdersState>()(
+  persist(
+    (set) => ({
+      byOffer: {},
+      add: (offerId, entry) =>
+        set((s) => ({
+          byOffer: { ...s.byOffer, [offerId]: [...(s.byOffer[offerId] ?? []), entry] },
+        })),
+      remove: (offerId, entryId) =>
+        set((s) => ({
+          byOffer: {
+            ...s.byOffer,
+            [offerId]: (s.byOffer[offerId] ?? []).filter((e) => e.id !== entryId),
+          },
+        })),
+    }),
+    { name: 'obrtnik-change-orders' },
+  ),
+);
+
+// ─── Sklad ostankov materiala ───────────────────────────────
+// Monterji ostanke profilov in desk vozijo po kombiju in jih
+// pozabijo. Sklad jih shrani (persist) in skripta matchLeftovers
+// pove, kateri kosi prihodnjega načrta jih pokrijejo.
+
+export interface LeftoverEntry {
+  id: string;
+  craft: string;
+  lengthM: number;
+  /** Št. enakih kosov (privzeto 1) — enaki ostanki se grupirajo. */
+  count?: number;
+  label: string;
+  createdAt: string;
+}
+
+interface LeftoversState {
+  items: LeftoverEntry[];
+  add: (entries: LeftoverEntry[]) => void;
+  remove: (id: string) => void;
+  clearCraft: (craft: string) => void;
+}
+
+export const useLeftovers = create<LeftoversState>()(
+  persist(
+    (set) => ({
+      items: [],
+      add: (entries) => set((s) => ({ items: [...s.items, ...entries] })),
+      remove: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
+      clearCraft: (craft) => set((s) => ({ items: s.items.filter((i) => i.craft !== craft) })),
+    }),
+    { name: 'obrtnik-ostanki' },
+  ),
+);

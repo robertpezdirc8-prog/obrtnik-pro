@@ -55,3 +55,4 @@ server.log
 # database (recreatable via bun run db:push + auto-seed)
 /db
 research/
+tool-results/

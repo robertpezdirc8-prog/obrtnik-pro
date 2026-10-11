@@ -5,10 +5,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -18,9 +19,15 @@ import {
   AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy } from 'lucide-react';
-import { formatDate, formatEUR, STATUS_LABELS } from '@/lib/format';
-import { openOfferPDF } from '@/lib/pdf';
+import {
+  FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy,
+  MessageCircle, FilePlus2, FileCheck2,
+} from 'lucide-react';
+import { formatDate, formatEUR, formatNum, STATUS_LABELS } from '@/lib/format';
+import { openOfferPDF, openHandoverPrint } from '@/lib/pdf';
+import { validUntil } from '@/lib/pdf';
+import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
+import { useChangeOrders, type ChangeOrderEntry } from '@/lib/store';
 import type { OfferDTO, SettingsDTO, OfferStatus } from '@/lib/types';
 
 /** Dni brez odgovora, po katerih ponudba zasluži opomnik (raziskave: hitro
@@ -31,6 +38,10 @@ function daysSince(dateIso: string): number {
   const t = new Date(dateIso).getTime();
   if (!Number.isFinite(t)) return 0;
   return Math.floor((Date.now() - t) / 86_400_000);
+}
+
+function todayIso(): string {
+  return new Date().toISOString();
 }
 
 /** Izgradi besedili opomnika (SMS in e-pošta) — čista funkcija. */
@@ -62,6 +73,22 @@ export function OffersList() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [followUpOffer, setFollowUpOffer] = useState<OfferDTO | null>(null);
+  const [changeOffer, setChangeOffer] = useState<OfferDTO | null>(null);
+  const [handoverOffer, setHandoverOffer] = useState<OfferDTO | null>(null);
+
+  // Dodatna dela (change orders) — lokalni zapis po ponudbah
+  const changeOrdersByOffer = useChangeOrders((s) => s.byOffer);
+  const addChangeOrder = useChangeOrders((s) => s.add);
+  const removeChangeOrder = useChangeOrders((s) => s.remove);
+  // Obrazec dodatnega dela
+  const [coDescription, setCoDescription] = useState('');
+  const [coAmount, setCoAmount] = useState('');
+  const [coDate, setCoDate] = useState('');
+  // Obrazec zapisnika
+  const [hoDate, setHoDate] = useState('');
+  const [hoWarranty, setHoWarranty] = useState('24');
+  const [hoPhotos, setHoPhotos] = useState('0');
+  const [hoNotes, setHoNotes] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,6 +158,93 @@ export function OffersList() {
     }
   };
 
+  /** Odpri dialog za dodatno delo z danes kot privzetim datumom. */
+  const openChangeDialog = (offer: OfferDTO) => {
+    setCoDescription('');
+    setCoAmount('');
+    setCoDate(new Date().toISOString().slice(0, 10));
+    setChangeOffer(offer);
+  };
+
+  /** Zapiši dodatno delo: deterministična št. dokumenta + kopiranje besedila. */
+  const saveChangeOrder = async () => {
+    if (!changeOffer) return;
+    const description = coDescription.trim();
+    const amount = Number(coAmount);
+    if (!description || !Number.isFinite(amount) || amount <= 0) {
+      toast({ title: 'Manjkata opis in znesek', description: 'Opiši delo in vpiši vrednost brez DDV.', variant: 'destructive' });
+      return;
+    }
+    const existing = changeOrdersByOffer[changeOffer.id] ?? [];
+    const docNumber = changeOrderNumber(changeOffer.number, existing.length);
+    const entry: ChangeOrderEntry = {
+      id: `co-${changeOffer.id}-${Date.now()}`,
+      docNumber,
+      date: coDate || todayIso().slice(0, 10),
+      description,
+      amount,
+      vatRate: changeOffer.vatRate,
+    };
+    addChangeOrder(changeOffer.id, entry);
+    const text = buildChangeOrderText({
+      docNumber,
+      offerNumber: changeOffer.number,
+      customerName: changeOffer.customerName,
+      objectAddress: changeOffer.objectAddress,
+      description,
+      amount,
+      vatRate: changeOffer.vatRate,
+      dateIso: entry.date,
+      companyName: settings?.companyName ?? '',
+    });
+    await copyText(`Dodatno delo ${docNumber}`, text);
+    setChangeOffer(null);
+  };
+
+  /** Odpri dialog zapisnika z današnjim dnem. */
+  const openHandoverDialog = (offer: OfferDTO) => {
+    setHoDate(new Date().toISOString().slice(0, 10));
+    setHoWarranty('24');
+    setHoPhotos('0');
+    setHoNotes('');
+    setHandoverOffer(offer);
+  };
+
+  const buildHandoverText = (offer: OfferDTO): string => {
+    if (!settings) return '';
+    return buildHandoverDoc({
+      companyName: settings.companyName,
+      ownerName: settings.ownerName,
+      taxNumber: settings.taxNumber,
+      offerNumber: offer.number,
+      customerName: offer.customerName,
+      customerPhone: offer.customerPhone,
+      objectAddress: offer.objectAddress,
+      itemNames: offer.items.map((i) => `${i.name} (${formatNum(i.quantity)} ${i.unit})`),
+      dateIso: hoDate || todayIso(),
+      warrantyMonths: Number(hoWarranty) || 24,
+      photoCount: Number(hoPhotos) || 0,
+      notes: hoNotes,
+    });
+  };
+
+  const printHandover = (offer: OfferDTO) => {
+    if (!settings) return;
+    const ok = openHandoverPrint(offer, settings, {
+      dateIso: hoDate || todayIso(),
+      warrantyMonths: Number(hoWarranty) || 24,
+      photoCount: Number(hoPhotos) || 0,
+      notes: hoNotes,
+    });
+    if (!ok) {
+      toast({
+        title: 'Preprečeno okno za tiskanje',
+        description: 'Dovoli pojavna okna za ta spletni naslov in poskusi ponovno.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const filtered = offers.filter(
     (o) =>
       o.customerName.toLowerCase().includes(query.toLowerCase()) ||
@@ -143,7 +257,7 @@ export function OffersList() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Ponudbe</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Vse shranjene ponudbe — izvozi PDF ali posodobi status.
+            Vse shranjene ponudbe — PDF, SMS povzetek, dodatna dela in zapisniki.
           </p>
         </div>
         <Input
@@ -169,85 +283,129 @@ export function OffersList() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {filtered.map((offer) => (
-            <Card key={offer.id} className="transition-shadow hover:shadow-sm">
-              <CardContent className="flex flex-col md:flex-row md:items-center gap-3 p-4">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="rounded-lg bg-accent p-2.5 shrink-0">
-                    <FileText className="h-5 w-5 text-accent-foreground" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-sm">{offer.number}</span>
-                      <Badge variant={offer.status === 'accepted' ? 'default' : offer.status === 'rejected' ? 'destructive' : 'secondary'}>
-                        {STATUS_LABELS[offer.status] ?? offer.status}
-                      </Badge>
-                      {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
-                        <Badge variant="outline" className="border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                          {daysSince(offer.createdAt)} dni brez odgovora
-                        </Badge>
-                      )}
+          {filtered.map((offer) => {
+            const changeOrders = changeOrdersByOffer[offer.id] ?? [];
+            return (
+              <Card key={offer.id} className="transition-shadow hover:shadow-sm">
+                <CardContent className="flex flex-col md:flex-row md:items-center gap-3 p-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="rounded-lg bg-accent p-2.5 shrink-0">
+                      <FileText className="h-5 w-5 text-accent-foreground" />
                     </div>
-                    <p className="text-sm truncate">{offer.customerName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(offer.createdAt)} · {offer.items.length} postavk
-                    </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{offer.number}</span>
+                        <Badge variant={offer.status === 'accepted' ? 'default' : offer.status === 'rejected' ? 'destructive' : 'secondary'}>
+                          {STATUS_LABELS[offer.status] ?? offer.status}
+                        </Badge>
+                        {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
+                          <Badge variant="outline" className="border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                            {daysSince(offer.createdAt)} dni brez odgovora
+                          </Badge>
+                        )}
+                        {changeOrders.length > 0 && (
+                          <Badge variant="outline" className="border-emerald-500/50 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                            {changeOrders.length} {changeOrders.length === 1 ? 'dodatno delo' : 'dodatni deli'}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm truncate">{offer.customerName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(offer.createdAt)} · {offer.items.length} postavk
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 md:justify-end flex-wrap">
-                  <span className="font-bold text-primary mr-1">{formatEUR(offer.total)}</span>
-                  <Select value={offer.status} onValueChange={(v) => changeStatus(offer.id, v as OfferStatus)}>
-                    <SelectTrigger className="h-9 w-32" aria-label="Status ponudbe">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="sm" className="min-h-9" onClick={() => exportPDF(offer)}>
-                    <FileDown className="mr-1.5 h-4 w-4" />
-                    PDF
-                  </Button>
-                  {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
+                  <div className="flex items-center gap-2 md:justify-end flex-wrap">
+                    <span className="font-bold text-primary mr-1">{formatEUR(offer.total)}</span>
+                    <Select value={offer.status} onValueChange={(v) => changeStatus(offer.id, v as OfferStatus)}>
+                      <SelectTrigger className="h-9 w-32" aria-label="Status ponudbe">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="sm" className="min-h-9" onClick={() => exportPDF(offer)}>
+                      <FileDown className="mr-1.5 h-4 w-4" />
+                      PDF
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="min-h-9 border-amber-500/50 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
-                      onClick={() => setFollowUpOffer(offer)}
-                      data-testid={`followup-${offer.number}`}
+                      className="min-h-9"
+                      aria-label={`Kopiraj povzetek ponudbe ${offer.number} za SMS/WhatsApp`}
+                      data-testid={`share-${offer.number}`}
+                      onClick={() => {
+                        if (!settings) return;
+                        void copyText('Povzetek ponudbe', buildOfferShareText(offer, settings));
+                      }}
                     >
-                      <BellRing className="mr-1.5 h-4 w-4" />
-                      Opomni stranko
+                      <MessageCircle className="mr-1.5 h-4 w-4" />
+                      SMS
                     </Button>
-                  )}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" aria-label={`Izbriši ponudbo ${offer.number}`}>
-                        <Trash2 className="h-4 w-4" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-9"
+                      aria-label={`Dodatno delo k ponudbi ${offer.number}`}
+                      data-testid={`change-order-${offer.number}`}
+                      onClick={() => openChangeDialog(offer)}
+                    >
+                      <FilePlus2 className="mr-1.5 h-4 w-4" />
+                      Dodatno delo
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-9"
+                      aria-label={`Zapisnik o predaji dela za ponudbo ${offer.number}`}
+                      data-testid={`handover-${offer.number}`}
+                      onClick={() => openHandoverDialog(offer)}
+                    >
+                      <FileCheck2 className="mr-1.5 h-4 w-4" />
+                      Zapisnik
+                    </Button>
+                    {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-9 border-amber-500/50 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
+                        onClick={() => setFollowUpOffer(offer)}
+                        data-testid={`followup-${offer.number}`}
+                      >
+                        <BellRing className="mr-1.5 h-4 w-4" />
+                        Opomni stranko
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Izbrisati ponudbo {offer.number}?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Ponudba za stranko {offer.customerName} bo trajno izbrisana.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Prekliči</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => deleteOffer(offer.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                          Izbriši
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    )}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" aria-label={`Izbriši ponudbo ${offer.number}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Izbrisati ponudbo {offer.number}?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Ponudba za stranko {offer.customerName} bo trajno izbrisana.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Prekliči</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteOffer(offer.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Izbriši
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -298,6 +456,149 @@ export function OffersList() {
                   </div>
                 );
               })()}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dodatno delo (change order) — deterministična št. dokumenta,
+          kopirno besedilo za podpis stranke */}
+      <Dialog open={!!changeOffer} onOpenChange={(open) => !open && setChangeOffer(null)}>
+        <DialogContent className="max-w-lg">
+          {changeOffer && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FilePlus2 className="h-5 w-5 text-primary" />
+                  Dodatno delo — k ponudbi {changeOffer.number}
+                </DialogTitle>
+                <DialogDescription>
+                  Brez podpisanega zapisa o dodatnem delu gre največ sporov (raziskava: scope creep).
+                  Zaporedna št. dokumenta se določi samodejno, besedilo je pripravljeno za stranko.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Opis dodatnega dela *</Label>
+                  <Textarea
+                    value={coDescription}
+                    onChange={(e) => setCoDescription(e.target.value)}
+                    placeholder="npr. Dodatni zidni nosilec + montaža (izven prvotnega obsega)"
+                    rows={2}
+                    data-testid="co-description"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Vrednost brez DDV (€) *</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={10}
+                      value={coAmount}
+                      onChange={(e) => setCoAmount(e.target.value)}
+                      placeholder="180"
+                      data-testid="co-amount"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Datum</Label>
+                    <Input type="date" value={coDate} onChange={(e) => setCoDate(e.target.value)} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  DDV po ponudbi: {formatNum(changeOffer.vatRate)} % · št. dokumenta:{' '}
+                  <strong>{changeOrderNumber(changeOffer.number, (changeOrdersByOffer[changeOffer.id] ?? []).length)}</strong>
+                </p>
+                <Button className="w-full min-h-11" size="lg" onClick={() => void saveChangeOrder()} data-testid="co-save">
+                  <Copy className="mr-2 h-4 w-4" />
+                  Zapiši in kopiraj besedilo
+                </Button>
+                {(changeOrdersByOffer[changeOffer.id] ?? []).length > 0 && (
+                  <div className="rounded-lg border bg-secondary/40 p-2.5 space-y-1.5" data-testid="co-list">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Zapisana dodatna dela</p>
+                    {(changeOrdersByOffer[changeOffer.id] ?? []).map((e) => (
+                      <div key={e.id} className="flex items-center justify-between gap-2 text-sm">
+                        <div className="min-w-0">
+                          <span className="font-medium">{e.docNumber}</span>{' '}
+                          <span className="text-muted-foreground truncate">{e.description}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs font-semibold">{formatEUR(e.amount)}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:text-destructive"
+                            aria-label={`Izbriši ${e.docNumber}`}
+                            onClick={() => removeChangeOrder(changeOffer.id, e.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Zapisnik o predaji in prevzemu dela (garancijski zapis) */}
+      <Dialog open={!!handoverOffer} onOpenChange={(open) => !open && setHandoverOffer(null)}>
+        <DialogContent className="max-w-2xl">
+          {handoverOffer && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <FileCheck2 className="h-5 w-5 text-primary" />
+                  Zapisnik o predaji dela — {handoverOffer.number}
+                </DialogTitle>
+                <DialogDescription>
+                  Garancijski list mora vsebovati dajalca, datum in dobo garancije (raziskava: data.si).
+                  Izpolni in tiskaj — ali kopiraj besedilo za e-pošto.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label>Datum predaje</Label>
+                  <Input type="date" value={hoDate} onChange={(e) => setHoDate(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Garancija na delo (mesecev)</Label>
+                  <Input type="number" min={0} max={120} step={6} value={hoWarranty} onChange={(e) => setHoWarranty(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Št. fotografij (dokumentacija)</Label>
+                  <Input type="number" min={0} max={99} step={1} value={hoPhotos} onChange={(e) => setHoPhotos(e.target.value)} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Opombe ob predaji (neobvezno)</Label>
+                <Textarea
+                  value={hoNotes}
+                  onChange={(e) => setHoNotes(e.target.value)}
+                  rows={2}
+                  placeholder="npr. Stranki prikazano upravljanje z drsniki; rezervna fuga izročena."
+                />
+              </div>
+              <Textarea value={buildHandoverText(handoverOffer)} readOnly rows={12} className="text-xs bg-secondary/40 font-mono" data-testid="handover-preview" />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 min-h-11"
+                  onClick={() => void copyText('Zapisnik', buildHandoverText(handoverOffer))}
+                  data-testid="handover-copy"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Kopiraj besedilo
+                </Button>
+                <Button className="flex-1 min-h-11" onClick={() => printHandover(handoverOffer)} data-testid="handover-print">
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Tiskaj / shrani PDF
+                </Button>
+              </div>
             </>
           )}
         </DialogContent>

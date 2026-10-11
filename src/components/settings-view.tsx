@@ -138,6 +138,18 @@ export function SettingsView() {
             />
             <p className="text-xs text-muted-foreground">Izpiše se na PDF — zaščita pred nihanjem cen materiala</p>
           </div>
+          <div className="space-y-1.5">
+            <Label>Akontacija (%)</Label>
+            <Input
+              type="number" min={0} max={100} step={5}
+              value={settings.depositPercent}
+              onChange={(e) => patch('depositPercent', Number(e.target.value) || 0)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Izpiše se na PDF in v SMS povzetku. Običajno 30 %; nad 50 % stranke odneha
+              (raziskave: priporočilo 10–50 % glede na velikost projekta).
+            </p>
+          </div>
         </CardContent>
       </Card>
 

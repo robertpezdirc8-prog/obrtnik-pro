@@ -261,3 +261,26 @@ Stage Summary:
 - Odkrit in popravljen realen UX-trap, ki ga forumi opisujejo kot "paperwork friction".
 research/
 - Varnost: GitHub Push Protection blokiral prvi push (pridobljena stran magicplan v research/ je vsebovala Mapbox žeton) → research/ iz repozitorija (lokalno ostane, dodan v .gitignore), amend + ponoven push uspešen (5169bf6).
+
+---
+Task ID: 8
+Agent: main (Z.ai Code)
+Task: Nova raziskava po forumih/spletu (kaj pogrešajo monterji, kaj gradijo tekmeci) + implementacija — strogo skriptno, brez AI.
+
+Work Log:
+- Raziskava (11 poizvedb, rezultati v research/task8/): clearstory+bakertilly (change orders: št./opis/cost impact, »no additional work without executed change order«), Leap+Joist+Housecall Pro+Eano (Good-Better-Best = »three ways to say yes«; Leap pas: dobro ≥ 75 % in najboljše ≤ 150 % srednje), sweeten+angi+customhome (akontacija 10–50 %, CA cap 10 %/$1000, > 50 % odganja), spotfixai+QuoteIQ+r/handyman (ocena brez obiska iz fotk), protrak+handifox+acumatica (sledenje materiala/ostankov), data.si (obvezni podatki garancijskega lista: dajalec, datum, doba) + photo-reports (fotodokumentacija predaje).
+- src/lib/gbb.ts: buildGBB (materialne lestvice po 7 dejavnostih: ograje alu/inox/steklo, stopnice wpc/hrast, keramika 22/38/60 €/m², WPC 12,5/19/26 €/m, okna pvc/alu, nadstreški ploc/polikar/steklo, fasada ploc/les/wpc), gbbBandCheck (Leap pas) + calculators/gbb-panel.tsx (3 kartice z razlikami v %, »tvoja izbira«, dodajanje v osnutek s stabilnimi ključi gbb-craft-key-name).
+- Akontacija: Prisma Settings.depositPercent (db:push) + nastavitve (polje s smernico 10–50 %) + PDF (2 vrstici: akontacija ob naročilu / ostanek po prevzemu) + urejevalnik (deposit-row) + API route.
+- src/lib/paperwork.ts (čiste funkcije): buildOfferShareText (SMS/WhatsApp povzetek z DDV, veljavnostjo, akontacijo, IBAN, »Odgovorite DA«), changeOrderNumber + buildChangeOrderText (COR potrdilo za podpis), buildHandoverDoc (zapisnik o predaji: dajalec, datum, doba garancije, seznam predanega, fotodokumentacija, podpisne vrstice).
+- Dodatna dela: useChangeOrders persist store + dialog v ponudbah (opis, znesek, datum → samodejno št. 2026-001-Dn, kopirno besedilo, seznam zapisanih, značka »1 dodatno delo«).
+- Zapisnik: dialog v ponudbah (datum, garancija mesecev, št. fotografij, opombe) + predogled + kopiranje + pdf.ts openHandoverPrint (tisk/PDF okno).
+- Sklad ostankov: install-plan cutPlan1D zdaj vrača pieces + leftovers (≥ 0,4 m); src/lib/leftovers.ts matchLeftovers (best-fit: kos → najmanjši ostanek, ki ga poboje; prihranek v lm); useLeftovers persist store (grupiranje enakih: count); material-panel sekcija »Sklad ostankov« (žigi z števcem, izprazni, shrani ostanke načrta, zelena povezava »Ostanki pokrijejo X od Y kosov — prihranek do Z lm«).
+- SMS gumb na vsaki ponudbi (kopiija buildOfferShareText).
+- Popravki: horizontalni overflow kalkulatorja na 390 px ([&>*]:min-w-0 na glavni mreži shared.tsx); datum-only v dokumentih (brez »00:00«); odstranjen neuporabljen import.
+- Restart dev servera potreben po db:push (Prisma client v pomnilniku) — po restartu depositPercent v API ✓.
+- Verifikacija: tsc (src) 0 napak, eslint čist; E2E agent-browser: GBB ograje (1342/1532/2770 € ročno preverjeno; pas opozorilo »najboljše nad 150 %« pravilen), keramika (874/1085/1376; pas ok 81–127 %), nadstreški (2591/2723/3482); inox opcija dodana v osnutek (4 postavke, 8 skupaj); akontacija: urejevalnik 30 % → 491,17 €/1146,07 € točno, 40 % shranjeno v API, reset na 30; dodatno delo 2026-001-D1 (180 €, DDV 22 % iz ponudbe) + značka; zapisnik: predogled z obveznimi podatki, garancija 36 mesecev + 12 fotografij dinamično; sklad ostankov: 7×3 m → 19 ostankov 1,00 m shranjeno kot »1,00 m × 19«, širina 0,95 m → »pokrije 19 od 19 kosov, prihranek 18,05 m« ✓; kamera regresija OK; mobilni 390×844 brez overflowa (sw=390), footer lepljiv; desktop posnetki: tests/e2e-{gbb-desktop,gbb-mobile390,offers-buttons}.png; dev.log 0 napak.
+
+Stage Summary:
+- 6 novih skriptnih funkcij iz 2. raziskovalnega cikla (vse deterministične, 0 AI): GBB opcije z Leap cenovnim pasom, akontacija end-to-end (DB→nastavitve→PDF→urejevalnik→SMS), dodatna dela s samodejnim številčenjem, zapisnik o predaji (garancijski zapis), sklad ostankov z best-fit povezovanjem, SMS/WhatsApp povzetek.
+- Ključni artefakti: src/lib/{gbb,paperwork,leftovers}.ts, calculators/gbb-panel.tsx, store.ts (useChangeOrders, useLeftovers), prisma (depositPercent), pdf.ts (depositRows, openHandoverPrint), offers-list.tsx (3 nova dokumenta na ponudbo).
+- Raziskava: research/task8/ (11 JSON + findings.md).

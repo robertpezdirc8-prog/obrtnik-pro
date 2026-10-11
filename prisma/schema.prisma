@@ -95,5 +95,6 @@ model Settings {
   vatRate         Float   @default(22)
   laborRate       Float   @default(35)
   quoteValidDays  Int     @default(15)
+  depositPercent  Float   @default(30)
   logoUrl         String?
 }

@@ -33,6 +33,7 @@ export function OfferEditor() {
   const [vatRate, setVatRate] = useState(22);
   const [saving, setSaving] = useState(false);
   const [laborRate, setLaborRate] = useState(35);
+  const [depositPercent, setDepositPercent] = useState(30);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -41,6 +42,7 @@ export function OfferEditor() {
         if (d.settings) {
           setVatRate(d.settings.vatRate ?? 22);
           setLaborRate(d.settings.laborRate ?? 35);
+          setDepositPercent(Number.isFinite(d.settings.depositPercent) ? d.settings.depositPercent : 30);
         }
       })
       .catch(() => {});
@@ -295,6 +297,20 @@ export function OfferEditor() {
                 <span className="text-sm font-medium">Skupaj z DDV</span>
                 <span className="text-xl font-bold text-primary">{formatEUR(totals.total)}</span>
               </div>
+              {/* Akontacija — raziskava: jasno dogovorjena akontacija (10–50 %)
+                  zmanjša nepoplačila; izpiše se tudi na PDF. */}
+              {depositPercent > 0 && totals.total > 0 && (
+                <div className="rounded-lg bg-secondary/60 px-3 py-2 text-sm" data-testid="deposit-row">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Akontacija {depositPercent} % ob naročilu</span>
+                    <span className="font-semibold">{formatEUR((totals.total * depositPercent) / 100)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mt-0.5">
+                    <span>Ostanek po zaključku dela</span>
+                    <span>{formatEUR(totals.total * (1 - depositPercent / 100))}</span>
+                  </div>
+                </div>
+              )}
               <Button className="w-full min-h-11" size="lg" onClick={handleSave} disabled={saving}>
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Shrani ponudbo

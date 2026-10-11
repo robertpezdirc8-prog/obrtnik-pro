@@ -21,13 +21,13 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const allowed = [
       'companyName', 'ownerName', 'address', 'phone', 'email',
-      'taxNumber', 'iban', 'vatRate', 'laborRate', 'quoteValidDays', 'logoUrl',
+      'taxNumber', 'iban', 'vatRate', 'laborRate', 'quoteValidDays', 'depositPercent', 'logoUrl',
     ] as const;
 
     const data: Record<string, string | number | null> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) {
-        data[key] = key === 'vatRate' || key === 'laborRate' || key === 'quoteValidDays'
+        data[key] = key === 'vatRate' || key === 'laborRate' || key === 'quoteValidDays' || key === 'depositPercent'
           ? Number(body[key])
           : body[key];
       }
