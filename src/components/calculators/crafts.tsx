@@ -62,9 +62,17 @@ export function StopniceCalc() {
       compute={(i) => calculateStopnice(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Št. stopnic" unit="kos" value={inputs.steps ?? 0} onChange={(v) => setInputs({ steps: v })} step={1} />
+        <NumField label="Št. stopnic" unit="kos" value={inputs.steps ?? 0} onChange={(v) => setInputs({ steps: v })} step={1} hint="0 = samodejno iz višinske razlike" />
         <NumField label="Širina stopnic" unit="m" value={inputs.stepWidth ?? 1} onChange={(v) => setInputs({ stepWidth: v })} min={0.6} />
       </div>
+      <NumField
+        label="Višinska razlika (od tal do galerije)"
+        unit="cm"
+        value={inputs.totalRiseCm ?? 0}
+        onChange={(v) => setInputs({ totalRiseCm: v })}
+        step={1}
+        hint="Skripta predlaga št. stopnic in preveri udobje (pravilo 2R + G = 60–66 cm)"
+      />
       <SelField
         label="Material stopnic"
         value={inputs.stepMaterial ?? 'wpc'}
@@ -103,6 +111,16 @@ export function KeramikaCalc() {
         <NumField label="Širina prostora" unit="m" value={inputs.floorWidth ?? 0} onChange={(v) => setInputs({ floorWidth: v })} />
       </div>
       <NumField label="Višina obloženih sten" unit="m" value={inputs.wallHeight ?? 0} onChange={(v) => setInputs({ wallHeight: v })} hint="0 = oblagujemo samo tla" />
+      <SelField
+        label="Vzorec polaganja"
+        value={inputs.tilePattern ?? 'ravno'}
+        onChange={(v) => setInputs({ tilePattern: v, reservePercent: v === 'diagonalno' ? 15 : v === 'ribja-kost' ? 18 : 10 })}
+        options={[
+          { value: 'ravno', label: 'Ravno (odpadek 10 %)' },
+          { value: 'diagonalno', label: 'Diagonalno (15 %)' },
+          { value: 'ribja-kost', label: 'Ribja kost (18 %)' },
+        ]}
+      />
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Cena ploščic" unit="€/m²" value={inputs.tilePricePerM2 ?? 24} onChange={(v) => setInputs({ tilePricePerM2: v })} />
         <NumField label="Rezerva za rezanje" unit="%" value={inputs.reservePercent ?? 10} onChange={(v) => setInputs({ reservePercent: v })} step={1} />
@@ -132,6 +150,9 @@ export function WpcTerasaCalc() {
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Razmak nosilcev" unit="m" value={inputs.joistSpacing ?? 0.4} onChange={(v) => setInputs({ joistSpacing: v })} min={0.3} max={0.6} hint="Privzeto 0,4 m" />
         <NumField label="Cena deske" unit="€/m" value={inputs.boardPricePerM ?? 12.5} onChange={(v) => setInputs({ boardPricePerM: v })} />
+        <NumField label="Nabavna dolžina deske" unit="m" value={inputs.boardLengthM ?? 4} onChange={(v) => setInputs({ boardLengthM: v })} step={0.5} min={2} max={6} hint="Za rezalni načrt" />
+        <NumField label="Čelna dilatacija" unit="mm" value={inputs.endGapMm ?? 4} onChange={(v) => setInputs({ endGapMm: v })} step={1} min={2} max={12} hint="Pogoste napake: preozke reže" />
+        <NumField label="Stranska dilatacija" unit="mm" value={inputs.sideGapMm ?? 5} onChange={(v) => setInputs({ sideGapMm: v })} step={1} min={2} max={10} hint="3–6 mm po proizvajalcih" />
       </div>
     </CraftCalculator>
   );

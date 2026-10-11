@@ -6,6 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
@@ -14,10 +18,42 @@ import {
   AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { FileDown, Loader2, FileText, Trash2, Inbox } from 'lucide-react';
+import { FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy } from 'lucide-react';
 import { formatDate, formatEUR, STATUS_LABELS } from '@/lib/format';
 import { openOfferPDF } from '@/lib/pdf';
 import type { OfferDTO, SettingsDTO, OfferStatus } from '@/lib/types';
+
+/** Dni brez odgovora, po katerih ponudba zasluži opomnik (raziskave: hitro
+ *  spremljanje neodgovorjenih ponudb najbolj vpliva na konverzijo). */
+const FOLLOW_UP_AFTER_DAYS = 3;
+
+function daysSince(dateIso: string): number {
+  const t = new Date(dateIso).getTime();
+  if (!Number.isFinite(t)) return 0;
+  return Math.floor((Date.now() - t) / 86_400_000);
+}
+
+/** Izgradi besedili opomnika (SMS in e-pošta) — čista funkcija. */
+export function buildFollowUpTexts(
+  offer: OfferDTO,
+  companyName: string,
+  ownerName: string,
+): { sms: string; email: string } {
+  const first = offer.customerName.trim().split(/\s+/)[0] || ' Pozdravljeni';
+  const when = new Date(Date.now() + 7 * 86_400_000).toLocaleDateString('sl-SI', { day: 'numeric', month: 'long' });
+  const sms = `Pozdravljeni ${first}, v priponki še enkrat naša ponudba ${offer.number} (${formatEUR(offer.total)} z DDV). Če imate vprašanja, kar vprašajte — z veseljem pomagamo pri odločitvi. Lep pozdrav, ${ownerName || companyName}`;
+  const email = `Pozdravljeni ${first},
+
+pred nekaj dni smo vam poslali ponudbo ${offer.number} za vaš objekt (skupaj ${formatEUR(offer.total)} z DDV).
+
+Vem, da je izbira izvajalca pomembna odločitev — zato povabim k vprašanju: kaj bi morali prilagoditi (obseg, material ali rok), da bi ponudba ustrezala vašim pričakovanjem?
+
+V nasprotnem primeru bi predlagal kratek klic ali ogled do ${when} — terminski prostor se hitro polni.
+
+Lep pozdrav,
+${ownerName || companyName}${companyName ? `, ${companyName}` : ''}`;
+  return { sms, email };
+}
 
 export function OffersList() {
   const { toast } = useToast();
@@ -25,6 +61,7 @@ export function OffersList() {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [followUpOffer, setFollowUpOffer] = useState<OfferDTO | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +122,15 @@ export function OffersList() {
     }
   };
 
+  const copyText = async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: `${label} kopiran ✓`, description: 'Prilepi v SMS ali e-pošto in pošlji stranki.' });
+    } catch {
+      toast({ title: 'Odložišče ni dostopno', variant: 'destructive' });
+    }
+  };
+
   const filtered = offers.filter(
     (o) =>
       o.customerName.toLowerCase().includes(query.toLowerCase()) ||
@@ -136,6 +182,11 @@ export function OffersList() {
                       <Badge variant={offer.status === 'accepted' ? 'default' : offer.status === 'rejected' ? 'destructive' : 'secondary'}>
                         {STATUS_LABELS[offer.status] ?? offer.status}
                       </Badge>
+                      {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
+                        <Badge variant="outline" className="border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                          {daysSince(offer.createdAt)} dni brez odgovora
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm truncate">{offer.customerName}</p>
                     <p className="text-xs text-muted-foreground">
@@ -160,6 +211,18 @@ export function OffersList() {
                     <FileDown className="mr-1.5 h-4 w-4" />
                     PDF
                   </Button>
+                  {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-9 border-amber-500/50 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
+                      onClick={() => setFollowUpOffer(offer)}
+                      data-testid={`followup-${offer.number}`}
+                    >
+                      <BellRing className="mr-1.5 h-4 w-4" />
+                      Opomni stranko
+                    </Button>
+                  )}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" aria-label={`Izbriši ponudbo ${offer.number}`}>
@@ -187,6 +250,58 @@ export function OffersList() {
           ))}
         </div>
       )}
+
+      {/* Opomnik stranki — pripravljena besedila (SMS + e-pošta), en klik kopiranje */}
+      <Dialog open={!!followUpOffer} onOpenChange={(open) => !open && setFollowUpOffer(null)}>
+        <DialogContent className="max-w-lg">
+          {followUpOffer && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <BellRing className="h-5 w-5 text-amber-600" />
+                  Opomnik za ponudbo {followUpOffer.number}
+                </DialogTitle>
+                <DialogDescription>
+                  {followUpOffer.customerName} · {daysSince(followUpOffer.createdAt)} dni brez odgovora.
+                  Izberi besedilo, ga po potrebi prilagodi in pošlji — stranke najpogosteje odgovorijo
+                  prav na kratek, prijazen opomnik.
+                </DialogDescription>
+              </DialogHeader>
+              {(() => {
+                const texts = buildFollowUpTexts(
+                  followUpOffer,
+                  settings?.companyName ?? '',
+                  settings?.ownerName ?? '',
+                );
+                return (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">SMS</p>
+                        <Button variant="outline" size="sm" className="h-8 min-h-8 text-xs" onClick={() => void copyText('SMS', texts.sms)}>
+                          <Copy className="mr-1 h-3 w-3" />
+                          Kopiraj
+                        </Button>
+                      </div>
+                      <Textarea value={texts.sms} readOnly rows={4} className="text-sm bg-secondary/40" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">E-pošta</p>
+                        <Button variant="outline" size="sm" className="h-8 min-h-8 text-xs" onClick={() => void copyText('E-pošta', texts.email)}>
+                          <Copy className="mr-1 h-3 w-3" />
+                          Kopiraj
+                        </Button>
+                      </div>
+                      <Textarea value={texts.email} readOnly rows={9} className="text-sm bg-secondary/40" />
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

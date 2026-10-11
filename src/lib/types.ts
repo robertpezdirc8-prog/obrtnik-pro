@@ -110,17 +110,22 @@ export interface CraftInputs {
   stepMaterial?: 'wpc' | 'hrast';
   railingLength?: number;     // m (0 = izračun)
   railingNeeded?: boolean;
+  totalRiseCm?: number;       // skupna višinska razlika (cm) — samodejno št. stopnic + kontrola udobja 2R+G
   // Keramika
   floorLength?: number;       // m
   floorWidth?: number;        // m
   wallHeight?: number;        // m (0 = samo tla)
   tilePricePerM2?: number;
   reservePercent?: number;
+  tilePattern?: 'ravno' | 'diagonalno' | 'ribja-kost'; // vzorec polaganja → priporočen odpadek
   // WPC terasa
   deckLength?: number;        // m
   deckWidth?: number;         // m
   joistSpacing?: number;      // m (privzeto 0,4)
   boardPricePerM?: number;
+  boardLengthM?: number;      // nabavna dolžina deske (m, privzeto 4) — rezalni načrt
+  sideGapMm?: number;         // stranska dilatacija (mm, privzeto 5)
+  endGapMm?: number;          // čelna dilatacija (mm, privzeto 4)
   // Okna/vrata
   windowCount?: number;
   windowSize?: number;        // m²

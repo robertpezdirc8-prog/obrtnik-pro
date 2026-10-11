@@ -86,10 +86,25 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
 /** Stopnice – material stopnic + ograja + montaža.
  *  Privzeta globina stopnice 0,28 m za dolžino ograje. */
 export function calculateStopnice(input: CraftInputs, laborRate: number): CalcResult {
-  const steps = Math.max(0, input.steps ?? 0);
+  let steps = Math.max(0, input.steps ?? 0);
   const width = Math.max(0.6, input.stepWidth ?? 1.0);
   const material = input.stepMaterial ?? 'wpc';
   const railingNeeded = input.railingNeeded ?? true;
+  const totalRiseCm = Math.max(0, input.totalRiseCm ?? 0);
+
+  // Samodejno št. stopnic iz višinske razlike (ciljna višina stopnice ~17,5 cm)
+  let autoSteps = false;
+  if (totalRiseCm > 0 && steps === 0) {
+    steps = Math.ceil(totalRiseCm / 17.5);
+    autoSteps = true;
+  }
+
+  // Kontrola udobja — pravilo 2R + G = 60–66 cm (17,5 cm stopnica → G ≈ 28 cm)
+  const riserCm = totalRiseCm > 0 && steps > 0 ? r2(totalRiseCm / steps) : null;
+  const goingCm = riserCm !== null ? r2(Math.min(32, Math.max(25, 63 - 2 * riserCm))) : null;
+  const comfortCm = riserCm !== null && goingCm !== null ? r2(2 * riserCm + goingCm) : null;
+  const comfortOk = comfortCm !== null && comfortCm >= 60 && comfortCm <= 66;
+
   const railingLength = input.railingLength && input.railingLength > 0
     ? input.railingLength
     : r2(steps * 0.3);
@@ -146,24 +161,41 @@ export function calculateStopnice(input: CraftInputs, laborRate: number): CalcRe
     );
   }
 
+  const summary: CalcResult['summary'] = [
+    { label: autoSteps ? 'Št. stopnic (samodejno)' : 'Št. stopnic', value: autoSteps ? `${steps} (iz ${r2(totalRiseCm)} cm razlike)` : `${steps}` },
+    { label: 'Širina stopnic', value: `${r2(width)} m` },
+    { label: 'Dolžina ograje', value: railingNeeded ? `${r2(railingLength)} m` : '–' },
+  ];
+  if (riserCm !== null) {
+    summary.push(
+      { label: 'Višina stopnice', value: `${riserCm} cm` },
+      {
+        label: 'Udobje 2R + G',
+        value: comfortOk
+          ? `${comfortCm} cm ✓`
+          : `${comfortCm} cm ⚠ idealno 60–66 cm`,
+      },
+    );
+  }
+
   return {
     lines,
-    summary: [
-      { label: 'Št. stopnic', value: `${steps}` },
-      { label: 'Širina stopnic', value: `${r2(width)} m` },
-      { label: 'Dolžina ograje', value: railingNeeded ? `${r2(railingLength)} m` : '–' },
-    ],
+    summary,
   };
 }
 
-/** Keramika – tla (+ stene): ploščice z rezervo, lepilo, fuga, prižice, montaža.
- *  Lepilo: cca. 4 kg/m²; fuga: cca. 0,4 kg/m². */
+/** Keramika – tla (+ stene): ploščice z rezervo po VZORCU, grunt, lepilo, fuga, prižice, montaža.
+ *  Lepilo: cca. 4 kg/m²; fuga: cca. 0,4 kg/m².
+ *  Odpadek po vzorcu (izkušnje izvajalcev): ravno 10 %, diagonalno 15 %, ribja kost 18 %. */
 export function calculateKeramika(input: CraftInputs, laborRate: number): CalcResult {
   const floorLength = Math.max(0, input.floorLength ?? 0);
   const floorWidth = Math.max(0, input.floorWidth ?? 0);
   const wallHeight = Math.max(0, input.wallHeight ?? 0);
   const tilePrice = Math.max(1, input.tilePricePerM2 ?? 24);
-  const reserve = Math.min(30, Math.max(0, input.reservePercent ?? 10)) / 100;
+  const pattern = input.tilePattern ?? 'ravno';
+  const patternLabel = pattern === 'diagonalno' ? 'diagonalno' : pattern === 'ribja-kost' ? 'ribja kost' : 'ravno';
+  const patternReserve = pattern === 'diagonalno' ? 15 : pattern === 'ribja-kost' ? 18 : 10;
+  const reserve = Math.min(30, Math.max(0, input.reservePercent ?? patternReserve)) / 100;
 
   const floorArea = r2(floorLength * floorWidth);
   // stene: obseg prostora × višina (samo če uporabnik vpiše višino > 0)
@@ -183,10 +215,17 @@ export function calculateKeramika(input: CraftInputs, laborRate: number): CalcRe
   const lines = [
     {
       name: 'Keramične ploščice',
-      description: `Tla ${r2(floorArea)} m²${wallArea > 0 ? ` + stene ${r2(wallArea)} m²` : ''}, rezerva ${Math.round(reserve * 100)} %`,
+      description: `Tla ${r2(floorArea)} m²${wallArea > 0 ? ` + stene ${r2(wallArea)} m²` : ''}, ${patternLabel}, rezerva ${Math.round(reserve * 100)} %`,
       quantity: tilesWithReserve,
       unit: 'm²',
       unitPrice: tilePrice,
+    },
+    {
+      name: 'Premaz / grunt za podlogo',
+      description: '1 kos (5 l) ≈ 30 m² — najpogosteje preskočen korak, brez njega ploščice odpadejo',
+      quantity: Math.ceil(totalArea / 30),
+      unit: 'kos',
+      unitPrice: 22,
     },
     {
       name: 'Lepilo (flex C2TE S1, 25 kg)',
@@ -235,38 +274,77 @@ export function calculateKeramika(input: CraftInputs, laborRate: number): CalcRe
     summary: [
       { label: 'Tla', value: `${r2(floorArea)} m²` },
       { label: 'Stene', value: wallArea > 0 ? `${r2(wallArea)} m²` : '–' },
+      { label: `Vzorec (${patternLabel})`, value: `odpadek ${Math.round(reserve * 100)} %` },
       { label: 'Skupaj z rezervo', value: `${tilesWithReserve} m²` },
       { label: 'Lepilo', value: `${glueBags} vrečk` },
     ],
   };
 }
 
-/** WPC terasa – deske glede na smer polaganja, nosilci na 0,4 m, skrite kljukice. */
+/** WPC terasa – deske glede na smer polaganja, nosilci na 0,4 m, skrite kljukice.
+ *  Vključuje dilatacijske reže (proizvajalci: stransko 3–6 mm, čelno 3–5 mm, od stene 15–20 mm)
+ *  in deterministični rezalni načrt — koliko nabavnih desk je treba naročiti (z odpadkom),
+ *  koliko rezov in koliko se odpadek lahko izkoristi s premaknjenimi spoji. */
 export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcResult {
   const L = Math.max(0, input.deckLength ?? 0);
   const W = Math.max(0, input.deckWidth ?? 0);
   const spacing = Math.min(0.6, Math.max(0.3, input.joistSpacing ?? 0.4));
   const boardPrice = Math.max(1, input.boardPricePerM ?? 12.5);
+  const sideGapMm = Math.min(10, Math.max(2, input.sideGapMm ?? 5));
+  const endGapMm = Math.min(12, Math.max(2, input.endGapMm ?? 4));
+  const boardStock = Math.min(6, Math.max(2, input.boardLengthM ?? 4));
+  const sideGapM = sideGapMm / 1000;
+  const endGapM = endGapMm / 1000;
 
   if (L <= 0 || W <= 0) {
     return { lines: [], summary: [{ label: 'Površina', value: '0 m²' }] };
   }
 
   const area = r2(L * W);
-  // deske tečejo vzdolž krajše strani (po širini W): vrste = W / (0,14 deska + 0,005 razmak)
-  const boardRows = ceil(W / 0.145);
-  const boardLM = r2(boardRows * L);
+  // deske tečejo vzdolž dolžine L: vrste = W / (0,14 deska + stranska reža)
+  const boardRows = Math.max(1, ceil(W / (0.14 + sideGapM)));
+  const boardUsedLM = r2(boardRows * L);
   // nosilci pravokotno na deske: po dolžini L na vsak `spacing` m
   const joistCount = ceil(L / spacing) + 1;
   const joistLM = r2(joistCount * W);
   const clips = ceil(boardRows * joistCount * 2);
   const perimeter = r2(2 * (L + W));
 
+  // ── Rezalni načrt (determinističen, KONZERVATIVEN) ─────────
+  // Vsaka vrsta pokrije L; nabavna deska je boardStock; med segmenti čelna reža.
+  // Rezultat je zgornja meja nabave (varno — nikoli ne podnaročiš). Ostanki
+  // ≥ 0,4 m se lahko s premaknjenimi spoji izkoristijo — prikazani kot prihranek.
+  const minUsable = 0.4;
+  let fullBoards = 0;      // nabavne deske
+  let cuts = 0;            // skupno št. rezov
+  let offcutsUsable = 0;   // m ostankov ≥ 0,4 m (kandidati za premaknjene spoje)
+
+  for (let row = 0; row < boardRows; row++) {
+    let remaining = L;
+    while (remaining > 0.001) {
+      if (remaining <= boardStock + endGapM) {
+        // zadnji del vrste — en rez iz nabavne deske
+        const offcut = r2(boardStock - remaining);
+        cuts += offcut > 0.001 ? 1 : 0;
+        fullBoards += 1;
+        if (offcut >= minUsable) offcutsUsable = r2(offcutsUsable + offcut);
+        remaining = 0;
+      } else {
+        // polna deska v celoti — brez reza; nadaljujemo z ostankom vrste
+        fullBoards += 1;
+        remaining = r2(remaining - (boardStock + endGapM));
+      }
+    }
+  }
+  const purchasedLM = r2(fullBoards * boardStock);
+  const wastePct = purchasedLM > 0 ? Math.round(((purchasedLM - boardUsedLM) / purchasedLM) * 100) : 0;
+  const cutsLabel = `${fullBoards} deska · ${cuts} rezov · odpadek ${wastePct} %`;
+
   const lines = [
     {
       name: 'Terasna deska WPC (polna 25×140)',
-      description: `${boardRows} vrst po ${r2(L)} m, razmak 5 mm`,
-      quantity: boardLM,
+      description: `${boardRows} vrst, izkoriščeno ${boardUsedLM} lm · nabava ${purchasedLM} lm (${fullBoards} deska po ${boardStock} m)`,
+      quantity: purchasedLM,
       unit: 'm',
       unitPrice: boardPrice,
     },
@@ -279,12 +357,14 @@ export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcR
     },
     {
       name: 'Skrite spojne kljukice',
+      description: 'Enakomerni razmak — slabo privite sponke so najpogostejša napaka',
       quantity: clips,
       unit: 'kos',
       unitPrice: 0.8,
     },
     {
       name: 'Zaključni profil (obod)',
+      description: `Obod ${perimeter} m · od stene puščamo 15–20 mm režo`,
       quantity: perimeter,
       unit: 'm',
       unitPrice: 6,
@@ -307,9 +387,14 @@ export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcR
     lines,
     summary: [
       { label: 'Površina terase', value: `${area} m²` },
-      { label: 'Deske', value: `${boardLM} lm (${boardRows} vrst)` },
+      { label: 'Dilatacija', value: `str. ${sideGapMm} mm · čelna ${endGapMm} mm` },
+      { label: 'Deske', value: `${boardUsedLM} lm (${boardRows} vrst)` },
+      { label: 'Rezalni načrt', value: cutsLabel },
       { label: 'Nosilci', value: `${joistLM} lm (${joistCount} kosov)` },
       { label: 'Kljukice', value: `${clips} kosov` },
+      ...(offcutsUsable > 0
+        ? [{ label: 'Prihranek z ostanki', value: `do ${offcutsUsable} lm (premaknjeni spoji)` }]
+        : []),
     ],
   };
 }

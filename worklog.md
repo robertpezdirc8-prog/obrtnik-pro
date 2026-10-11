@@ -219,3 +219,23 @@ Stage Summary:
 - Celoten poslovni tok zdaj deluje brez ročnega vnosa: N fotografij → skriptna analiza → "Zberi v ponudbo" → osnutek ponudbe z vsemi postavkami → PDF z DDV.
 - Ključni artefakti: src/lib/photo-project.ts, src/lib/defaults.ts, public/crafts/*.jpg (7), camera-view.tsx (+projekt kartica), crafts.tsx (skupni defaults).
 - Verifikacijske slike: tests/e2e-project-{card,card2,card-final,offer,mobile,desktop}.png.
+
+---
+Task ID: 7
+Agent: main (Z.ai Code)
+Task: "Izboljšuj — išči po spletu forume, kaj pogrešajo monterji/delavci na terenu, kaj so drugi naredili; raziskuj, izboljšuj, nadgrajuj." Spletna raziskava (16 iskanj) → 5 konkretnih izboljšav iz ugotovitev forumov in konkurence.
+
+Work Log:
+- Raziskava (z-ai web_search, 16 poizvedb): reddit (r/Construction — izgorelost ob estimiranju 10–20 h/teden, stranke rohajo po ponudbah), sledenje neodgovorjenim ponudbam (SMS z dogovorom za termin = 3× odzivnost), odpadki ploščic po vzorcu (ravno 5–10 %, diagonalno 15 %, ribja kost 15–22 %), grunt = najbolj preskočen korak pri keramiki, skrite sponke WPC (neenakomeren razmak = najpogostejša napaka) + dilatacije (str. 3–6 mm, čelna 3–5 mm, od stene 15–20 mm), pravilo udobja stopnic 2R+G = 24–26" (61–66 cm), rezalni optimizatorji za deske, magicplan zaračuna 40 $/projekt (naša prednost: fiksna naročnina), slovenski DDV 9,5 % za obnovo zasebnih stanovanj (54. člen PZDDV).
+- 1) STOPNICE (pricing.ts): nov vnos totalRiseCm → samodejno št. stopnic (ceil/17,5 cm), višina stopnice, kontrola udobja 2R+G (idealno 60–66 cm) s ✓/⚠ v povzetku; UI polje "Višinska razlika".
+- 2) KERAMIKA: izbira vzorca (ravno/diagonalno/ribja kost) → samodejni odpadek 10/15/18 %, nova postavka "Premaz / grunt za podlogo" (1 kos ≈ 30 m² — najpogosteje preskočen korak), vzorec v opisu in povzetku.
+- 3) WPC TERASA: dilatacije (stranski sideGapMm, čelni endGapMm — omejene na smiselne razpone) + DETERMINISTIČNI REZALNI NAČRT (konzervativen greedy: nabavne deske po boardLengthM, čelna reža med segmenti, št. rezov, odpadek %, "prihranek z ostanki ≥ 0,4 m s premaknjenimi spoji"); nabava namesto porabe (nikoli ne podnaročiš); opomba o 15–20 mm reži od stene pri obodu; popravljeno štetje rezov (polna deska = brez reza: 7 m terasa → 21 rezov, ne 42).
+- 4) PONUDBA — DDV hitri preklop 22 / 9,5 % z razlago (54. člen PZDDV — obnova zasebnih stanovanj; materiali kot bistven del dobave ostanejo 22 %); slovensko "9,5 %".
+- 5) PONUDBE — opomniki: značka "X dni brez odgovora" (amber) za poslane/osnutke ≥ 3 dni + dialog "Opomni stranko" s pripravljenima besediloma SMS in e-pošte (izvožena v buildFollowUpTexts — čista funkcija: ime stranke, št. ponudbe, znesek, predlog termina, podpis iz nastavitev) + enoklikovno kopiranje.
+- defaults.ts: totalRiseCm 0, tilePattern ravno, boardLengthM 4, sideGapMm 5, endGapMm 4.
+- E2E z agent-browser: stopnice 264 cm → 16 stopnic, višina 16,5 cm, udobje 63 cm ✓; ribja kost → odpadek 18 %, 14,16 m² + grunt ✓; WPC 4×3 → 0 rezov, 7×3 → "42 deska · 21 rezov · odpadek 13 %" + "prihranek do 21 lm" ✓; opomnik (demo ponudba 2026-001 prestavljena 5 dni nazaj, status poslana): značka + dialog z SMS/e-pošto ("Pozdravljeni Ana, … ponudba 2026-001 (1800,72 € z DDV)…") ✓; DDV 9,5 %: 1637,24 → 1469,49 € (1342 × 1,095) ✓; mobilni 390×844 urejevalnik + footer ✓; tsc + eslint čisti.
+
+Stage Summary:
+- 5 izboljšav, vse izrazito skriptne (deterministične), neposredno iz težav, ki jih obrtniki na forumih najbolj omenjajo: podcenjen odpadek, pozabljen grunt, preozke dilatacije, neudobne stopnice, pozabljene neodgovorjene ponudbe, DDV 9,5 % dilema.
+- Ključni artefakti: pricing.ts (3 kalkulatorji nadgrajeni), offer-editor.tsx (DDV preklop), offers-list.tsx (opomniki + buildFollowUpTexts), types.ts/defaults.ts (novi vnosi), crafts.tsx (nova polja).
+- Verifikacijske slike: tests/e2e-{stairs-comfort,followup,ddv-95,mobile-ddv}.png.

@@ -267,6 +267,28 @@ export function OfferEditor() {
                 </div>
                 <span className="font-semibold">{formatEUR(totals.vatAmount)}</span>
               </div>
+              {/* Hitri preklop DDV — 9,5 % za obnovo zasebnih stanovanj (54. člen PZDDV) */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground mr-0.5">Hitro:</span>
+                {[22, 9.5].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setVatRate(v)}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors min-h-[28px] ${
+                      vatRate === v
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    {v === 9.5 ? '9,5' : v} %
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                9,5 %: obnova in popravila zasebnih stanovanj (54. člen PZDDV).
+                Materiali, ki so bistven del dobave, ostanejo 22 % — za natančno razdelitev se posvetuj z davčnim svetovalcem.
+              </p>
               <Separator />
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Skupaj z DDV</span>
