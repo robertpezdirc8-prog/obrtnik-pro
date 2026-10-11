@@ -259,3 +259,5 @@ Stage Summary:
 - Ključni artefakti: src/lib/install-plan.ts, src/components/calculators/material-panel.tsx, globals.css (.field-mode), store.ts (useFieldMode), prisma/schema.prisma (quoteValidDays), pdf.ts (velja do + klavzula), offer-editor/calculators-view (navigacija).
 - Research artefakt: research/findings.md (viri + top pain points).
 - Odkrit in popravljen realen UX-trap, ki ga forumi opisujejo kot "paperwork friction".
+research/
+- Varnost: GitHub Push Protection blokiral prvi push (pridobljena stran magicplan v research/ je vsebovala Mapbox žeton) → research/ iz repozitorija (lokalno ostane, dodan v .gitignore), amend + ponoven push uspešen (5169bf6).
