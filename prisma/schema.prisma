@@ -84,15 +84,16 @@ model Photo {
 }
 
 model Settings {
-  id          String  @id @default("default")
-  companyName String  @default("Moj Obrt s.p.")
-  ownerName   String  @default("")
-  address     String  @default("")
-  phone       String  @default("")
-  email       String  @default("")
-  taxNumber   String  @default("")
-  iban        String  @default("")
-  vatRate     Float   @default(22)
-  laborRate   Float   @default(35)
-  logoUrl     String?
+  id              String  @id @default("default")
+  companyName     String  @default("Moj Obrt s.p.")
+  ownerName       String  @default("")
+  address         String  @default("")
+  phone           String  @default("")
+  email           String  @default("")
+  taxNumber       String  @default("")
+  iban            String  @default("")
+  vatRate         Float   @default(22)
+  laborRate       Float   @default(35)
+  quoteValidDays  Int     @default(15)
+  logoUrl         String?
 }

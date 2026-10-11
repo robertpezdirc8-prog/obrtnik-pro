@@ -5,8 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Save, Building } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Loader2, Save, Building, HardHat } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useFieldMode } from '@/lib/store';
 import type { SettingsDTO } from '@/lib/types';
 
 export function SettingsView() {
@@ -14,6 +16,8 @@ export function SettingsView() {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const fieldMode = useFieldMode((s) => s.enabled);
+  const setFieldMode = useFieldMode((s) => s.set);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -123,6 +127,41 @@ export function SettingsView() {
               type="number" min={0} step={0.5}
               value={settings.laborRate}
               onChange={(e) => patch('laborRate', Number(e.target.value) || 0)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Veljavnost ponudbe (dni)</Label>
+            <Input
+              type="number" min={1} max={90} step={1}
+              value={settings.quoteValidDays}
+              onChange={(e) => patch('quoteValidDays', Number(e.target.value) || 15)}
+            />
+            <p className="text-xs text-muted-foreground">Izpiše se na PDF — zaščita pred nihanjem cen materiala</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <HardHat className="h-4 w-4 text-primary" />
+            Terenski način
+          </CardTitle>
+          <CardDescription>
+            Za delo v rokavicah in na soncu: veliki gumbi (≥ 48 px), večja pisava in močan kontrast.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between rounded-lg border bg-card px-3 py-2.5">
+            <div>
+              <Label className="text-sm font-medium">Aktiviraj terenski način</Label>
+              <p className="text-xs text-muted-foreground">Shranjeno v brskalniku · hiter preklop tudi z gumbom v glavi</p>
+            </div>
+            <Switch
+              checked={fieldMode}
+              onCheckedChange={setFieldMode}
+              aria-label="Terenski način"
+              data-testid="field-mode-switch"
             />
           </div>
         </CardContent>

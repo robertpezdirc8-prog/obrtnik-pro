@@ -86,3 +86,24 @@ export const useView = create<ViewState>()((set) => ({
   setActiveCraft: (activeCraft) => set({ activeCraft }),
   setCameraPrefill: (cameraPrefill) => set({ cameraPrefill }),
 }));
+
+// ─── Terenski način (rokavice + sonce) ──────────────────────
+// Veliki gumbi (≥ 48 px), večja pisava in močan kontrast.
+// Shranjeno v brskalniku (persist).
+
+interface FieldModeState {
+  enabled: boolean;
+  set: (v: boolean) => void;
+  toggle: () => void;
+}
+
+export const useFieldMode = create<FieldModeState>()(
+  persist(
+    (set) => ({
+      enabled: false,
+      set: (v) => set({ enabled: v }),
+      toggle: () => set((s) => ({ enabled: !s.enabled })),
+    }),
+    { name: 'obrtnik-field-mode' },
+  ),
+);

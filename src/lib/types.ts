@@ -78,6 +78,8 @@ export interface SettingsDTO {
   iban: string;
   vatRate: number;
   laborRate: number;
+  /** Koliko dni je ponudba veljavna (izpiše se na PDF). */
+  quoteValidDays: number;
   logoUrl: string | null;
 }
 

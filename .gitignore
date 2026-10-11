@@ -54,3 +54,4 @@ server.log
 /skills/
 # database (recreatable via bun run db:push + auto-seed)
 /db
+research/

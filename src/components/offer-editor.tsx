@@ -17,6 +17,7 @@ import type { SettingsDTO } from '@/lib/types';
 export function OfferEditor() {
   const { toast } = useToast();
   const setView = useDraftSafe();
+  const goAddItems = useAddItemsNav();
   const items = useDraft((s) => s.items);
   const customerName = useDraft((s) => s.customerName);
   const customerEmail = useDraft((s) => s.customerEmail);
@@ -103,7 +104,7 @@ export function OfferEditor() {
             Postavke iz kalkulatorjev so že tukaj — preveri cene in dodaj stranko.
           </p>
         </div>
-        <Button variant="outline" onClick={() => setView('kalkulatorji')} className="min-h-10">
+        <Button variant="outline" onClick={goAddItems} className="min-h-10">
           + Dodaj postavke
         </Button>
       </div>
@@ -124,7 +125,7 @@ export function OfferEditor() {
                   <p className="text-sm text-muted-foreground mb-3">
                     Ponudba je še prazna. Uporabi kalkulatorje za odmerek materiala in dela.
                   </p>
-                  <Button onClick={() => setView('kalkulatorji')} className="min-h-10">
+                  <Button onClick={goAddItems} className="min-h-10">
                     Odpri kalkulatorje
                   </Button>
                 </div>
@@ -312,4 +313,14 @@ export function OfferEditor() {
 import { useView } from '@/lib/store';
 function useDraftSafe() {
   return useView((s) => s.setView);
+}
+/** »+ Dodaj postavke« mora pokazati mrežo kalkulatorjev, četudi osnutek ni prazen
+ *  (sicer uporabnik obstane v urejevalniku brez poti do kalkulatorjev). */
+function useAddItemsNav() {
+  const setView = useView((s) => s.setView);
+  const setActiveCraft = useView((s) => s.setActiveCraft);
+  return () => {
+    setActiveCraft('izberi');
+    setView('kalkulatorji');
+  };
 }

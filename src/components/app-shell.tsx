@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch } from 'lucide-react';
-import { useDraft, useView, type AppView } from '@/lib/store';
+import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat } from 'lucide-react';
+import { useDraft, useView, useFieldMode, type AppView } from '@/lib/store';
 import { Dashboard } from './dashboard';
 import { CalculatorsView } from './calculators-view';
 import { OfferEditor } from './offer-editor';
@@ -25,6 +26,13 @@ export function AppShell() {
   const setView = useView((s) => s.setView);
   const activeCraft = useView((s) => s.activeCraft);
   const draftCount = useDraft((s) => s.items.length);
+  const fieldMode = useFieldMode((s) => s.enabled);
+  const setFieldMode = useFieldMode((s) => s.set);
+
+  // Terenski način: razred na <html> — veliki gumbi, večja pisava, kontrast
+  useEffect(() => {
+    document.documentElement.classList.toggle('field-mode', fieldMode);
+  }, [fieldMode]);
 
   // "Nova ponudba" pokaže kalkulatorje, dokler osnutek ni prazen,
   // potem urejevalnik ponudbe.
@@ -46,9 +54,25 @@ export function AppShell() {
               </span>
               Obrtnik<span className="text-primary">Pro</span>
             </button>
-            <Badge variant="secondary" className="hidden sm:inline-flex">
-              Od fotke do ponudbe v 10 minutah
-            </Badge>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFieldMode(!fieldMode)}
+                aria-pressed={fieldMode}
+                title="Terenski način — veliki gumbi in visok kontrast (rokavice, sonce)"
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 min-h-[40px] text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  fieldMode
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-card border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
+                data-testid="field-mode-toggle"
+              >
+                <HardHat className="h-4.5 w-4.5" />
+                <span className="hidden md:inline">Terenski način</span>
+              </button>
+              <Badge variant="secondary" className="hidden sm:inline-flex">
+                Od fotke do ponudbe v 10 minutah
+              </Badge>
+            </div>
           </div>
           {/* Navigacija — na mobilnem se pomika po strani */}
           <nav className="flex gap-1 overflow-x-auto scroll-area -mx-1 px-1 pb-1.5" aria-label="Glavna navigacija">

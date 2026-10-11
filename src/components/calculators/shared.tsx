@@ -12,6 +12,8 @@ import { PlusCircle, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
 import { formatEUR, formatNum } from '@/lib/format';
+import { craftInstallPlan } from '@/lib/install-plan';
+import { MaterialPanel } from './material-panel';
 import type { CalcLine, CraftId, CraftInputs } from '@/lib/types';
 
 // ─── Vnosna polja ───────────────────────────────────────────
@@ -119,6 +121,7 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
   const addItem = useDraft((s) => s.addItems);
   const setView = useView((s) => s.setView);
   const result = useMemo(() => compute(inputs), [compute, inputs]);
+  const plan = useMemo(() => craftInstallPlan(craft, inputs), [craft, inputs]);
   const [priceOverrides, setPriceOverrides] = useState<Record<number, number>>({});
 
   const subtotal = result.lines.reduce(
@@ -234,6 +237,8 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
               </CardContent>
             </Card>
           )}
+
+          <MaterialPanel plan={plan} />
         </div>
       </div>
     </div>

@@ -152,3 +152,39 @@
     padding: 0;
   }
 }
+
+/* ── Terenski način: rokavice + sonce ─────────────────────── */
+/* Veliki cilji dotika (≥ 48 px), večja pisava, močan kontrast. */
+.field-mode {
+  font-size: 17px;
+}
+.field-mode .text-xs {
+  font-size: 13px;
+}
+.field-mode .text-sm {
+  font-size: 15px;
+}
+.field-mode button {
+  min-height: 48px;
+}
+.field-mode input,
+.field-mode select,
+.field-mode textarea {
+  min-height: 48px;
+  font-size: 16px;
+}
+.field-mode [role="switch"] {
+  width: 56px;
+  height: 32px;
+}
+.field-mode [role="switch"] > * {
+  height: 26px;
+  width: 26px;
+}
+.field-mode .text-muted-foreground {
+  color: var(--foreground);
+  opacity: 0.78;
+}
+.field-mode nav button {
+  font-size: 15px;
+}

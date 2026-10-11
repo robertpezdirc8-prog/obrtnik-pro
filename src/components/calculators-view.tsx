@@ -22,7 +22,8 @@ export function CalculatorsView() {
   };
 
   const draftTotals = calcTotals(items, 22);
-  const craft = activeCraft ? craftBySlug(activeCraft) : undefined;
+  // 'izberi' = poseben slug: pokaži mrežo kalkulatorjev (tudi ko osnutek ni prazen)
+  const craft = activeCraft && activeCraft !== 'izberi' ? craftBySlug(activeCraft) : undefined;
 
   return (
     <div className="space-y-6">

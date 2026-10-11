@@ -3,6 +3,16 @@ import { formatDate, formatNum } from './format';
 
 // ─── Tiskalni prikaz ponudbe (odpre okno → shrani kot PDF) ──
 
+/** Datum poteka veljavnosti = datum izdaje + quoteValidDays dni. */
+export function validUntil(createdAtIso: string, validDays: number): string {
+  const t = new Date(createdAtIso).getTime();
+  const days = Number.isFinite(validDays) && validDays > 0 ? Math.floor(validDays) : 15;
+  const d = new Date((Number.isFinite(t) ? t : Date.now()) + days * 86_400_000);
+  return new Intl.DateTimeFormat('sl-SI', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).format(d);
+}
+
 function esc(s: string | null | undefined): string {
   if (!s) return '';
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -74,6 +84,7 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
     <div class="offer-meta">
       <div class="num">PONUDBA ${esc(offer.number)}</div>
       <p>Datum: ${formatDate(offer.createdAt)}</p>
+      <p>Velja do: ${validUntil(offer.createdAt, settings.quoteValidDays)}</p>
       <p>Status: ${offer.status === 'draft' ? 'Osnutek' : offer.status === 'sent' ? 'Poslana' : offer.status === 'accepted' ? 'Sprejeta' : 'Zavrnjena'}</p>
     </div>
   </div>
@@ -117,7 +128,7 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
   </div>
 
   <div class="foot">
-    <span>Ponudba je veljavna 30 dni od datuma izdaje.</span>
+    <span>Ponudba velja ${Math.max(1, Math.floor(settings.quoteValidDays) || 15)} dni od datuma izdaje; cene so vezane na nabavne cene materiala na dan izdaje.</span>
     <span>Cene so izražene v EUR.</span>
   </div>
 </body>

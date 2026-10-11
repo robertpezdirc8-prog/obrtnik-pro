@@ -239,3 +239,23 @@ Stage Summary:
 - 5 izboljšav, vse izrazito skriptne (deterministične), neposredno iz težav, ki jih obrtniki na forumih najbolj omenjajo: podcenjen odpadek, pozabljen grunt, preozke dilatacije, neudobne stopnice, pozabljene neodgovorjene ponudbe, DDV 9,5 % dilema.
 - Ključni artefakti: pricing.ts (3 kalkulatorji nadgrajeni), offer-editor.tsx (DDV preklop), offers-list.tsx (opomniki + buildFollowUpTexts), types.ts/defaults.ts (novi vnosi), crafts.tsx (nova polja).
 - Verifikacijske slike: tests/e2e-{stairs-comfort,followup,ddv-95,mobile-ddv}.png.
+
+---
+Task ID: 7
+Agent: main (Z.ai Code)
+Task: Raziskava po forumih/spletu (kaj pogrešajo monterji na terenu, kaj so zgradili tekmeci) in implementacija izboljšav — strogo skriptno, brez AI.
+
+Work Log:
+- Spletne raziskave (14 poizvedb + poskusi branja strani): Reddit r/BathroomRemodeling ("estimate ghosting", papirologija), r/contractorsoftware ("estimating doesn't talk to field data"), magicplan Play/Community reviews (bugi, Android auto-scan ne deluje, low-light), konstrukcijska UX poročila (rokavice, sonce, offline), Omnicalculator/Homedepot/calcwood ograjni kalkulatorji (even spacing = samostojen produkt), App Store Flooring & Tile Calculator (škatle + odpadek %), Hover estimate struktura (Material+Labor), slovenski svet-ograj.si / ograje.biz (predpisi: višina ≥ 1 m, razmak palic ≤ 11 cm). Ugotovitve zapisane v research/findings.md.
+- Implementiran src/lib/install-plan.ts (čiste funkcije): evenPosts (enakomerni razmak stebrov), balusterFill (palice z enakimi režami ≤ 11 cm), cutPlan1D (FFD rezalni načrt z kerfom + združevanje enakih batov), boxesUp (cele škatle navzgor), craftInstallPlan po vseh 7 dejavnostih (nakup + rezi + kontrole predpisov), plural() slovensko sklanjanje.
+- Nov MaterialPanel (components/calculators/material-panel.tsx): 3 sekcije (Nakup materiala, Rezalni načrt, Kontrole in predpisi) z status ikonami ok/warn/bad/info + števec opozoril; vgrajen v CraftCalculator (shared.tsx) za vseh 7 kalkulatorjev.
+- Terenski način (rokavice + sonce): useFieldMode persist store, gumb v glavi (HardHat, aria-pressed), .field-mode CSS (gumbi/vnosi ≥ 48 px, večja pisava, močnejši kontrast), preklop tudi v Nastavitvah (Switch).
+- Veljavnost ponudbe: Settings.quoteValidDays (Prisma + db:push), polje v Nastavitvah, PDF "Velja do: DD.MM.LLLL" + klavzula o vezanosti na nabavne cene materiala (zaščita pred volatilnostjo cen).
+- UX-fix iz raziskave (»paperwork friction«): »+ Dodaj postavke« iz urejevalnika ponudbe zdaj odpre mrežo kalkulatorjev tudi pri ne-praznem osnutku (prej uporabnik obstane v urejevalniku); CalculatorsView prepozna poseben slug 'izberi'.
+- Verifikacija: bunx tsc (src čist), bun run lint čist, sanity-test matematike (evenPosts 12,4 m → 10 stebrov/1,38 m; balusterFill 8 palic/9 cm; FFD 12×1 m/6 m → 5+5+2; škatle 25 m² → 18), agent-browser E2E: ograje/stopnice/keramika/WPC paneli pravilni (stopnice R=23,17 cm → opozorilo ✓, WPC nosilci Bat 1–20 (20×) ✓), terenski način (razred + persist + aria-pressed ✓), nastavitve (polje + switch ✓), ponudbe (opomnik ✓), zlati pot na mobilu 390×844 ✓, konzola/logi čisti ✓. Posnetki: tests/e2e-{material-panel-desktop,field-mode,field-mode-desktop,settings-mobile,final-mobile}.png.
+
+Stage Summary:
+- 4 nove funkcije iz raziskave, vse deterministične skripte (brez AI): Material & montaža panel (nakup + rezalni načrt + kontrole predpisov), terenski način (48 px cilji, kontrast), veljavnost ponudbe v nastavitvah in na PDF, UX-popravek dostopa do kalkulatorjev.
+- Ključni artefakti: src/lib/install-plan.ts, src/components/calculators/material-panel.tsx, globals.css (.field-mode), store.ts (useFieldMode), prisma/schema.prisma (quoteValidDays), pdf.ts (velja do + klavzula), offer-editor/calculators-view (navigacija).
+- Research artefakt: research/findings.md (viri + top pain points).
+- Odkrit in popravljen realen UX-trap, ki ga forumi opisujejo kot "paperwork friction".
