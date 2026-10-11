@@ -260,7 +260,7 @@ export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
         <Badge variant="secondary" className="shrink-0">Namig</Badge>
         <p>
           Na fotografijo ujami <strong>cel objekt</strong> in <strong>znano referenco</strong> (vrata, okno,
-          ploščico ali osebo) — AI jo uporabi za oceno mer in za umerjanje merila.
+          ploščico ali osebo) — analiza jo uporabi za oceno mer in za umerjanje merila.
         </p>
       </div>
     </div>

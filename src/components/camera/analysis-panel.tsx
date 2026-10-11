@@ -1,6 +1,6 @@
 'use client';
 
-// ─── Prikaz rezultatov AI analize + predlogi izdelkov ───────
+// ─── Prikaz rezultatov samodejne analize + predlogi izdelkov ───────
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,15 +28,15 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
   const hasPrefill = Object.keys(analysis.prefill).length > 0;
 
   const addProduct = (p: { id: string; name: string; unit: string; unitPrice: number }) => {
-    addItems([{ key: `ai-${p.id}`, name: p.name, quantity: 1, unit: p.unit, unitPrice: p.unitPrice, productId: p.id }]);
+    addItems([{ key: `pred-${p.id}`, name: p.name, quantity: 1, unit: p.unit, unitPrice: p.unitPrice, productId: p.id }]);
     toast({ title: 'Dodano v osnutek ✓', description: `${p.name} · ${formatEUR(p.unitPrice)} / ${p.unit}` });
   };
 
-  // Združevanje predpolnitev (AI + izmerjene vrednosti) opravi camera-view.
+  // Združevanje predpolnitev (analiza + izmerjene vrednosti) opravi camera-view.
   const openCalculator = () => onOpenCalculator();
 
   return (
-    <div className="space-y-4" data-testid="ai-analysis">
+    <div className="space-y-4" data-testid="photo-analysis">
       {/* Glava analize */}
       <div className="rounded-xl border bg-gradient-to-br from-accent/70 to-card p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -46,7 +46,7 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
             </span>
             <div>
               <p className="text-sm font-bold">{craftLabel}</p>
-              <p className="text-xs text-muted-foreground">AI prepoznavanje</p>
+              <p className="text-xs text-muted-foreground">Samodejno prepoznavanje</p>
             </div>
           </div>
           {analysis.estimatedAreaM2 !== null && (
@@ -68,7 +68,7 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
       {/* Zaznani objekti */}
       {analysis.objects.length > 0 && (
         <section aria-label="Zaznani objekti">
-          <h3 className="mb-2 text-sm font-bold">Kaj je AI videl ({analysis.objects.length})</h3>
+          <h3 className="mb-2 text-sm font-bold">Kaj je skripta zaznala ({analysis.objects.length})</h3>
           <div className="max-h-72 space-y-2 overflow-y-auto scroll-area pr-1">
             {analysis.objects.map((o, i) => (
               <div key={i} className="flex items-start gap-2.5 rounded-lg border p-2.5">
@@ -194,7 +194,7 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
         <div className="flex items-start gap-2.5 rounded-xl border bg-card p-3">
           <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <div>
-            <p className="text-sm font-semibold">Priporočila AI</p>
+            <p className="text-sm font-semibold">Priporočila skripte</p>
             <p className="text-sm text-muted-foreground">{analysis.recommendations}</p>
           </div>
         </div>
@@ -231,7 +231,7 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
       {analysis.craft === 'drugo' && (
         <div className="flex items-start gap-2 rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          AI ni prepoznal naše dejavnosti — poskusi fotografirati objekt bližje ali iz drugega kota.
+          Analiza ni prepoznala naše dejavnosti — poskusi fotografirati objekt bližje ali iz drugega kota.
         </div>
       )}
     </div>

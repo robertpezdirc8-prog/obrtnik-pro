@@ -18,7 +18,7 @@ import { formatCm, formatM2 } from '@/lib/measure-geometry';
 
 export interface Measure3dPreviewProps {
   measures: PhotoMeasure[];
-  /** Privzeta višina prizmov v metrih (npr. iz AI analize). */
+  /** Privzeta višina prizmov v metrih (npr. iz samodejne analize). */
   defaultHeightM?: number;
 }
 

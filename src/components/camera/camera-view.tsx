@@ -2,10 +2,10 @@
 
 // ─── Pametna kamera — glavni pogled ─────────────────────────
 // Trije načini (zavihki):
-//  1. "Zajem + AI" — fotografiraj, AI prepozna objekte, mere,
-//     referenco in predlaga kalkulator (VLM).
+//  1. "Zajem + analiza" — fotografiraj, skripta prepozna objekte, mere,
+//     referenco in predlaga kalkulator.
 //  2. "AR merjenje" — živo tap-to-measure na video kadru:
-//     daljine, površine, koti; zamrznitev; kader gre v AI.
+//     daljine, površine, koti; zamrznitev; kader gre v analizo.
 //  3. "Merilni pripomočki" — laserski merilnik (Web Bluetooth),
 //     glasovni vnos meritev, izvoz vseh meritev.
 // Meritve se samodejno shranjujejo v galerijo (PATCH) in se
@@ -47,7 +47,7 @@ interface PhotoRecord {
   createdAt: string;
 }
 
-type CameraTab = 'ai' | 'ar' | 'orodja';
+type CameraTab = 'analiza' | 'ar' | 'orodja';
 
 const ANALYSIS_STEPS = [
   'Prepoznavam sceno…',
@@ -65,7 +65,7 @@ export function CameraView() {
   const setActiveCraft = useView((s) => s.setActiveCraft);
   const setCameraPrefill = useView((s) => s.setCameraPrefill);
 
-  const [tab, setTab] = useState<CameraTab>('ai');
+  const [tab, setTab] = useState<CameraTab>('analiza');
   const [phase, setPhase] = useState<'capture' | 'analyzing' | 'result'>('capture');
   const [stepIdx, setStepIdx] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -167,8 +167,8 @@ export function CameraView() {
   const removeAuxMeasure = (id: string) => setAuxMeasures((list) => list.filter((m) => m.id !== id));
 
   const allMeasures = [...measures, ...auxMeasures];
-  const aiHeightCm = result?.analysis.objects.find((o) => (o.estHeightCm ?? 0) >= 80)?.estHeightCm ?? null;
-  const aiDefaultHeightM = aiHeightCm ? Math.round((aiHeightCm / 100) * 10) / 10 : undefined;
+  const detectedHeightCm = result?.analysis.objects.find((o) => (o.estHeightCm ?? 0) >= 80)?.estHeightCm ?? null;
+  const detectedDefaultHeightM = detectedHeightCm ? Math.round((detectedHeightCm / 100) * 10) / 10 : undefined;
 
   const openCalculator = (craft?: string) => {
     const c = craft && craft !== 'drugo' ? craft : null;
@@ -226,7 +226,7 @@ export function CameraView() {
       setPhase('result');
     } else {
       setPhase('capture');
-      toast({ title: 'Ta fotografija še ni analizirana', description: 'Zaženi novo AI analizo.' });
+      toast({ title: 'Ta fotografija še ni analizirana', description: 'Zaženi novo analizo.' });
     }
   };
 
@@ -255,7 +255,7 @@ export function CameraView() {
   };
 
   const tabs: Array<[CameraTab, string, React.ReactNode]> = [
-    ['ai', 'Zajem + AI', <ScanSearch key="i" className="h-4 w-4" />],
+    ['analiza', 'Zajem + analiza', <ScanSearch key="i" className="h-4 w-4" />],
     ['ar', 'AR merjenje', <Ruler key="i" className="h-4 w-4" />],
     ['orodja', 'Pripomočki', <Wrench key="i" className="h-4 w-4" />],
   ];
@@ -272,10 +272,10 @@ export function CameraView() {
             Pametna kamera
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            AI prepozna objekte in mere, AR živo meri, laser in glas doda vrednosti — vse gre v kalkulator.
+            Skripta prepozna objekte in mere, AR živo meri, laser in glas doda vrednosti — vse gre v kalkulator.
           </p>
         </div>
-        {phase === 'result' && tab === 'ai' && (
+        {phase === 'result' && tab === 'analiza' && (
           <Button variant="outline" size="sm" onClick={() => { setPhase('capture'); setResult(null); setPhotoUrl(null); setLastPhotoId(null); }}>
             <Camera className="mr-2 h-4 w-4" />
             Nova fotografija
@@ -299,8 +299,8 @@ export function CameraView() {
         ))}
       </div>
 
-      {/* ── Zajem + AI ─────────────────────────────────────── */}
-      {tab === 'ai' && phase === 'capture' && (
+      {/* ── Zajem + analiza ─────────────────────────────────────── */}
+      {tab === 'analiza' && phase === 'capture' && (
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="lg:col-span-3">
             <CardContent className="p-4 sm:p-5">
@@ -314,7 +314,7 @@ export function CameraView() {
               <CardContent className="p-4 sm:p-5 space-y-3">
                 <h3 className="flex items-center gap-2 text-sm font-bold">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  Kaj AI prepozna
+                  Kaj skripta prepozna
                 </h3>
                 <ul className="space-y-1.5 text-sm text-muted-foreground">
                   {[
@@ -350,7 +350,7 @@ export function CameraView() {
         </div>
       )}
 
-      {tab === 'ai' && phase === 'analyzing' && (
+      {tab === 'analiza' && phase === 'analyzing' && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-5 p-10 sm:p-14">
             <div className="relative">
@@ -381,7 +381,7 @@ export function CameraView() {
         </Card>
       )}
 
-      {tab === 'ai' && phase === 'result' && result && photoUrl && (
+      {tab === 'analiza' && phase === 'result' && result && photoUrl && (
         <div className="space-y-5">
           {error && (
             <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
@@ -415,7 +415,7 @@ export function CameraView() {
                 <Box className="h-4 w-4 text-primary" />
                 3D predogled meritev — vrti, primerjaj, pokaži stranki
               </h3>
-              <Measure3dPreview measures={measures} defaultHeightM={aiDefaultHeightM} />
+              <Measure3dPreview measures={measures} defaultHeightM={detectedDefaultHeightM} />
             </CardContent>
           </Card>
         </div>

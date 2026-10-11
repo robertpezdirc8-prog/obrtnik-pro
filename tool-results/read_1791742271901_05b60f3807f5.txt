@@ -1,0 +1,632 @@
+     1→'use client';
+     2→
+     3→// ─── Pametna kamera — glavni pogled ─────────────────────────
+     4→// Trije načini (zavihki):
+     5→//  1. "Zajem + AI" — fotografiraj, AI prepozna objekte, mere,
+     6→//     referenco in predlaga kalkulator (VLM).
+     7→//  2. "AR merjenje" — živo tap-to-measure na video kadru:
+     8→//     daljine, površine, koti; zamrznitev; kader gre v AI.
+     9→//  3. "Merilni pripomočki" — laserski merilnik (Web Bluetooth),
+    10→//     glasovni vnos meritev, izvoz vseh meritev.
+    11→// Meritve se samodejno shranjujejo v galerijo (PATCH) in se
+    12→// preslikajo v predpolnitve kalkulatorja (buildPrefillFromMeasures).
+    13→
+    14→import { useCallback, useEffect, useState } from 'react';
+    15→import { Button } from '@/components/ui/button';
+    16→import { Badge } from '@/components/ui/badge';
+    17→import { Card, CardContent } from '@/components/ui/card';
+    18→import { Skeleton } from '@/components/ui/skeleton';
+    19→import {
+    20→  ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
+    21→  Ruler, Wrench, Copy, Download, Box,
+    22→} from 'lucide-react';
+    23→import { useToast } from '@/hooks/use-toast';
+    24→import { useView } from '@/lib/store';
+    25→import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind } from '@/lib/camera-types';
+    26→import type { CraftId } from '@/lib/types';
+    27→import type { ProcessedImage } from '@/lib/image-quality';
+    28→import {
+    29→  buildPrefillFromMeasures, downloadMeasuresCsv, formatCm, formatM2, formatDeg, measuresToText,
+    30→} from '@/lib/measure-geometry';
+    31→import { PhotoCapture } from './photo-capture';
+    32→import { PhotoCanvas } from './photo-canvas';
+    33→import { AnalysisPanel } from './analysis-panel';
+    34→import { LiveAr } from './live-ar';
+    35→import { LaserPanel } from './laser-panel';
+    36→import { VoiceInput } from './voice-input';
+    37→import { WebXrAr } from './webxr-ar';
+    38→import { Measure3dPreview } from './preview-3d';
+    39→
+    40→interface PhotoRecord {
+    41→  id: string;
+    42→  title: string | null;
+    43→  craftId: string | null;
+    44→  dataUrl: string;
+    45→  analysis: string | null;
+    46→  measurements: string | null;
+    47→  createdAt: string;
+    48→}
+    49→
+    50→type CameraTab = 'ai' | 'ar' | 'orodja';
+    51→
+    52→const ANALYSIS_STEPS = [
+    53→  'Prepoznavam sceno…',
+    54→  'Iskam objekte in mere…',
+    55→  'Primerjam s katalogom…',
+    56→  'Pripravljam predloge…',
+    57→];
+    58→
+    59→const measureSeq = { n: 0 };
+    60→const auxId = () => `aux${++measureSeq.n}-${Date.now()}`;
+    61→
+    62→export function CameraView() {
+    63→  const { toast } = useToast();
+    64→  const setView = useView((s) => s.setView);
+    65→  const setActiveCraft = useView((s) => s.setActiveCraft);
+    66→  const setCameraPrefill = useView((s) => s.setCameraPrefill);
+    67→
+    68→  const [tab, setTab] = useState<CameraTab>('ai');
+    69→  const [phase, setPhase] = useState<'capture' | 'analyzing' | 'result'>('capture');
+    70→  const [stepIdx, setStepIdx] = useState(0);
+    71→  const [busy, setBusy] = useState(false);
+    72→  const [error, setError] = useState<string | null>(null);
+    73→  const [result, setResult] = useState<AnalyzeResponse | null>(null);
+    74→  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+    75→  const [measures, setMeasures] = useState<PhotoMeasure[]>([]);
+    76→  const [lastPhotoId, setLastPhotoId] = useState<string | null>(null);
+    77→  const [auxMeasures, setAuxMeasures] = useState<PhotoMeasure[]>([]);
+    78→
+    79→  const [gallery, setGallery] = useState<PhotoRecord[] | null>(null);
+    80→
+    81→  // Animacija korakov med analizo
+    82→  useEffect(() => {
+    83→    if (phase !== 'analyzing') return;
+    84→    const t = setInterval(() => setStepIdx((i) => (i + 1) % ANALYSIS_STEPS.length), 2200);
+    85→    return () => clearInterval(t);
+    86→  }, [phase]);
+    87→
+    88→  const loadGallery = useCallback(() => {
+    89→    fetch('/api/photos')
+    90→      .then((r) => r.json())
+    91→      .then((d) => setGallery(d.photos ?? []))
+    92→      .catch(() => setGallery([]));
+    93→  }, []);
+    94→
+    95→  useEffect(() => { loadGallery(); }, [loadGallery]);
+    96→
+    97→  // Samodejno shranjevanje meritev v galerijo (debounce)
+    98→  useEffect(() => {
+    99→    if (phase !== 'result' || !lastPhotoId) return;
+   100→    const t = setTimeout(() => {
+   101→      fetch(`/api/photos/${lastPhotoId}`, {
+   102→        method: 'PATCH',
+   103→        headers: { 'Content-Type': 'application/json' },
+   104→        body: JSON.stringify({ measurements: JSON.stringify(measures) }),
+   105→      }).catch(() => { /* ni kritično */ });
+   106→    }, 900);
+   107→    return () => clearTimeout(t);
+   108→  }, [measures, phase, lastPhotoId]);
+   109→
+   110→  const handleAnalyze = async (img: ProcessedImage, measuresOverride?: PhotoMeasure[]) => {
+   111→    setBusy(true);
+   112→    setError(null);
+   113→    setStepIdx(0);
+   114→    setPhase('analyzing');
+   115→    const measuresToSave = measuresOverride ?? measures;
+   116→    try {
+   117→      const res = await fetch('/api/analyze-photo', {
+   118→        method: 'POST',
+   119→        headers: { 'Content-Type': 'application/json' },
+   120→        body: JSON.stringify({ image: img.dataUrl }),
+   121→      });
+   122→      const data = await res.json();
+   123→      if (!res.ok) throw new Error(data?.error ?? 'Analiza ni uspela.');
+   124→
+   125→      const analysisResult = data as AnalyzeResponse;
+   126→      setResult(analysisResult);
+   127→      setPhotoUrl(img.dataUrl);
+   128→      if (measuresOverride) setMeasures(measuresOverride);
+   129→
+   130→      // Samodejno shrani v galerijo (ne kritično)
+   131→      try {
+   132→        const saveRes = await fetch('/api/photos', {
+   133→          method: 'POST',
+   134→          headers: { 'Content-Type': 'application/json' },
+   135→          body: JSON.stringify({
+   136→            title: CRAFT_LABELS[analysisResult.analysis.craft],
+   137→            craftId: analysisResult.analysis.craft,
+   138→            dataUrl: img.dataUrl,
+   139→            analysis: JSON.stringify(analysisResult),
+   140→            measurements: JSON.stringify(measuresToSave),
+   141→          }),
+   142→        });
+   143→        if (saveRes.ok) {
+   144→          const saved = (await saveRes.json()) as { photo?: { id?: string } };
+   145→          setLastPhotoId(saved.photo?.id ?? null);
+   146→        }
+   147→        loadGallery();
+   148→        toast({ title: 'Shranjeno v galerijo ✓', description: 'Analiza je na voljo tudi pozneje.' });
+   149→      } catch {
+   150→        /* galerija ni kritična */
+   151→      }
+   152→
+   153→      setPhase('result');
+   154→    } catch (err) {
+   155→      setError(err instanceof Error ? err.message : 'Neznana napaka.');
+   156→      setPhase('capture');
+   157→    } finally {
+   158→      setBusy(false);
+   159→    }
+   160→  };
+   161→
+   162→  const addAuxMeasure = (kind: MeasureKind) => (label: string, cm: number) => {
+   163→    setAuxMeasures((list) => [...list, { id: auxId(), label, kind, value: cm, points: [] }]);
+   164→    toast({ title: 'Meritev dodana ✓', description: `${label}: ${formatCm(cm)}` });
+   165→  };
+   166→
+   167→  const removeAuxMeasure = (id: string) => setAuxMeasures((list) => list.filter((m) => m.id !== id));
+   168→
+   169→  const allMeasures = [...measures, ...auxMeasures];
+   170→  const aiHeightCm = result?.analysis.objects.find((o) => (o.estHeightCm ?? 0) >= 80)?.estHeightCm ?? null;
+   171→  const aiDefaultHeightM = aiHeightCm ? Math.round((aiHeightCm / 100) * 10) / 10 : undefined;
+   172→
+   173→  const openCalculator = (craft?: string) => {
+   174→    const c = craft && craft !== 'drugo' ? craft : null;
+   175→    if (c) {
+   176→      const base = result?.analysis.prefill ?? {};
+   177→      const extra = buildPrefillFromMeasures(c, allMeasures);
+   178→      const merged = { ...base, ...extra };
+   179→      setActiveCraft(c);
+   180→      if (Object.keys(merged).length > 0) {
+   181→        setCameraPrefill({
+   182→          craft: c as CraftId,
+   183→          inputs: merged,
+   184→          photoTitle: result?.analysis.sceneDescription?.slice(0, 80),
+   185→        });
+   186→      } else {
+   187→        setCameraPrefill(null);
+   188→      }
+   189→    } else {
+   190→      setActiveCraft(null);
+   191→      setCameraPrefill(null);
+   192→    }
+   193→    setView('kalkulatorji');
+   194→  };
+   195→
+   196→  const copyAll = async () => {
+   197→    try {
+   198→      await navigator.clipboard.writeText(measuresToText(allMeasures));
+   199→      toast({ title: 'Meritve kopirane ✓' });
+   200→    } catch {
+   201→      toast({ title: 'Odložišče ni dostopno', variant: 'destructive' });
+   202→    }
+   203→  };
+   204→
+   205→  const reopenPhoto = (rec: PhotoRecord) => {
+   206→    let parsed: AnalyzeResponse | null = null;
+   207→    try {
+   208→      if (rec.analysis) {
+   209→        const raw = JSON.parse(rec.analysis) as Partial<AnalyzeResponse>;
+   210→        parsed = {
+   211→          analysis: normalizePhotoAnalysis(raw.analysis),
+   212→          suggestedProducts: Array.isArray(raw.suggestedProducts) ? raw.suggestedProducts : [],
+   213→        };
+   214→      }
+   215→    } catch { parsed = null; }
+   216→
+   217→    setPhotoUrl(rec.dataUrl);
+   218→    try {
+   219→      setMeasures(rec.measurements ? (JSON.parse(rec.measurements) as PhotoMeasure[]) : []);
+   220→    } catch {
+   221→      setMeasures([]);
+   222→    }
+   223→    setLastPhotoId(rec.id);
+   224→    if (parsed) {
+   225→      setResult(parsed);
+   226→      setPhase('result');
+   227→    } else {
+   228→      setPhase('capture');
+   229→      toast({ title: 'Ta fotografija še ni analizirana', description: 'Zaženi novo AI analizo.' });
+   230→    }
+   231→  };
+   232→
+   233→  const deletePhoto = async (id: string) => {
+   234→    try {
+   235→      await fetch(`/api/photos/${id}`, { method: 'DELETE' });
+   236→      setGallery((g) => g?.filter((p) => p.id !== id) ?? null);
+   237→      if (lastPhotoId === id) {
+   238→        setPhase('capture');
+   239→        setResult(null);
+   240→        setPhotoUrl(null);
+   241→        setLastPhotoId(null);
+   242→      }
+   243→    } catch {
+   244→      toast({ title: 'Brisanje ni uspelo', variant: 'destructive' });
+   245→    }
+   246→  };
+   247→
+   248→  const measureCount = (rec: PhotoRecord): number => {
+   249→    try {
+   250→      const parsed = rec.measurements ? (JSON.parse(rec.measurements) as unknown[]) : [];
+   251→      return Array.isArray(parsed) ? parsed.length : 0;
+   252→    } catch {
+   253→      return 0;
+   254→    }
+   255→  };
+   256→
+   257→  const tabs: Array<[CameraTab, string, React.ReactNode]> = [
+   258→    ['ai', 'Zajem + AI', <ScanSearch key="i" className="h-4 w-4" />],
+   259→    ['ar', 'AR merjenje', <Ruler key="i" className="h-4 w-4" />],
+   260→    ['orodja', 'Pripomočki', <Wrench key="i" className="h-4 w-4" />],
+   261→  ];
+   262→
+   263→  return (
+   264→    <div className="space-y-6">
+   265→      {/* Glava */}
+   266→      <div className="flex flex-wrap items-center justify-between gap-3">
+   267→        <div>
+   268→          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
+   269→            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+   270→              <ScanSearch className="h-5 w-5" />
+   271→            </span>
+   272→            Pametna kamera
+   273→          </h1>
+   274→          <p className="mt-1 text-sm text-muted-foreground">
+   275→            AI prepozna objekte in mere, AR živo meri, laser in glas doda vrednosti — vse gre v kalkulator.
+   276→          </p>
+   277→        </div>
+   278→        {phase === 'result' && tab === 'ai' && (
+   279→          <Button variant="outline" size="sm" onClick={() => { setPhase('capture'); setResult(null); setPhotoUrl(null); setLastPhotoId(null); }}>
+   280→            <Camera className="mr-2 h-4 w-4" />
+   281→            Nova fotografija
+   282→          </Button>
+   283→        )}
+   284→      </div>
+   285→
+   286→      {/* Zavihki */}
+   287→      <div className="flex w-full rounded-lg border p-0.5 bg-secondary/50 sm:w-fit" role="tablist" aria-label="Načini pametne kamere">
+   288→        {tabs.map(([id, label, icon]) => (
+   289→          <button
+   290→            key={id}
+   291→            role="tab"
+   292→            aria-selected={tab === id}
+   293→            onClick={() => setTab(id)}
+   294→            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-[40px] sm:flex-none ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+   295→          >
+   296→            {icon}
+   297→            {label}
+   298→          </button>
+   299→        ))}
+   300→      </div>
+   301→
+   302→      {/* ── Zajem + AI ─────────────────────────────────────── */}
+   303→      {tab === 'ai' && phase === 'capture' && (
+   304→        <div className="grid gap-4 lg:grid-cols-5">
+   305→          <Card className="lg:col-span-3">
+   306→            <CardContent className="p-4 sm:p-5">
+   307→              <PhotoCapture onAnalyze={(img) => void handleAnalyze(img)} busy={busy} />
+   308→            </CardContent>
+   309→          </Card>
+   310→
+   311→          {/* Nasveti + kako deluje */}
+   312→          <div className="space-y-4 lg:col-span-2">
+   313→            <Card>
+   314→              <CardContent className="p-4 sm:p-5 space-y-3">
+   315→                <h3 className="flex items-center gap-2 text-sm font-bold">
+   316→                  <Sparkles className="h-4 w-4 text-primary" />
+   317→                  Kaj AI prepozna
+   318→                </h3>
+   319→                <ul className="space-y-1.5 text-sm text-muted-foreground">
+   320→                  {[
+   321→                    'Vrsto dela — ograja, stopnice, keramika, terasa…',
+   322→                    'Objekte in njihove približne dimenzije',
+   323→                    'Ravnine (stene, tla) za merjenje s perspektivno korekcijo',
+   324→                    'Materiale, napake in tveganja na objektu',
+   325→                    'Referenčni objekt za enoklikovno umerjanje merila',
+   326→                    'Katere meritve še vzeti na terenu',
+   327→                    'Predlagane izdelke iz tvojega kataloga',
+   328→                  ].map((s) => (
+   329→                    <li key={s} className="flex items-start gap-2">
+   330→                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+   331→                      {s}
+   332→                    </li>
+   333→                  ))}
+   334→                </ul>
+   335→              </CardContent>
+   336→            </Card>
+   337→            <Card>
+   338→              <CardContent className="p-4 sm:p-5 space-y-2">
+   339→                <h3 className="text-sm font-bold">Kako priti do najboljših mer</h3>
+   340→                <ol className="list-inside list-decimal space-y-1.5 text-sm text-muted-foreground">
+   341→                  <li>Ujami cel objekt od roba do roba.</li>
+   342→                  <li>V okvir postavi znano referenco (vrata, okno, ploščico).</li>
+   343→                  <li>Fotografiraj pravokotno, ne poševno.</li>
+   344→                  <li>Po analizi umeri merilo in klikaj po fotki — mere se izpišejo v cm.</li>
+   345→                  <li>Meri tudi površine (m²) in kote (°) — vse gre v kalkulator.</li>
+   346→                </ol>
+   347→              </CardContent>
+   348→            </Card>
+   349→          </div>
+   350→        </div>
+   351→      )}
+   352→
+   353→      {tab === 'ai' && phase === 'analyzing' && (
+   354→        <Card>
+   355→          <CardContent className="flex flex-col items-center justify-center gap-5 p-10 sm:p-14">
+   356→            <div className="relative">
+   357→              <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+   358→              <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground">
+   359→                <Sparkles className="h-9 w-9" />
+   360→              </span>
+   361→            </div>
+   362→            <div className="text-center">
+   363→              <p className="text-lg font-bold">{ANALYSIS_STEPS[stepIdx]}</p>
+   364→              <p className="mt-1 text-sm text-muted-foreground">Pametna kamera analizira fotografijo — traja nekaj sekund.</p>
+   365→            </div>
+   366→            <div className="w-full max-w-xs space-y-2">
+   367→              {ANALYSIS_STEPS.map((s, i) => (
+   368→                <div key={s} className="flex items-center gap-2 text-sm">
+   369→                  {i < stepIdx ? (
+   370→                    <Check className="h-4 w-4 text-green-600" />
+   371→                  ) : i === stepIdx ? (
+   372→                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+   373→                  ) : (
+   374→                    <span className="h-4 w-4 rounded-full border border-border" />
+   375→                  )}
+   376→                  <span className={i === stepIdx ? 'font-medium text-foreground' : 'text-muted-foreground'}>{s}</span>
+   377→                </div>
+   378→              ))}
+   379→            </div>
+   380→          </CardContent>
+   381→        </Card>
+   382→      )}
+   383→
+   384→      {tab === 'ai' && phase === 'result' && result && photoUrl && (
+   385→        <div className="space-y-5">
+   386→          {error && (
+   387→            <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+   388→              {error}
+   389→            </div>
+   390→          )}
+   391→          <div className="grid gap-4 lg:grid-cols-2">
+   392→            <Card>
+   393→              <CardContent className="p-4 sm:p-5">
+   394→                <PhotoCanvas
+   395→                  dataUrl={photoUrl}
+   396→                  objects={result.analysis.objects}
+   397→                  surfaces={result.analysis.surfaces}
+   398→                  referenceLabel={result.analysis.reference?.label}
+   399→                  referenceCm={result.analysis.reference?.assumedCm}
+   400→                  referenceBox={result.analysis.referenceBox}
+   401→                  measures={measures}
+   402→                  setMeasures={setMeasures}
+   403→                />
+   404→              </CardContent>
+   405→            </Card>
+   406→            <Card>
+   407→              <CardContent className="p-4 sm:p-5">
+   408→                <AnalysisPanel result={result} onOpenCalculator={() => openCalculator(result.analysis.craft)} />
+   409→              </CardContent>
+   410→            </Card>
+   411→          </div>
+   412→          <Card>
+   413→            <CardContent className="p-4 sm:p-5 space-y-3">
+   414→              <h3 className="flex items-center gap-2 text-sm font-bold">
+   415→                <Box className="h-4 w-4 text-primary" />
+   416→                3D predogled meritev — vrti, primerjaj, pokaži stranki
+   417→              </h3>
+   418→              <Measure3dPreview measures={measures} defaultHeightM={aiDefaultHeightM} />
+   419→            </CardContent>
+   420→          </Card>
+   421→        </div>
+   422→      )}
+   423→
+   424→      {/* ── AR merjenje ────────────────────────────────────── */}
+   425→      {tab === 'ar' && (
+   426→        <div className="grid gap-4 lg:grid-cols-5">
+   427→          <Card className="lg:col-span-3">
+   428→            <CardContent className="p-4 sm:p-5">
+   429→              <LiveAr onCaptureFrame={(img, m) => void handleAnalyze(img, m)} busy={busy} />
+   430→            </CardContent>
+   431→          </Card>
+   432→          <div className="space-y-4 lg:col-span-2">
+   433→            <Card>
+   434→              <CardContent className="p-4 sm:p-5 space-y-2">
+   435→                <h3 className="flex items-center gap-2 text-sm font-bold">
+   436→                  <Ruler className="h-4 w-4 text-primary" />
+   437→                  Kako deluje AR merjenje
+   438→                </h3>
+   439→                <ol className="list-inside list-decimal space-y-1.5 text-sm text-muted-foreground">
+   440→                  <li>Vključi kamero in usmeri v objekt.</li>
+   441→                  <li>Izberi način: dolžine, površine ali koti.</li>
+   442→                  <li>Umeri: klikni 2 točki z znano dolžino (vrata, okno…).</li>
+   443→                  <li>Tapni točke — izračun je takojšen.</li>
+   444→                  <li>Zamrzni kader za natančnejše tapkanje.</li>
+   445→                </ol>
+   446→                <p className="text-xs text-muted-foreground">
+   447→                  Meri v ravnini objekta (pravokotno na steno) — tako je merilo za cel kadir enako.
+   448→                </p>
+   449→              </CardContent>
+   450→            </Card>
+   451→            <Card>
+   452→              <CardContent className="p-4 sm:p-5">
+   453→                <h3 className="text-sm font-bold">Nasvet za površine</h3>
+   454→                <p className="mt-1 text-sm text-muted-foreground">
+   455→                  Za keramiko, teraso ali fasado klikaj oglišča tal/stene in zapri poligon —
+   456→                  dobiš m² takoj, ki jih kalkulator upošteva pri odmerku materiala.
+   457→                </p>
+   458→              </CardContent>
+   459→            </Card>
+   460→          </div>
+   461→
+   462→          {/* Pravi 3D AR (WebXR) — realni metri brez umerjanja */}
+   463→          <Card>
+   464→            <CardContent className="p-4 sm:p-5 space-y-3">
+   465→              <div className="flex flex-wrap items-center justify-between gap-2">
+   466→                <h3 className="flex items-center gap-2 text-sm font-bold">
+   467→                  <Box className="h-4 w-4 text-primary" />
+   468→                  Pravi 3D AR (WebXR) — meri v prostoru, brez umerjanja
+   469→                </h3>
+   470→                <Badge variant="secondary" className="text-[10px]">Beta</Badge>
+   471→              </div>
+   472→              <p className="text-xs text-muted-foreground">
+   473→                Na telefonu (Chrome na Androidu z ARCore) tapni točki v prostoru — razdalja je realna,
+   474→                brez umerjanja. Na namiznem računalniku uporabi 2D AR merjenje zgoraj.
+   475→              </p>
+   476→              <WebXrAr onAddMeasure={addAuxMeasure('xr')} />
+   477→            </CardContent>
+   478→          </Card>
+   479→        </div>
+   480→      )}
+   481→
+   482→      {/* ── Merilni pripomočki ─────────────────────────────── */}
+   483→      {tab === 'orodja' && (
+   484→        <div className="space-y-4">
+   485→          <div className="grid gap-4 lg:grid-cols-2">
+   486→            <Card>
+   487→              <CardContent className="p-4 sm:p-5">
+   488→                <LaserPanel onAddMeasurement={addAuxMeasure('laser')} />
+   489→              </CardContent>
+   490→            </Card>
+   491→            <Card>
+   492→              <CardContent className="p-4 sm:p-5">
+   493→                <VoiceInput onAddMeasurement={addAuxMeasure('voice')} />
+   494→              </CardContent>
+   495→            </Card>
+   496→          </div>
+   497→
+   498→          {auxMeasures.length > 0 && (
+   499→            <Card>
+   500→              <CardContent className="p-4 sm:p-5 space-y-2">
+   501→                <div className="flex items-center justify-between">
+   502→                  <h3 className="text-sm font-bold">Dodane meritve ({auxMeasures.length})</h3>
+   503→                  <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive hover:text-destructive" onClick={() => setAuxMeasures([])}>
+   504→                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+   505→                    Počisti
+   506→                  </Button>
+   507→                </div>
+   508→                <ul className="max-h-48 space-y-1 overflow-y-auto scroll-area pr-1">
+   509→                  {auxMeasures.map((m) => (
+   510→                    <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-1.5 text-sm">
+   511→                      <span className="flex min-w-0 items-center gap-1.5">
+   512→                        <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0">
+   513→                          {m.kind === 'laser' ? 'laser' : 'glas'}
+   514→                        </Badge>
+   515→                        <span className="truncate font-medium">{m.label}</span>
+   516→                      </span>
+   517→                      <span className="flex shrink-0 items-center gap-2">
+   518→                        <strong className="text-green-700">{m.value !== null ? formatCm(m.value) : '—'}</strong>
+   519→                        <button
+   520→                          onClick={() => removeAuxMeasure(m.id)}
+   521→                          className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+   522→                          aria-label={`Izbriši ${m.label}`}
+   523→                        >
+   524→                          <Trash2 className="h-3.5 w-3.5" />
+   525→                        </button>
+   526→                      </span>
+   527→                    </li>
+   528→                  ))}
+   529→                </ul>
+   530→              </CardContent>
+   531→            </Card>
+   532→          )}
+   533→
+   534→          <div className="flex flex-col items-start justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-3 sm:flex-row sm:items-center">
+   535→            <p className="text-sm text-muted-foreground">
+   536→              {allMeasures.length > 0
+   537→                ? `Skupaj ${allMeasures.length} meritev (fotomeritve + pripomočki) — izvoz ali takojšnja uporaba v kalkulatorju.`
+   538→                : 'Meritve iz AR, laserja in glasu se združijo tu in gredo v kalkulator en klik.'}
+   539→            </p>
+   540→            {allMeasures.length > 0 && (
+   541→              <div className="flex gap-2">
+   542→                <Button variant="outline" size="sm" className="min-h-10" onClick={() => void copyAll()}>
+   543→                  <Copy className="mr-1.5 h-4 w-4" />
+   544→                  Kopiraj vse
+   545→                </Button>
+   546→                <Button variant="outline" size="sm" className="min-h-10" onClick={() => downloadMeasuresCsv(allMeasures)}>
+   547→                  <Download className="mr-1.5 h-4 w-4" />
+   548→                  Prenesi CSV
+   549→                </Button>
+   550→              </div>
+   551→            )}
+   552→          </div>
+   553→        </div>
+   554→      )}
+   555→
+   556→      {/* Galerija */}
+   557→      <section aria-label="Galerija fotografij">
+   558→        <div className="mb-3 flex items-center justify-between">
+   559→          <h2 className="flex items-center gap-2 text-lg font-bold tracking-tight">
+   560→            <History className="h-5 w-5 text-primary" />
+   561→            Zadnji zajemi
+   562→          </h2>
+   563→          {gallery && gallery.length > 0 && (
+   564→            <Badge variant="secondary">{gallery.length}</Badge>
+   565→          )}
+   566→        </div>
+   567→
+   568→        {gallery === null ? (
+   569→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+   570→            {[...Array(6)].map((_, i) => <Skeleton key={i} className="aspect-[4/3] rounded-xl" />)}
+   571→          </div>
+   572→        ) : gallery.length === 0 ? (
+   573→          <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+   574→            Še ni zajetih fotografij — posnemi prvo zgoraj. ✓
+   575→          </div>
+   576→        ) : (
+   577→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+   578→            {gallery.map((rec) => {
+   579→              const mc = measureCount(rec);
+   580→              return (
+   581→                <div key={rec.id} className="group relative overflow-hidden rounded-xl border bg-card">
+   582→                  <button
+   583→                    onClick={() => reopenPhoto(rec)}
+   584→                    className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   585→                    aria-label={`Odpri ${rec.title ?? 'fotografijo'}`}
+   586→                  >
+   587→                    <img src={rec.dataUrl} alt={rec.title ?? 'Zajeta fotografija'} className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.03]" />
+   588→                    <div className="p-2">
+   589→                      <p className="truncate text-xs font-semibold">{rec.title ?? 'Zajem'}</p>
+   590→                      <p className="text-[10px] text-muted-foreground">
+   591→                        {new Date(rec.createdAt).toLocaleDateString('sl-SI', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+   592→                      </p>
+   593→                    </div>
+   594→                  </button>
+   595→                  {rec.craftId && rec.craftId !== 'drugo' && (
+   596→                    <Badge className="absolute left-2 top-2 text-[9px] px-1.5 py-0" variant="default">
+   597→                      {CRAFT_LABELS[rec.craftId as keyof typeof CRAFT_LABELS] ?? rec.craftId}
+   598→                    </Badge>
+   599→                  )}
+   600→                  {mc > 0 && (
+   601→                    <Badge className="absolute right-2 bottom-2 text-[9px] px-1.5 py-0" variant="secondary">
+   602→                      {mc} mer.
+   603→                    </Badge>
+   604→                  )}
+   605→                  <button
+   606→                    onClick={() => void deletePhoto(rec.id)}
+   607→                    className="absolute right-1.5 top-1.5 rounded-md bg-black/50 p-1.5 text-white opacity-0 transition-opacity hover:bg-destructive group-hover:opacity-100 focus-visible:opacity-100"
+   608→                    aria-label={`Izbriši ${rec.title ?? 'fotografijo'}`}
+   609→                  >
+   610→                    <Trash2 className="h-3.5 w-3.5" />
+   611→                  </button>
+   612→                </div>
+   613→              );
+   614→            })}
+   615→          </div>
+   616→        )}
+   617→      </section>
+   618→
+   619→      {/* Povezava naprej */}
+   620→      <div className="flex items-center justify-between rounded-xl border bg-accent/40 px-4 py-3">
+   621→        <p className="text-sm text-muted-foreground">
+   622→          Želiš ročni vnos? Kalkulatorji odmerka so še vedno na voljo.
+   623→        </p>
+   624→        <Button variant="outline" size="sm" onClick={() => openCalculator()}>
+   625→          Kalkulatorji
+   626→          <ArrowRight className="ml-2 h-4 w-4" />
+   627→        </Button>
+   628→      </div>
+   629→    </div>
+   630→  );
+   631→}
+   632→

@@ -4,7 +4,7 @@
 // • Dolžine (2 točki) · Površine (poligon → m²) · Koti (3 točke)
 // • Umerjanje z znano referenco (vrata, okno, oseba, ploščica…)
 // • Zamrznitev kadra za natančnejše merjenje
-// • "Posnemi in analiziraj s AI" — kader + meritve gredo v AI analizo
+// • "Posnemi in analiziraj" — kader + meritve gredo v samodejno analizo
 //
 // TOČKE SO V % PRIKAZA. Prikaz uporablja object-cover (crop), zato
 // izračuni tečejo v "videnih naravnih pikslih": uniform skala
@@ -280,7 +280,7 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
     return back ?? p;
   };
 
-  const sendToAi = () => {
+  const sendToAnalysis = () => {
     let img: ProcessedImage | null = null;
     if (frozen) {
       img = frozen;
@@ -543,7 +543,7 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
 
           {/* Akcije */}
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button className="flex-1 min-h-12" onClick={sendToAi} disabled={busy}>
+            <Button className="flex-1 min-h-12" onClick={sendToAnalysis} disabled={busy}>
               {busy ? (
                 <>
                   <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
@@ -552,7 +552,7 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
               ) : (
                 <>
                   <Sparkles className="mr-2 h-5 w-5" />
-                  Posnemi in analiziraj s AI
+                  Posnemi in analiziraj
                 </>
               )}
             </Button>
@@ -606,7 +606,7 @@ export function LiveAr({ onCaptureFrame, busy }: LiveArProps) {
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
-            Meritve gredo skupaj s kadrom v AI analizo in se upoštevajo pri odpiranju kalkulatorja.
+            Meritve gredo skupaj s kadrom v samodejno analizo in se upoštevajo pri odpiranju kalkulatorja.
           </p>
         </div>
       )}

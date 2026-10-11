@@ -1,8 +1,8 @@
 'use client';
 
-// ─── Foto platno: AI okviri + AR merjenje po fotografiji ────
+// ─── Foto platno: zaznani okviri + AR merjenje po fotografiji ────
 // Načini:
-//  1. "Prepoznavanje" — AI zaznani objekti (okviri) + ravnine
+//  1. "Prepoznavanje" — zaznani objekti (okviri) + ravnine
 //  2. "Dolžine" — klikni 2 točki; umerjanje z znano dolžino ALI
 //     kalibrirana ravnina (perspektivna korekcija)
 //  3. "Površine" — klikaj oglišča → m² + dolžine strani
@@ -256,7 +256,7 @@ export function PhotoCanvas({
     setCalibOpen(false);
   };
 
-  /** Enoklikovno umerjanje po AI okvirju reference (navpična stranica). */
+  /** Enoklikovno umerjanje po okvirju reference iz analize (navpična stranica). */
   const useReferenceBoxCalib = () => {
     if (!referenceBox || !referenceCm || !referenceLabel) return;
     const [x, y, w, h] = referenceBox;
@@ -294,7 +294,7 @@ export function PhotoCanvas({
     });
   };
 
-  const applyAiSurface = (s: DetectedSurface) => {
+  const applyDetectedSurface = (s: DetectedSurface) => {
     if (!s.quad || s.quad.length !== 4) return;
     setPlaneQuad(s.quad.map(([x, y]) => ({ x, y })));
   };
@@ -322,10 +322,10 @@ export function PhotoCanvas({
   const areaMeasures = measures.filter((m) => m.kind === 'area');
   const angleMeasures = measures.filter((m) => m.kind === 'angle');
   const lengthMeasures = measures.filter((m) => m.kind === 'length' || m.kind === 'laser');
-  const aiSurfaces = (surfaces ?? []).filter((s) => s.quad && s.quad.length === 4);
+  const detectedSurfaces = (surfaces ?? []).filter((s) => s.quad && s.quad.length === 4);
 
   const modeHint: Record<Mode, string> = {
-    boxes: 'AI zaznani objekti in ravnine — preklopi v način merjenja za meritve.',
+    boxes: 'Zaznani objekti in ravnine — preklopi v način merjenja za meritve.',
     length: 'Klikni 2 točki za dolžino. Prvi par umeri merilo (ali umeri ravnino).',
     area: 'Klikaj oglišča površine; klik na prvo oglišče (ali gumb) zapre poligon.',
     angle: 'Klikni 3 točke: krak, oglišče kota, krak.',
@@ -417,7 +417,7 @@ export function PhotoCanvas({
           }}
         />
 
-        {/* AI okviri */}
+        {/* Zaznani okviri */}
         {mode === 'boxes' &&
           objects
             .filter((o) => o.box)
@@ -440,8 +440,8 @@ export function PhotoCanvas({
 
         {/* Vsi izrisi meritev */}
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full pointer-events-none">
-          {/* AI ravnine (prepoznavanje) */}
-          {mode === 'boxes' && aiSurfaces.map((s, i) => (
+          {/* Prepoznane ravnine (prepoznavanje) */}
+          {mode === 'boxes' && detectedSurfaces.map((s, i) => (
             <polygon
               key={`surf-${i}`}
               points={s.quad!.map(([x, y]) => `${x},${y}`).join(' ')}
@@ -532,8 +532,8 @@ export function PhotoCanvas({
             </span>
           );
         })}
-        {/* oznake AI ravnin */}
-        {mode === 'boxes' && aiSurfaces.map((s, i) => {
+        {/* oznake prepoznanih ravnin */}
+        {mode === 'boxes' && detectedSurfaces.map((s, i) => {
           const c = centroidPct(s.quad!);
           return (
             <span key={`surflbl-${i}`} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow" style={{ left: `${c.x}%`, top: `${c.y}%` }}>
@@ -582,15 +582,15 @@ export function PhotoCanvas({
           </div>
           {referenceLabel && (
             <p className="text-xs text-muted-foreground">
-              AI predlog: <strong>{referenceLabel} ≈ {referenceCm} cm</strong>
+              Predlog analize: <strong>{referenceLabel} ≈ {referenceCm} cm</strong>
               {referenceBox && (
                 <button
                   onClick={useReferenceBoxCalib}
                   className="ml-2 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-card px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-accent"
-                  aria-label={`Samodejno umeri po AI referenci: ${referenceLabel}`}
+                  aria-label={`Samodejno umeri po referenci iz analize: ${referenceLabel}`}
                 >
                   <Sparkles className="h-3 w-3" />
-                  Umeri samodejno po AI okvirju
+                  Umeri samodejno po okvirju analize
                 </button>
               )}
             </p>
@@ -643,15 +643,15 @@ export function PhotoCanvas({
             Npr. fasadna stena 600 × 280 cm ali terasa 350 × 300 cm. Po umeritvi so
             <strong> vse meritve na ravnini prave</strong>, kljub poševnemu posnetku.
           </p>
-          {aiSurfaces.length > 0 && (
+          {detectedSurfaces.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">AI ravnine:</span>
-              {aiSurfaces.map((s, i) => (
+              <span className="text-xs text-muted-foreground">Prepoznane ravnine:</span>
+              {detectedSurfaces.map((s, i) => (
                 <button
-                  key={`ai-${i}`}
-                  onClick={() => applyAiSurface(s)}
+                  key={`rav-${i}`}
+                  onClick={() => applyDetectedSurface(s)}
                   className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors min-h-[32px] ${planeQuad && s.quad && planeQuad.length === 4 && s.quad.every((q, j) => Math.abs(q[0] - planeQuad[j].x) < 0.01 && Math.abs(q[1] - planeQuad[j].y) < 0.01) ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:bg-accent'}`}
-                  aria-label={`Uporabi AI ravnino: ${s.label}`}
+                  aria-label={`Uporabi prepoznano ravnino: ${s.label}`}
                 >
                   <Sparkles className="mr-1 inline h-3 w-3" />
                   {s.label}

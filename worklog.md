@@ -157,3 +157,44 @@ Stage Summary:
 - Ključni artefakti: src/lib/{homography,edge-detect}.ts, src/components/camera/{webxr-ar,preview-3d,photo-canvas,live-ar,analysis-panel,camera-view}.tsx, src/app/api/analyze-photo/route.ts (novi JSON polji), src/lib/camera-types.ts (+normalizePhotoAnalysis, MeasureKind 'xr'), tests/seed-test-photo.ts.
 - Verifikacijske slike: tests/e2e-plane-{mode,calibrated,length}.png, tests/e2e-3d-canvas.png, tests/e2e-mobile-camera.png.
 - Odprto za naslednjo fazo: Depth Anything V2 Small (monokularna globina v brskalniku, Transformers.js/WebGPU) za ne-ravninske objekte, večfotografska združitev ravnin (soba = 4 stene), WebXR plane-detection za celotne površine v prostoru, živi VLM klic ob sproščeni kvoti.
+
+---
+Task ID: 5-a
+Agent: ui-text-cleaner
+Task: Čiščenje vseh omenjanj "AI" iz besedil UI in komentarjev v kamerinih komponentah — app naj se prikazuje kot profesionalna deterministična SKRIPTA ("samodejna analiza"/"skripta"). Samo besedila/komentarji/identifikator zavihka, logika nespremenjena.
+
+Work Log:
+- Prebran worklog (Task 1–4) za stil; popisana vsa omenjanja "AI" v 8 dodeljenih datotekah (rg "\bAI\b" + "'ai'").
+- Besedilne zamenjave (izključno stringi/komentarji/aria-labeli): dashboard.tsx (gumb "Fotografiraj — samodejna analiza"); analysis-panel.tsx (6×: komentar glave, "Samodejno prepoznavanje", "Kaj je skripta zaznala", "Priporočila skripte", "Analiza ni prepoznala naše dejavnosti…", komentar o združevanju predpolnitev); photo-capture.tsx (namig "…analiza jo uporabi za oceno mer in za umerjanje merila."); live-ar.tsx (komentar glave, gumb "Posnemi in analiziraj", "…v samodejno analizo…").
+- camera-view.tsx: identifikator zavihka 'ai' → 'analiza' (tip CameraTab, useState, tabs seznam, vseh 4 pogojev tab === 'analiza'), "Zajem + AI" → "Zajem + analiza", "Zaženi novo analizo.", "Skripta prepozna objekte in mere…", "Kaj skripta prepozna", komentarji glave (5./8. vrstica; poleg navodil odstranjen tudi "(VLM)" — omenjanje AI modela).
+- photo-canvas.tsx: 12 besedilnih/aria zamenjav ("zaznani okviri", "Prepoznane ravnine", "Predlog analize:", "Umeri samodejno po okvirju analize" + aria-labela "…po referenci iz analize"/"Uporabi prepoznano ravnino", modeHint "boxes", komentarji 3/5/259/420/443/535).
+- preview-3d.tsx (1 komentar: "npr. iz samodejne analize") in api/photos/route.ts (1 komentar: "shrani fotografijo s samodejno analizo in merjenjem").
+- Identifikatorji v kodi NISO preimenovani (aiSurfaces, applyAiSurface, key `ai-${i}`, key `ai-${p.id}`, data-testid "ai-analysis") — pravila: nobene spremembe logike/imen spremenljivk.
+- Verifikacija: rg "'ai'" camera-view.tsx → 0 zadetkov; rg "\bAI\b" po vseh 8 datotekah → 0 zadetkov v besedilih in komentarjih; `bunx eslint` (8 datotek) → exit 0, čisto; `bunx tsc --noEmit` → samo 4 vnaprej obstoječe napake v examples/ + skills/ (v src nič novega); git diff potrjuje 39 +/- vrstic, vse besedilne.
+
+Stage Summary:
+- V vseh uporabniško vidnih besedilih (gumbi, naslovi, namigi, toast, aria-labeli, modeHint) in komentarjih 8 datotek ni več omenjanj "AI" — terminologija zdaj: "samodejna analiza", "skripta", "Zaznani okviri", "Prepoznane ravnine", "Predlog analize".
+- Identifikator zavihka kamere preimenovan 'ai' → 'analiza' izključno znotraj camera-view.tsx (lokalni tip + stanje + pogoji) — noben API, store ali URL ni odvisen od tega id-ja.
+- Spremembe izključno besedilne, nič logike/importov/tipov (razen lokalnega CameraTab uniona); ESLint čist, tsc brez novih napak.
+- Izven obsega te naloge (tam ostajajo "AI" omenjanja, ureja glavni agent): src/lib/, src/app/api/analyze-photo/, src/components/ui/.
+
+---
+Task ID: 5
+Agent: main (Z.ai Code)
+Task: "Zamenjaj AI povsod s skriptami — nečem AI-jev, samo profesionalne skripte." Odstranitev vseh AI odvisnosti: VLM klic v /api/analyze-photo zamenjan s čisto determinističnim računalniškim vidom (src/lib/cv-engine.ts), preimenovanje tipov AI_CRAFTS/AICraft → CRAFT_CATEGORIES/CraftCategory, čiščenje vseh "AI" besedil iz UI in komentarjev.
+
+Work Log:
+- Analiza virov UI: edini pravi AI klic = z-ai-web-dev-sdk (createVision) v src/app/api/analyze-photo/route.ts; ostalo so besedila/tipi/komentarji.
+- NOVO src/lib/cv-engine.ts (~870 vrstic, brez odvisnosti): popolnoma determinističen CV cevovod — pomanjšava (box filter), RGB→HSV, Gaussovo zgladitev, Laplaceova varianca (ostrina), Sobel robovi + histereza, Houghova transformacija (180°, NMS, klasifikacija navpične/vodoravne/diagonalne), zaznavanje redovnih vrhov profilov (mreža ploščic/vzorec desk z mediano razmakov), 7 barvnih mask (nebo/zelenje/les/kovina/tema/steklo/rja), povezane komponente (8-povezanost) + "okvirjenost" (rob na ≥3 straneh obsegajočega okvirja — prava okna/vrata/polja, ravne stene odpadejo), zaznavanje stopniškega vzorca (sklad vodoravnih + diagonale), referenčni objekt (vrata: aspect 1,2–4,2, dno ≥82 % višine slike; okno) za enoklikovno umerjanje, pravilna klasifikacija obrti (točkovni sistem 8 kategorij), ravnine/objekti/materiali/tveganja/ocena kakovosti/predpolnitve (m) — vsi izpisi v slovenščini, enaka shema PhotoAnalysis.
+- src/app/api/analyze-photo/route.ts prepisan: sharp (rotate + resize 480 + ensureAlpha + raw) → analyzePhotoImage → suggestProducts (katalog). Brez timeouta 110 s, brez 429 logike — odziv ~170–250 ms, maxDuration 60. Odstranjen uvoz z-ai-web-dev-sdk.
+- src/lib/camera-types.ts: AI_CRAFTS → CRAFT_CATEGORIES, AICraft → CraftCategory, komentarji očiščeni.
+- Task 5-a (podagent): 39 besedilnih zamenjav v 8 datotekah (dashboard, analysis-panel, photo-capture, live-ar, camera-view — vključno z tab id 'ai' → 'analiza', photo-canvas, preview-3d, api/photos komentar). 0 preostalih \bAI\b nizov.
+- Dodatna preimenovanja identifikatorjev: sendToAi → sendToAnalysis, aiSurfaces → detectedSurfaces, applyAiSurface → applyDetectedSurface, aiHeightCm/aiDefaultHeightM → detectedHeightCm/detectedDefaultHeightM, key ai- → pred-/rav-, data-testid ai-analysis → photo-analysis.
+- Sintetične preverbe (/home/z/.cache/cv-check): scena 1 kopalnica (ploščice + vrata) → keramika 70 %, referenca vrata 200 cm z okvirjem [12,5; 11,5; 14,8; 72,4] % (točno), ravnina 5,35 m², prefill floorLength 2,94/floorWidth 1,84; scena 2 ograja (nebo + 8 stebrov + tračnika) → ograje 86 % + 10 stebrov + kovina; scena 3 uniformna siva → drugo, elegantna opomba brez crasha. Popravljene hibe: steklena maska preširoka (→ filter okvirjenosti), Hough prag preagresiven (→ 15 % krajše stranice), avtokorelacija ne videla delne mreže (→ vrhovi + mediana razmakov), aspectCloseness = 0 pri ozkih vratih (→ spodnji prag 0,25), prag teme 0,15 → 0,22, prag kovine pri materialih.
+- E2E z agent-browser: dashboard "Fotografiraj — samodejna analiza" ✓; zavihek "Zajem + analiza" ✓; nalaganje kopalnica.jpg → kontrola kakovosti ✓; analiza → Keramika 70 %, objekti "Vrata / vhod ≈ 51×200 cm" + "Polje ploščic", ravnina "≈ 5,35 m²", materiali (kovina, keramika), 1 tveganje (temni predeli = vrata, pravilno), obseg dela, referenca, meritve na terenu, priporočila skripte, 5 predlaganih izdelkov iz kataloga ✓; klik 2 točk → dialog "Predlog analize" + "Umeri samodejno po okvirju analize" → "Merilo umerjeno" ✓; galerija shrani "Keramika" + PATCH meritev ✓; body.innerText brez \bAI\b ✓; konzola brez napak ✓; footer naravno potisnjen na mobilnem 390×844 ✓; slike tests/e2e-noai-{analysis,mobile}.png; bun run lint čist; tsc čist (src).
+
+Stage Summary:
+- Projekt je 100 % brez AI odvisnosti: vsa "pamet" je v determinističnih skriptah računalniškega vida, ki delujejo vedno, takoj (~0,2 s), brez kvot, brez stroškov in brez omrežja.
+- Ključni artefakti: src/lib/cv-engine.ts (nov), src/app/api/analyze-photo/route.ts (prepisan), src/lib/camera-types.ts (preimenovani tipi), 8 komponent (očiščena besedila), tests/e2e-noai-*.png.
+- API shema (PhotoAnalysis) nespremenjena — kalkulatorji, prefill, umerjanje in shranjevanje delujejo kot prej; obstoječe shranjene analize ostanejo združljive (normalizePhotoAnalysis).
+- z-ai-web-dev-sdk ni več uvožen nikjer v src/ (package odvisnost ostane, a je neuporabljena).

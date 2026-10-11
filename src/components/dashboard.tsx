@@ -48,7 +48,7 @@ export function Dashboard() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Button size="lg" className="min-h-12" onClick={() => setView('kamera')}>
               <ScanSearch className="mr-2 h-5 w-5" />
-              Fotografiraj — AI prepozna
+              Fotografiraj — samodejna analiza
             </Button>
             <Button size="lg" variant="outline" className="min-h-12" onClick={() => { setActiveCraft(null); setView('kalkulatorji'); }}>
               <ClipboardList className="mr-2 h-5 w-5" />

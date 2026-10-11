@@ -21,7 +21,7 @@ export async function GET() {
   }
 }
 
-// POST — shrani fotografijo z AI analizo in merjenjem
+// POST — shrani fotografijo s samodejno analizo in merjenjem
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {

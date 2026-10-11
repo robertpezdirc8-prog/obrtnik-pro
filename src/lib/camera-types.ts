@@ -1,8 +1,8 @@
-// ─── Tipi za pametno kamero (AI analiza fotografije) ────────
+// ─── Tipi za pametno kamero (samodejna skriptna analiza) ────
 
 import type { CraftId, CraftInputs } from './types';
 
-export const AI_CRAFTS = [
+export const CRAFT_CATEGORIES = [
   'ograje',
   'stopnice',
   'keramika',
@@ -13,7 +13,7 @@ export const AI_CRAFTS = [
   'drugo',
 ] as const;
 
-export type AICraft = (typeof AI_CRAFTS)[number];
+export type CraftCategory = (typeof CRAFT_CATEGORIES)[number];
 
 /** En zaznani objekt na fotografiji (z okvirjem v % slike). */
 export interface DetectedObject {
@@ -33,7 +33,7 @@ export interface ReferenceObject {
   explanation: string;
 }
 
-/** Ravnina, ki jo je AI zaznal (stena, tla, terasa…) z oglišči v %. */
+/** Ravnina, ki jo je skripta zaznala (stena, tla, terasa…) z oglišči v %. */
 export interface DetectedSurface {
   label: string;
   /** 4 oglišča v % slike (urnjeni po obodu) ali null */
@@ -42,9 +42,9 @@ export interface DetectedSurface {
   note?: string;
 }
 
-/** Polna AI analiza fotografije – vrne jo /api/analyze-photo. */
+/** Polna analiza fotografije – vrne jo /api/analyze-photo. */
 export interface PhotoAnalysis {
-  craft: AICraft;
+  craft: CraftCategory;
   craftConfidence: number;
   sceneDescription: string;
   objects: DetectedObject[];
@@ -53,7 +53,7 @@ export interface PhotoAnalysis {
   referenceBox: [number, number, number, number] | null;
   /** Zaznane ravnine (stene, tla…) — uporabne za perspektivno kalibracijo. */
   surfaces: DetectedSurface[];
-  /** Materiali, ki jih je AI videl (steklo, aluminij, keramika…). */
+  /** Materiali, ki jih je skripta zaznala (steklo, aluminij, keramika…). */
   materials: string[];
   /** Napake / tveganja na objektu (rja, vlaga, poškodbe…). */
   hazards: string[];
@@ -127,7 +127,7 @@ export interface CameraPrefill {
   photoTitle?: string;
 }
 
-export const CRAFT_LABELS: Record<AICraft, string> = {
+export const CRAFT_LABELS: Record<CraftCategory, string> = {
   'ograje': 'Ograje',
   'stopnice': 'Stopnice',
   'keramika': 'Keramika',
