@@ -18,6 +18,7 @@
 
 import type { CraftCategory, DetectedObject, DetectedSurface, PhotoAnalysis } from './camera-types';
 import type { CraftInputs } from './types';
+import { detectPatternInQuad, type PatternSuggestion } from './pattern-detect';
 
 // ─── Javni tipi ─────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ interface Features {
   grid: GridInfo;
   stairPattern: boolean;
   stairSteps: number;
+  skyLargestFrac: number;
   glassBlobs: Blob[];
   darkBlobs: Blob[];
   framedDark: Blob[];
@@ -555,7 +557,9 @@ export function extractFeatures(img: RgbaImage): Features {
       const h = hue[i];
       const s = sat[i];
       const v = val[i];
-      if (y < H * 0.6 && s < 0.28 && v > 0.55) {
+      // Nebo = modri toni (h 185–260°). Bele stene/odsevi imajo nizko
+      // nasičenost — prej so lažno šteli kot nebo (vse fotke "outdoor").
+      if (y < H * 0.75 && h >= 185 && h <= 260 && s > 0.15 && v > 0.35) {
         skyMask[i] = 1;
         skyC++;
       }
@@ -730,7 +734,12 @@ export function extractFeatures(img: RgbaImage): Features {
   }
 
   const skyFrac = skyC / N;
-  const outdoor = skyFrac > 0.08;
+  // Največji povezani nebni blob (odsevi neba v oknih so mali CC-ji —
+  // pravo nebo je ena velika regija na vrhu slike).
+  const skyBlobs = connectedComponents(skyMask, W, H, Math.round(N * 0.02));
+  const skyLargestFrac = (skyBlobs[0]?.area ?? 0) / N;
+  // Zunanjost = velika nebna regija (modri toni) ALI veliko zelenja.
+  const outdoor = skyLargestFrac > 0.06 || greenC / N > 0.1;
 
   return {
     W,
@@ -753,6 +762,7 @@ export function extractFeatures(img: RgbaImage): Features {
     grid,
     stairPattern,
     stairSteps,
+    skyLargestFrac,
     glassBlobs,
     darkBlobs,
     framedDark,
@@ -779,18 +789,25 @@ interface CraftScores {
   scores: Record<CraftCategory, number>;
 }
 
-/** Število okenih odprtin (stekleni CC z okenskim razmerjem stranic). */
+/**
+ * Število okenih odprtin: stekleni IN temni CC z okenskim razmerjem
+ * stranic. Temne odprtine so ključne na svetlih fasadah (okna izgledajo
+ * temno, ne steklo) — prej jih klasifikacija sploh ni videla.
+ */
 function countWindows(f: Features): number {
-  return f.glassBlobs.filter((b) => {
+  const isWin = (b: Blob, minAf: number) => {
     const bw = b.x1 - b.x0 + 1;
     const bh = b.y1 - b.y0 + 1;
     const aspect = bh / bw;
     const areaFrac = b.area / (f.W * f.H);
-    return aspect >= 0.55 && aspect <= 1.9 && areaFrac >= 0.012 && areaFrac <= 0.35 && b.fill >= 0.5;
-  }).length;
+    return aspect >= 0.55 && aspect <= 1.9 && areaFrac >= minAf && areaFrac <= 0.35 && b.fill >= 0.5;
+  };
+  // Temna okna imajo nižji prag (okna na daljših fasadah so na delovni
+  // ločljivosti majhna — 0,8 % slike je še veljavno okno).
+  return f.glassBlobs.filter((b) => isWin(b, 0.012)).length + f.framedDark.filter((b) => isWin(b, 0.007)).length;
 }
 
-function classifyCraft(f: Features): CraftScores {
+export function classifyCraft(f: Features, structure: PatternSuggestion | null): CraftScores {
   const scores: Record<CraftCategory, number> = {
     'ograje': 0,
     'stopnice': 0,
@@ -804,51 +821,108 @@ function classifyCraft(f: Features): CraftScores {
 
   const vCount = f.verticals.length;
   const hCount = f.horizontals.length;
+  const dgCount = f.diagonals.length;
   const windowCount = countWindows(f);
   const wideGlass = f.glassBlobs.some((b) => {
     const bw = b.x1 - b.x0 + 1;
     const bh = b.y1 - b.y0 + 1;
     return bw > f.W * 0.35 && bh > f.H * 0.12 && bh < f.H * 0.55 && b.fill > 0.55;
   });
+  const N = f.W * f.H;
 
-  // Keramika: pravilna mreža na obeh oseh, notranji prostor
+  // ── Struktura (detektor vzorcev): kvazi-periodična tekstura ──
+  // Standardni pristop za ograje/mreže ("fence-like quasi-periodic texture").
+  // Samo srednje/visoke zaznave štejejo — nizke pomenijo iskreno "ne vem".
+  const structStrong =
+    structure?.confidence === 'visoka' ? 2 : structure?.confidence === 'srednja' ? 1 : 0;
+  if (structure && structStrong > 0) {
+    if (structure.pattern === 'vertikalne') {
+      if (f.outdoor) scores['ograje'] += 10 + 4 * structStrong;
+      else scores['okna-vrata'] += 4;
+    } else if (structure.pattern === 'horizontalne') {
+      if (f.woodFrac > 0.3 && !f.stairPattern) scores['wpc-terasa'] += 8 + 8 * structStrong;
+      else if (f.outdoor && f.woodFrac <= 0.3) scores['ograje'] += 7 * structStrong;
+    } else if (structure.pattern === 'mreza') {
+      if (f.outdoor) scores['ograje'] += 6 * structStrong;
+      else scores['keramika'] += 8 * structStrong;
+    } else if (structure.pattern === 'vozlik') {
+      if (f.outdoor) scores['ograje'] += 6 * structStrong;
+    } else if (structure.pattern === 'lamele45') {
+      if (f.outdoor) scores['nadstreški'] += 5 * structStrong;
+    } else if (structure.pattern === 'panel') {
+      if (f.outdoor) scores['fasada'] += 4 * structStrong;
+    }
+  }
+
+  // Keramika: pravilna mreža na obeh oseh (fuge), notranji prostor
   if (f.grid.both) {
-    scores['keramika'] += 45 + 25 * Math.min(f.grid.confX, f.grid.confY);
+    scores['keramika'] += 40 + 22 * Math.min(f.grid.confX, f.grid.confY);
     if (!f.outdoor) scores['keramika'] += 12;
+  }
+  // Velikformatne ploščice/obloge: množica navpičnih fug, malo horizontalnih
+  // (perspektiva poševnega pogleda), svetla nevtralna površina, brez lesa
+  if (vCount >= 8 && hCount <= 3 && dgCount <= 6 && f.glassFrac > 0.4 && f.woodFrac < 0.08) {
+    scores['keramika'] += 26 + (f.glassFrac > 0.5 ? 14 : 0) + (vCount >= 12 ? 8 : 0);
   }
 
   // WPC / lesena terasa: topla barva + vzporedne črte
   const lowerWood = f.woodBlobs.reduce((s, b) => {
     const bh = b.y1 - b.y0 + 1;
     return s + (b.cy > f.H * 0.4 ? b.area : b.area * 0.4);
-  }, 0) / (f.W * f.H);
+  }, 0) / N;
   if (lowerWood > 0.22) {
     scores['wpc-terasa'] += 28 + 22 * Math.min(1, (lowerWood - 0.22) * 2);
     if (f.grid.single) scores['wpc-terasa'] += 18;
     if (f.outdoor) scores['wpc-terasa'] += 8;
   }
 
-  // Ograje: navpični stebri/letve, široko stekleno polje, prostor za
-  if (vCount >= 4) scores['ograje'] += 16 + 4 * Math.min(vCount, 12);
-  if (vCount >= 4 && f.outdoor) scores['ograje'] += 14;
-  if (vCount >= 4 && hCount >= 1 && hCount <= 4) scores['ograje'] += 10;
+  // Ograje: navpični stebri/letve. Zmerna osnova — vertikale so POVSYOD
+  // (okvirji oken, fuge), zato računamo samo s kontekstom: zunanjost,
+  // široko stekleno polje ali izrazita perioda (struktura zgoraj).
+  if (vCount >= 4) scores['ograje'] += 8 + 2 * Math.min(vCount, 8);
+  if (vCount >= 4 && f.outdoor) scores['ograje'] += 12;
+  if (vCount >= 4 && hCount >= 1 && hCount <= 4) scores['ograje'] += 8;
   if (wideGlass && vCount >= 2) scores['ograje'] += 26;
   if (wideGlass && f.outdoor) scores['ograje'] += 8;
+  // Steklena balkonska ograja/balustrada: veliko stekla + kovinski profili +
+  // diagonalna perspektiva ročajev, brez zelenja in brez vrata v kadru
+  // (nadstrešek nad vhodom ima prav vrata pod steklom — to ločimo).
+  if (dgCount >= 8 && f.glassFrac > 0.25 && f.metalFrac > 0.4 && f.greenFrac < 0.05 && !f.bestDoor) {
+    scores['ograje'] += 30;
+  }
 
-  // Stopnice
-  if (f.stairPattern) scores['stopnice'] += 58;
+  // Stopnice: vzorec stopenj (sklad horizontalnih linij + diagonale);
+  // lesene v zaprtih prostorih (brez neba) so neambivalentne
+  if (f.stairPattern) {
+    scores['stopnice'] += 58;
+    if (f.woodFrac > 0.25 && f.metalFrac > 0.25 && f.skyLargestFrac < 0.06) scores['stopnice'] += 34;
+  }
 
-  // Okna/vrata: zaznane odprtine
-  if (windowCount >= 1) scores['okna-vrata'] += 18 + 8 * Math.min(windowCount, 5);
-  if (f.bestDoor) scores['okna-vrata'] += 16;
-  if (windowCount >= 2 && !f.outdoor) scores['okna-vrata'] += 10;
+  // Okna/vrata: zaznane odprtine (steklo IN temne)
+  if (windowCount >= 1) scores['okna-vrata'] += 18 + 7 * Math.min(windowCount, 4);
+  if (f.bestDoor) scores['okna-vrata'] += 12;
+  if (windowCount >= 2 && !f.outdoor && !f.bestDoor) scores['okna-vrata'] += 10;
+  // Okenska stena: množica vertikalnih + horizontalnih okvirjev, svetla
+  // površina (steklo/odsev), skoraj brez diagonal
+  if (vCount >= 5 && hCount >= 4 && dgCount <= 3 && f.glassFrac > 0.35) {
+    scores['okna-vrata'] += 34;
+  }
 
-  // Nadstreški: diagonale + nebo skozi konstrukcijo
-  if (f.diagonals.length >= 3 && f.outdoor && f.skyFrac > 0.15) scores['nadstreški'] += 22;
-  if (f.outdoor && hCount >= 1 && vCount >= 2 && f.skyFrac > 0.12) scores['nadstreški'] += 14;
+  // Nadstreški: diagonale + nebo skozi konstrukcijo; ALI steklo nad vrati
+  if (dgCount >= 3 && f.outdoor && f.skyFrac > 0.15) scores['nadstreški'] += 22;
+  // Nadstrešek nad vhodom: veliko stekla + diagonale (robovi strehe)
+  // + vrata pod njim; več stekla = močnejši dokaz
+  if (dgCount >= 6 && f.glassFrac > 0.3 && f.bestDoor) {
+    scores['nadstreški'] += 40 + (f.glassFrac > 0.4 ? 8 : 0);
+  }
+  if (f.outdoor && hCount >= 1 && vCount >= 3 && f.skyFrac > 0.12) scores['nadstreški'] += 14;
 
-  // Fasada: velika ravna površina + okna + zunanjost
-  if (f.flatBlob && f.flatBlob.area / (f.W * f.H) > 0.3 && windowCount >= 1 && f.outdoor) scores['fasada'] += 38;
+  // Fasada: okna/odprtine + zunanjost, brez vrata v ospredju (to je
+  // nadstrešek). Na svetli fasadi so okna temne odprtine — countWindows
+  // jih zdaj šteje.
+  if (windowCount >= 1 && f.outdoor && !f.bestDoor && dgCount >= 2) {
+    scores['fasada'] += 24 + 8 * Math.min(windowCount, 5);
+  }
   if (f.flatFrac > 0.5) scores['fasada'] += 10;
   if (f.outdoor && f.edgeDensity < 0.05 && windowCount >= 1) scores['fasada'] += 10;
 
@@ -911,7 +985,16 @@ function centralQuad(xm = 12, yt = 18, yb = 88): [number, number][] {
  */
 export function analyzePhotoImage(img: RgbaImage): PhotoAnalysis {
   const f = extractFeatures(img);
-  const { craft, confidence } = classifyCraft(f);
+  // Strukturni pregled osrednjega območja (detektor vzorcev — kvazi-
+  // periodična tekstura, orientacijski histogram + avtokorelacija).
+  // Podpira klasifikacijo in dokumentira, KAJ je na fotki.
+  const structure = detectPatternInQuad(img, [
+    { x: 14, y: 14 },
+    { x: 86, y: 14 },
+    { x: 86, y: 86 },
+    { x: 14, y: 86 },
+  ]);
+  const { craft, confidence } = classifyCraft(f, structure);
   const N = f.W * f.H;
   const windowCount = countWindows(f);
 
@@ -1109,6 +1192,61 @@ export function analyzePhotoImage(img: RgbaImage): PhotoAnalysis {
     });
   }
 
+  // Temne okenske odprtine (svetla fasada) — prej nevidne v objektih
+  let darkWinIdx = 0;
+  for (const b of f.framedDark) {
+    const bw = b.x1 - b.x0 + 1;
+    const bh = b.y1 - b.y0 + 1;
+    const aspect = bh / bw;
+    const areaFrac = b.area / N;
+    if (aspect >= 0.55 && aspect <= 1.9 && areaFrac >= 0.012 && areaFrac <= 0.35 && b.fill >= 0.5 && darkWinIdx < 2) {
+      darkWinIdx++;
+      push({
+        label: 'Okno / temna odprtina',
+        count: 1,
+        box: blobToBox(b, f.W, f.H),
+        estWidthCm: blobLenCm(bw),
+        estHeightCm: blobLenCm(bh),
+        note: 'Temna pravokotna odprtina z okvirjem — tipično okno na fasadi.',
+      });
+    }
+  }
+
+  // Struktura površine (detektor vzorcev) — dokumentira obstoječi vzorec
+  if (structure && structure.confidence !== 'nizka') {
+    let pitchNote = `Zanesljivost: ${structure.confidence}.`;
+    if (structure.pitchPx !== null) {
+      const pxPerCmFull = pxPerCm * (img.width / f.W);
+      const pitchCm = pxPerCmFull > 0 ? Math.round((structure.pitchPx / pxPerCmFull) * 10) / 10 : null;
+      pitchNote =
+        pitchCm !== null && pitchCm >= 3 && pitchCm <= 60
+          ? `Zanesljivost: ${structure.confidence} · razmak elementov ≈ ${pitchCm.toLocaleString('sl-SI')} cm.`
+          : `Zanesljivost: ${structure.confidence} · perioda ≈ ${structure.pitchPx} px.`;
+    }
+    push({
+      label: `Vzorec: ${structure.detail}`,
+      count: 1,
+      box: null,
+      estWidthCm: null,
+      estHeightCm: null,
+      note: pitchNote,
+    });
+  }
+
+  // Steklena balustrada (dokaz za ograde)
+  const glassBalustrade =
+    f.diagonals.length >= 8 && f.glassFrac > 0.25 && f.metalFrac > 0.4 && f.greenFrac < 0.05 && !f.bestDoor;
+  if (craft === 'ograje' && glassBalustrade) {
+    push({
+      label: 'Steklena ograja / balustrada',
+      count: 1,
+      box: null,
+      estWidthCm: null,
+      estHeightCm: null,
+      note: 'Veliko prozornih površin + kovinski profili + diagonalna perspektiva ročajev.',
+    });
+  }
+
   // ── Materiali ──
   const materials: string[] = [];
   if (f.woodFrac > 0.18) materials.push('les / WPC');
@@ -1195,16 +1333,16 @@ export function analyzePhotoImage(img: RgbaImage): PhotoAnalysis {
       break;
     }
     case 'ograje': {
+      const wideGlassB = f.glassBlobs.find((b) => (b.x1 - b.x0 + 1) > f.W * 0.35);
+      if (wideGlassB) setP('material', 'steklo');
+      else if (f.metalFrac > 0.3 && f.woodFrac < 0.1) setP('material', 'alu');
       if (pxPerCm > 0) {
         const bandW = blobLenCm(f.W * 0.7);
         if (bandW) setP('length', round2(clamp(bandW / 100, 1, 80)));
-        const wideGlassB = f.glassBlobs.find((b) => (b.x1 - b.x0 + 1) > f.W * 0.35);
         if (wideGlassB) {
           const h = blobLenCm(wideGlassB.y1 - wideGlassB.y0 + 1);
           if (h) setP('height', round2(clamp(h / 100, 0.9, 3)));
         }
-        if (wideGlassB) setP('material', 'steklo');
-        else if (f.metalFrac > 0.3 && f.woodFrac < 0.1) setP('material', 'alu');
       }
       break;
     }
@@ -1242,6 +1380,12 @@ export function analyzePhotoImage(img: RgbaImage): PhotoAnalysis {
   else if (f.grid.single) descParts.push('Zaznane vzporedne črte — tipično deske ali letve.');
   if (f.verticals.length >= 3) descParts.push(`${f.verticals.length} izrazitih navpičnih struktur (stebri/okvirji).`);
   if (f.stairPattern) descParts.push(`Vzorec stopnic z ≈ ${f.stairSteps} stopnjami.`);
+  if (structure && structure.confidence !== 'nizka') {
+    descParts.push(`Vzorčna skripta: ${structure.detail.toLowerCase()} (zanesljivost ${structure.confidence}).`);
+  }
+  if (craft === 'ograje' && f.diagonals.length >= 8 && f.glassFrac > 0.25 && f.metalFrac > 0.4 && f.greenFrac < 0.05 && !f.bestDoor) {
+    descParts.push('Skripta prepozna stekleno ograjo/balustrado (steklo + kovina + diagonalni ročaji).');
+  }
   if (reference) descParts.push(`Referenca za merilo: ${reference.label.toLowerCase()} (${reference.assumedCm} cm).`);
   else descParts.push('Zanesljive reference za umerjanje ni — umeri merilo ročno (znana dolžina).');
   const sceneDescription = descParts.join(' ');
