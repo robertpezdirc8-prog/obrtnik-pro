@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -47,6 +47,7 @@ import { VoiceInput } from './voice-input';
 import { WebXrAr } from './webxr-ar';
 import { Measure3dPreview } from './preview-3d';
 import { PostLayoutPanel } from './post-layout-panel';
+import { StairPanel } from './stair-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
@@ -265,6 +266,17 @@ export function CameraView() {
       craft: craft as CraftId,
       inputs,
       photoTitle: `Vizualizacija — ${CRAFT_LABELS[craft]}`,
+    });
+    setView('kalkulatorji');
+  };
+
+  // Stopnični profil → kalkulator stopnic (meritvena skripta, 0 AI)
+  const openCalcStairs = (inputs: { steps?: number; totalRiseCm?: number; railingLength?: number }) => {
+    setActiveCraft('stopnice');
+    setCameraPrefill({
+      craft: 'stopnice',
+      inputs,
+      photoTitle: 'Stopnice — samodejni profil s fotke',
     });
     setView('kalkulatorji');
   };
@@ -789,6 +801,31 @@ export function CameraView() {
               </CardContent>
             </Card>
           )}
+
+          {/* Stopnice — samodejni profil iz fotke (meritvena skripta, 0 AI) */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Footprints className="h-4 w-4 text-primary" />
+                  Stopnice — samodejni profil
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Iz fotke prešteje stopnice in (s kalibracijo) izmeri višino stopnice, teka,
+                  višinsko razliko in dolžino ograje — s kontrolo udobja 2R+G (Blondel).
+                </p>
+              </div>
+              <StairPanel
+                dataUrl={photoUrl}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                onSendToCalculator={openCalcStairs}
+              />
+            </CardContent>
+          </Card>
         </div>
       )}
 
