@@ -554,3 +554,23 @@ Stage Summary:
 - Dokumenta kamere ("Predlog za stranko" in "Merilni list") zdaj nosita LASTNO ZNAMKO obrtnika — ime obrata, kontakt in logotip se od čista branje iz Nastavitev (brez ponovnega razvijanja: kdo že ima vpisano podjetje, dobi oba dokumenta takoj v svoji znamki). To je zadnji profesionalni povodec do stranke: Hover poročilo z znamko podjetja, pri nas čisto skriptno. Brez podatkov ostane nevtralno "Obrtnik Pro".
 - Ključni artefakti: viz-proposal.ts (ProposalCompany + 3 varianti glave), measure-sheet.ts (isti vzorec), camera-view.tsx (fetch nastavitev + logo), viz-panel.tsx (prop).
 - Push: glej naslednji commit (main).
+
+---
+Task ID: 23
+Agent: main (Z.ai Code)
+Task: Nadaljnja nadgradnja kamere ("odlicno nadaljuj" po Task 22) — PROJEKTNI PREDLOG ZA STRANKO: N pred/po parov (različne fotke) v ENEM dokumentu s skupno grobo oceno. Viz-stanje se shrani k fotki, "po" stran pa se deterministično ponari iz plasti. Strogo 0 AI.
+
+Work Log:
+- Motivacija: enojni "Predlog za stranko" (Task 18) pokriva samo trenutno fotko; Hover standard za CEL projekt = eno poročilo z vsemi območji. Fotke z analizo so že združene v "Projekt iz fotografij" (seštevek postavk) — manjkalo je vizualno-ocenjevalno poročilo za vse fotke skupaj.
+- prisma/schema.prisma: Photo.vizState String? → db push (+ generate). PATCH /api/photos/[id]: sprejme measurements IN/ALI vizState (40 KB strop).
+- src/lib/viz-project-proposal.ts (NOV): buildVizProjectProposal({pairs, company, note}) → A4-portrait 1240 px, dinamična višina: glava (3 variantne znamke kot enojni predlog) → do 4 parov (PAIR_H 300, cover obrez) z napiskom "F1 · vzorec · barva · mere" → GROBA OCENA po fotkah (FOTKA | PREDLOG | MERE | SKUPAJ + temna vrstica SKUPAJ = vsota) → noga ("Pripravil: …" + disclaimer). printProjectProposalCanvas = isti tisk vzorec.
+- viz-panel.tsx: prop photoId; "Predlog v galerijo" ZDAJ tudi PATCH /api/photos/:id {vizState: {craft, layers: renderLayers, dimsCm: quoteDims, existingHex}} — plasti so čisti JSON (quad %, pattern, colorId, params) → "po" stran je kasneje DETERMINISTIČNO ponarljiva (drawLayersOnQuad), brez shranjevanja slike.
+- camera-view.tsx: prop photoId={lastPhotoId}; v projektni kartici 2 nova gumba: "Predlog za cel projekt" (tisk; testid project-proposal) + "v galerijo" (project-proposal-save). buildProjectPairs(): fotke z vizState (max 4) → za vsako loadImage(dataUrl) → offscreen canvas (1000 px) → drawLayersOnQuad(octx, img, layers, craft) → dims iz shranjenega dimsCm (ali quadDimsFromWidthCm) → ocena runCalculator(craft, craftInputsFromQuad) samo kadar craft ≠ 'drugo' in dims znane; pokvarjeno viz-stanje se preskoči.
+- LEKCIJA (okolje): restart dev strežnika po db push — tekoči proces ima STAR generated Prisma client v pomnilniku (PATCH je vrnil 404 tudi po uspešnem db push). Pravilen vzorec zagona v tem peskovniku: (setsid bun run dev >> dev.log 2>&1 < /dev/null &) — dvojni fork preživi med klici; navaden nohup& NE.
+- LEKCIJA (E2E): "Nova fotografija" gumb je samo v zavihku "Zajem + analiza" — najprej preklop zavihka, nato klik; sicer b === undefined.
+- E2E agent-browser: A) ogrje.jpg → analiza → Vizualizer → "Predlog v galerijo" → PATCH preverjen: vizState {ogrje, 1 plast, dims 600 cm} ✓; B) wpc-terasa.jpg → isti tok → 2 fotki z živim viz-stanjem ✓; projektna kartica → "v galerijo" → dokument "Projektni predlog — 2 fotografiji" (267 KB): F1 WPC deke/tikovina 2392,12 € + F2 Vertikalne palice/RAL 7016 1342,00 €, napiski z merami 6 × 1,9 m, temna vrstica SKUPAJ 3734,12 € brez DDV (= točna vsota) ✓ — "po" strani deterministično ponarjene iz shranjenih plasti ✓ (tests/e2e-t23-project.jpg); tisk gumb prisoten; mobilni 390×844 sw 390 + gumba vidna ✓ (e2e-t23-mobile.png); tsc (src) + eslint čista; dev.log brez napak.
+
+Stage Summary:
+- Kamera zaprla PROJEKTNO zanko: obrtnik vizualizira več fotk (ograja + terasa …), vsak "Predlog v galerijo" pa hkrati shrani viz-stanje k fotki. En klik "Predlog za cel projekt" zgradi EN dokument z vsemi pred/po pari, specifikacijo po fotkah in SKUPAJ brez DDV — celoten projekt v Hover-slogu, pri tem pa je vsaka "po" stran čisto skriptna rekonstrukcija (plasti iz JSON + drawLayersOnQuad), ocene pa determinističen izpis kalkulatorja. Znamka obrtnika (Task 22) se seveda prenese tudi na projektni dokument.
+- Ključni artefakti: prisma (vizState), PATCH route, src/lib/viz-project-proposal.ts (NOV), viz-panel.tsx (photoId + shranjevanje stanja), camera-view.tsx (projektna kartica + ponarjanje).
+- Push: glej naslednji commit (main).

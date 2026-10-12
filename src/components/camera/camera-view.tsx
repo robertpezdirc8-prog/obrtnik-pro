@@ -25,6 +25,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
 import { buildProjectFromPhotos, type ProjectSummary } from '@/lib/photo-project';
+import { buildVizProjectProposal, printProjectProposalCanvas, type ProjectPairSpec } from '@/lib/viz-project-proposal';
+import { drawLayersOnQuad, quadDimsFromWidthCm, VIZ_STYLES, VIZ_COLORS, craftInputsFromQuad, type VizLayer } from '@/lib/viz';
+import { runCalculator } from '@/lib/pricing';
+import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
 import { formatEUR } from '@/lib/format';
 import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind, type CraftCategory } from '@/lib/camera-types';
 import type { CraftId, CraftInputs } from '@/lib/types';
@@ -54,6 +58,7 @@ interface PhotoRecord {
   dataUrl: string;
   analysis: string | null;
   measurements: string | null;
+  vizState?: string | null;
   createdAt: string;
 }
 
@@ -430,6 +435,107 @@ export function CameraView() {
     setView('ponudbe');
   };
 
+  // ── Projektni predlog za stranko: N pred/po parov v ENEM dokumentu ──
+  // Za vsako fotko z viz-stanjem deterministično ponari "po" stran
+  // (drawLayersOnQuad iz shranjenih plasti) in prešteje grobo oceno.
+  const [projPropBusy, setProjPropBusy] = useState(false);
+
+  const buildProjectPairs = async (): Promise<ProjectPairSpec[] | null> => {
+    const sources = (gallery ?? []).filter((p) => p.vizState).slice(0, 4);
+    if (sources.length === 0) return null;
+    const pairs: ProjectPairSpec[] = [];
+    for (let i = 0; i < sources.length; i++) {
+      const rec = sources[i];
+      try {
+        const st = JSON.parse(rec.vizState!) as {
+          craft: CraftCategory;
+          layers: VizLayer[];
+          dimsCm: { topW: number; botW: number; leftH: number; rightH: number } | null;
+          existingHex: string | null;
+        };
+        if (!st.layers || st.layers.length === 0) continue;
+        const img = await loadImage(rec.dataUrl);
+        const maxSide = 1000;
+        const sc = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(2, Math.round(img.naturalWidth * sc));
+        const h = Math.max(2, Math.round(img.naturalHeight * sc));
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        const octx = off.getContext('2d');
+        if (!octx) continue;
+        octx.drawImage(img, 0, 0, w, h);
+        drawLayersOnQuad(octx, img, st.layers, st.craft);
+        const l0 = st.layers[0];
+        const d = st.dimsCm ?? quadDimsFromWidthCm(l0.quad, w, h, l0.params.quadWidthCm);
+        const fmtM = (cm: number): string => (cm / 100).toLocaleString('sl-SI', { maximumFractionDigits: 1 });
+        const dimsLabel = d ? `${fmtM((d.topW + d.botW) / 2)} × ${fmtM((d.leftH + d.rightH) / 2)} m` : '—';
+        const colorLabel = l0.customHex ?? VIZ_COLORS.find((c) => c.id === l0.colorId)?.label ?? l0.colorId;
+        const patternLabel = VIZ_STYLES.find((s) => s.id === l0.pattern)?.label ?? l0.pattern;
+        let estimateTotal: number | null = null;
+        if (st.craft !== 'drugo' && d) {
+          try {
+            const inp = { ...CRAFT_INPUT_DEFAULTS, ...craftInputsFromQuad(st.craft as CraftId, d) } as CraftInputs;
+            const res = runCalculator(st.craft as CraftId, inp, 35);
+            const total = res.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+            if (res.lines.length > 0 && total > 0) estimateTotal = total;
+          } catch { /* ocena ne sme ustaviti dokumenta */ }
+        }
+        pairs.push({
+          id: `F${i + 1}`,
+          craftLabel: CRAFT_LABELS[st.craft] ?? st.craft,
+          beforeImg: img,
+          afterCanvas: off,
+          summary: `${patternLabel} · ${colorLabel}${st.layers.length > 1 ? ` (+${st.layers.length - 1} območij)` : ''}`,
+          dimsLabel,
+          estimateTotal,
+        });
+      } catch {
+        /* pokvarjeno viz-stanje preskočimo */
+      }
+    }
+    return pairs.length > 0 ? pairs : null;
+  };
+
+  const openProjectProposal = async (mode: 'print' | 'gallery') => {
+    setProjPropBusy(true);
+    try {
+      const pairs = await buildProjectPairs();
+      if (!pairs) {
+        toast({
+          title: 'Ni vizualizacij za projekt',
+          description: 'Odprite Vizualizer in shranite "Predlog v galerijo" pri vsaki fotki.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      const doc = buildVizProjectProposal({ pairs, company });
+      if (!doc) return;
+      if (mode === 'print') {
+        if (!printProjectProposalCanvas(doc, 'Projektni predlog — za stranko')) {
+          toast({ title: 'Pojavno okno je blokirano', description: 'Dovoli pojavna okna ali uporabi "v galerijo".', variant: 'destructive' });
+        }
+      } else {
+        await fetch('/api/photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: `Projektni predlog — ${pairs.length} ${pairs.length === 1 ? 'fotografija' : pairs.length <= 4 ? 'fotografije' : 'fotografij'}`,
+            craftId: 'drugo',
+            dataUrl: doc.toDataURL('image/jpeg', 0.85),
+          }),
+        });
+        toast({ title: 'Projektni predlog v galerijo ✓', description: `${pairs.length} pred/po parov v enem dokumentu.` });
+        loadGallery();
+      }
+    } catch {
+      toast({ title: 'Projektni predlog ni uspel', variant: 'destructive' });
+    } finally {
+      setProjPropBusy(false);
+    }
+  };
+
+
   const tabs: Array<[CameraTab, string, React.ReactNode]> = [
     ['analiza', 'Zajem + analiza', <ScanSearch key="i" className="h-4 w-4" />],
     ['ar', 'AR merjenje', <Ruler key="i" className="h-4 w-4" />],
@@ -739,6 +845,7 @@ export function CameraView() {
                 onSaved={loadGallery}
                 measuresSummary={vizMeasures}
                 company={company}
+                photoId={lastPhotoId}
               />
             </CardContent>
           </Card>
@@ -850,10 +957,34 @@ export function CameraView() {
                   {project.skippedPhotos > 0 && <> · {project.skippedPhotos} preskočenih</>}
                 </p>
               </div>
-              <Button size="sm" className="min-h-10" onClick={collectProject} data-testid="collect-project">
-                <PackagePlus className="mr-2 h-4 w-4" />
-                Zberi v ponudbo
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" className="min-h-10" onClick={collectProject} data-testid="collect-project">
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Zberi v ponudbo
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-10"
+                  disabled={projPropBusy}
+                  onClick={() => void openProjectProposal('print')}
+                  data-testid="project-proposal"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  {projPropBusy ? 'Pripravljam…' : 'Predlog za cel projekt'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-10"
+                  disabled={projPropBusy}
+                  onClick={() => void openProjectProposal('gallery')}
+                  data-testid="project-proposal-save"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  v galerijo
+                </Button>
+              </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {project.groups.map((g) => (

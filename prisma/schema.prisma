@@ -96,6 +96,7 @@ model Photo {
   dataUrl      String
   analysis     String?
   measurements String?
+  vizState     String?
   createdAt    DateTime @default(now())
 }
 

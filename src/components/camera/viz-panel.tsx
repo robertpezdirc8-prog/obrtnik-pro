@@ -65,6 +65,8 @@ interface VizPanelProps {
   measuresSummary?: ProposalMeasureRow[];
   /** Podatki obrtnika (iz Nastavitev) — dokument nosi NJEGOVO znamko. */
   company?: ProposalCompany | null;
+  /** ID izvorne fotke v galeriji — vanjo se shrani viz-stanje (za projektni predlog). */
+  photoId?: string | null;
 }
 
 type Quad = [number, number][];
@@ -90,7 +92,7 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
 interface CustomColor { id: string; hex: string }
 const MAX_CUSTOM = 3;
 
-export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved, measuresSummary = [], company = null }: VizPanelProps) {
+export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved, measuresSummary = [], company = null, photoId = null }: VizPanelProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -713,6 +715,24 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
         }),
       });
       if (!res.ok) throw new Error();
+      // Viz-stanje tudi k IZVORNI fotki → projektni predlog lahko
+      // deterministično ponari "po" stran za vse fotke (0 AI).
+      if (photoId) {
+        try {
+          await fetch(`/api/photos/${photoId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              vizState: JSON.stringify({
+                craft,
+                layers: renderLayers,
+                dimsCm: quoteDims,
+                existingHex: existingHex ?? null,
+              }),
+            }),
+          });
+        } catch { /* viz-stanje ni kritično */ }
+      }
       toast({ title: 'Predlog shranjen v galerijo ✓', description: 'Pripravljen za pošiljanje stranki.' });
       onSaved?.();
     } catch {

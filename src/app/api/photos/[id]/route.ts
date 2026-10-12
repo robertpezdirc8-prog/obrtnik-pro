@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// ─── PATCH /api/photos/[id] — posodobi meritve ──────────────
+// ─── PATCH /api/photos/[id] — posodobi meritve / viz-stanje ──
 
 export async function PATCH(
   req: Request,
@@ -11,13 +11,18 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body = (await req.json()) as { measurements?: unknown };
-    if (typeof body.measurements !== 'string') {
-      return NextResponse.json({ error: 'Manjkajo meritve (JSON niz).' }, { status: 400 });
+    const body = (await req.json()) as { measurements?: unknown; vizState?: unknown };
+    const measurements = typeof body.measurements === 'string' ? body.measurements.slice(0, 20_000) : undefined;
+    const vizState = typeof body.vizState === 'string' ? body.vizState.slice(0, 40_000) : undefined;
+    if (measurements === undefined && vizState === undefined) {
+      return NextResponse.json({ error: 'Manjkajo meritve ali viz-stanje (JSON niz).' }, { status: 400 });
     }
     await db.photo.update({
       where: { id },
-      data: { measurements: body.measurements.slice(0, 20_000) },
+      data: {
+        ...(measurements !== undefined ? { measurements } : {}),
+        ...(vizState !== undefined ? { vizState } : {}),
+      },
     });
     return NextResponse.json({ ok: true });
   } catch {
