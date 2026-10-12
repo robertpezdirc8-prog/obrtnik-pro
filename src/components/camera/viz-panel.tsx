@@ -41,7 +41,7 @@ import {
 } from '@/lib/viz';
 import {
   buildVizProposal, printProposalCanvas,
-  type ProposalLayerSpec, type ProposalMeasureRow, type ProposalEstimate,
+  type ProposalLayerSpec, type ProposalMeasureRow, type ProposalEstimate, type ProposalCompany,
 } from '@/lib/viz-proposal';
 import { detectPatternInQuad, type PatternSuggestion } from '@/lib/pattern-detect';
 import { runCalculator } from '@/lib/pricing';
@@ -63,6 +63,8 @@ interface VizPanelProps {
   onSaved?: () => void;
   /** Povzetek meritev s fotke (za predlog za stranko) — iz kamere. */
   measuresSummary?: ProposalMeasureRow[];
+  /** Podatki obrtnika (iz Nastavitev) — dokument nosi NJEGOVO znamko. */
+  company?: ProposalCompany | null;
 }
 
 type Quad = [number, number][];
@@ -88,7 +90,7 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
 interface CustomColor { id: string; hex: string }
 const MAX_CUSTOM = 3;
 
-export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved, measuresSummary = [] }: VizPanelProps) {
+export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved, measuresSummary = [], company = null }: VizPanelProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -672,6 +674,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
           : null,
       measures: measuresSummary.length > 0 ? measuresSummary : undefined,
       estimate,
+      company,
     });
   };
 

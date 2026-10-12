@@ -33,7 +33,7 @@ import {
   buildPrefillFromMeasures, downloadMeasuresCsv, formatCm, formatM2, formatDeg, measuresToText,
 } from '@/lib/measure-geometry';
 import { buildMeasureSheet, loadImage } from '@/lib/measure-sheet';
-import type { ProposalMeasureRow } from '@/lib/viz-proposal';
+import type { ProposalMeasureRow, ProposalCompany } from '@/lib/viz-proposal';
 import { PhotoCapture } from './photo-capture';
 import { PhotoCanvas } from './photo-canvas';
 import { AnalysisPanel } from './analysis-panel';
@@ -89,6 +89,32 @@ export function CameraView() {
   const [barSuggest, setBarSuggest] = useState<VizBarSuggest | null>(null);
 
   const [gallery, setGallery] = useState<PhotoRecord[] | null>(null);
+
+  // Podatki obrtnika (Nastavitve) → merilni list + predlog za stranko nosita NJEGOVO znamko
+  const [company, setCompany] = useState<ProposalCompany | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive || !d?.settings) return;
+        const s = d.settings as {
+          companyName: string; ownerName: string; phone: string; email: string; logoUrl: string | null;
+        };
+        const name = (s.companyName ?? '').trim();
+        if (!name) return;
+        const contact = [s.ownerName, s.phone, s.email].map((x) => (x ?? '').trim()).filter(Boolean).join(' · ');
+        if (s.logoUrl) {
+          loadImage(s.logoUrl)
+            .then((logo) => { if (alive) setCompany({ name, contact, logo }); })
+            .catch(() => { if (alive) setCompany({ name, contact, logo: null }); });
+        } else {
+          setCompany({ name, contact, logo: null });
+        }
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
 
   // Nova fotografija → počisti predlog števca palic
   useEffect(() => { setBarSuggest(null); }, [photoUrl]);
@@ -256,6 +282,7 @@ export function CameraView() {
     return buildMeasureSheet(img, allMeasures, {
       craftLabel: craft ? CRAFT_LABELS[craft] : undefined,
       scene: result?.analysis.sceneDescription ?? null,
+      company,
     });
   };
 
@@ -711,6 +738,7 @@ export function CameraView() {
                 onQuote={openCalcFromViz}
                 onSaved={loadGallery}
                 measuresSummary={vizMeasures}
+                company={company}
               />
             </CardContent>
           </Card>

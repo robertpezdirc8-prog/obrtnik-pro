@@ -182,6 +182,13 @@ export interface MeasureSheetOptions {
   craftLabel?: string;
   /** Opomba scene (iz analize) v podnaslov. */
   scene?: string | null;
+  /** Podatki obrtnika (iz Nastavitev) — dokument nosi NJEGOVO znamko. */
+  company?: { name: string; contact: string; logo?: HTMLImageElement | null } | null;
+}
+
+/** Višina glave merilnega lista (večja z logotipom). */
+function sheetHeaderH(opts: MeasureSheetOptions): number {
+  return opts.company?.logo ? 140 : 108;
 }
 
 /**
@@ -203,7 +210,7 @@ export function buildMeasureSheet(
   const photoW = Math.round((img.naturalWidth / img.naturalHeight) * photoH);
   const photoX = PAD + (innerW - photoW) / 2;
 
-  const headerH = 108;
+  const headerH = sheetHeaderH(opts);
   const tableTop = headerH + photoH + 26;
   const rowH = 34;
   const tableH = 34 + Math.min(rows.length, 14) * rowH; // glava tabele + vrstice
@@ -236,17 +243,47 @@ export function buildMeasureSheet(
     .join(' · ');
   ctx.fillText(sub, PAD, 80);
   ctx.textAlign = 'right';
-  ctx.font = 'bold 15px system-ui, sans-serif';
-  ctx.fillStyle = '#b45309';
-  ctx.fillText('Obrtnik Pro', W - PAD, 58);
-  ctx.font = '11px system-ui, sans-serif';
-  ctx.fillStyle = '#78716c';
-  ctx.fillText('skriptno merjenje s fotografije', W - PAD, 78);
+  const comp = opts.company;
+  if (comp?.logo) {
+    const lw = Math.min(190, comp.logo.naturalWidth || 190);
+    const lh = Math.min(40, (comp.logo.naturalHeight || 40) * (lw / Math.max(1, comp.logo.naturalWidth || 190)));
+    ctx.drawImage(comp.logo, W - PAD - lw, 18, lw, lh);
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillStyle = '#1c1917';
+    ctx.fillText(comp.name, W - PAD, 82);
+    if (comp.contact) {
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillStyle = '#78716c';
+      ctx.fillText(comp.contact.slice(0, 66), W - PAD, 100);
+    }
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText('skriptno merjenje s fotografije', W - PAD, headerH - 26);
+  } else if (comp?.name) {
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillStyle = '#1c1917';
+    ctx.fillText(comp.name, W - PAD, 58);
+    if (comp.contact) {
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillStyle = '#78716c';
+      ctx.fillText(comp.contact.slice(0, 66), W - PAD, 78);
+    }
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText('skriptno merjenje s fotografije', W - PAD, 94);
+  } else {
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillStyle = '#b45309';
+    ctx.fillText('Obrtnik Pro', W - PAD, 58);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = '#78716c';
+    ctx.fillText('skriptno merjenje s fotografije', W - PAD, 78);
+  }
   ctx.strokeStyle = '#e7e5e4';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(PAD, 96);
-  ctx.lineTo(W - PAD, 96);
+  ctx.moveTo(PAD, headerH - 12);
+  ctx.lineTo(W - PAD, headerH - 12);
   ctx.stroke();
 
   // Fotka + anotacije
@@ -298,6 +335,15 @@ export function buildMeasureSheet(
 
   // Noga
   ctx.textAlign = 'left';
+  if (opts.company?.name) {
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = '#78716c';
+    ctx.fillText(
+      `Izmeril: ${opts.company.name}${opts.company.contact ? ` · ${opts.company.contact}` : ''}`.slice(0, 108),
+      PAD,
+      H - 42,
+    );
+  }
   ctx.font = '11px system-ui, sans-serif';
   ctx.fillStyle = '#a8a29e';
   ctx.fillText(`Skriptno merjenje (0 AI) — vrednosti orientacijske; končni odmerek potrdimo na terenu. · ${fmtSlDate(now)}`, PAD, H - 24);

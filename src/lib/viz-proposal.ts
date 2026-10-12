@@ -55,6 +55,16 @@ export interface ProposalEstimate {
   vatRate?: number;
 }
 
+/** Podatki obrtnika (iz Nastavitev) — dokument nosi NJEGOVO znamko. */
+export interface ProposalCompany {
+  /** Ime obrata, npr. "Obrt Novak s.p.". */
+  name: string;
+  /** Kontakt v eni vrstici: "Janez Novak · 040 123 456 · info@obrt.si". */
+  contact: string;
+  /** Naložen logotip (neobvezno). */
+  logo?: HTMLImageElement | null;
+}
+
 export interface VizProposalOptions {
   craftLabel: string;
   layers: ProposalLayerSpec[];
@@ -64,11 +74,18 @@ export interface VizProposalOptions {
   existingLabel?: string | null;
   measures?: ProposalMeasureRow[];
   estimate?: ProposalEstimate | null;
+  /** Podatki obrtnika za glavo/nogo (privzeto ostane Obrtnik Pro). */
+  company?: ProposalCompany | null;
+}
+
+/** Višina glave: večja, če je naložen logotip. */
+function headerHeight(opts: VizProposalOptions): number {
+  return opts.company?.logo ? 148 : 118;
 }
 
 /** Skupna višina posameznega bloka (za dinamično višino platna). */
 function layoutHeights(opts: VizProposalOptions, pairH: number): { specH: number; measH: number; estH: number; H: number } {
-  const headerH = 118;
+  const headerH = headerHeight(opts);
   const pairTop = headerH + 30;
   const specTop = pairTop + pairH + 30;
   const specH = 34 + Math.min(opts.layers.length, 6) * ROW_H; // glava + vrstice
@@ -134,22 +151,54 @@ export function buildVizProposal(
     .filter(Boolean)
     .join(' · ');
   ctx.fillText(sub, PAD, 84);
+  // ── Desna stran glave: blagovna znamka obrtnika (iz Nastavitev) ──
   ctx.textAlign = 'right';
-  ctx.font = 'bold 15px system-ui, sans-serif';
-  ctx.fillStyle = '#b45309';
-  ctx.fillText('Obrtnik Pro', W - PAD, 60);
-  ctx.font = '11px system-ui, sans-serif';
-  ctx.fillStyle = '#78716c';
-  ctx.fillText('skriptna vizualizacija (0 AI)', W - PAD, 80);
+  const headerH = headerHeight(opts);
+  const comp = opts.company;
+  if (comp?.logo) {
+    const lw = Math.min(200, comp.logo.naturalWidth || 200);
+    const lh = Math.min(44, (comp.logo.naturalHeight || 44) * (lw / Math.max(1, comp.logo.naturalWidth || 200)));
+    ctx.drawImage(comp.logo, W - PAD - lw, 20, lw, lh);
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillStyle = '#1c1917';
+    ctx.fillText(comp.name, W - PAD, 88);
+    if (comp.contact) {
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillStyle = '#78716c';
+      ctx.fillText(comp.contact.slice(0, 68), W - PAD, 106);
+    }
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText('skriptna vizualizacija (0 AI)', W - PAD, 122);
+  } else if (comp?.name) {
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillStyle = '#1c1917';
+    ctx.fillText(comp.name, W - PAD, 60);
+    if (comp.contact) {
+      ctx.font = '11px system-ui, sans-serif';
+      ctx.fillStyle = '#78716c';
+      ctx.fillText(comp.contact.slice(0, 68), W - PAD, 80);
+    }
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText('skriptna vizualizacija (0 AI)', W - PAD, 96);
+  } else {
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillStyle = '#b45309';
+    ctx.fillText('Obrtnik Pro', W - PAD, 60);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = '#78716c';
+    ctx.fillText('skriptna vizualizacija (0 AI)', W - PAD, 80);
+  }
   ctx.strokeStyle = '#e7e5e4';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(PAD, 100);
-  ctx.lineTo(W - PAD, 100);
+  ctx.moveTo(PAD, headerH - 18);
+  ctx.lineTo(W - PAD, headerH - 18);
   ctx.stroke();
 
   // ── Pred / po par ────────────────────────────────────────
-  const pairTop = 118 + 30;
+  const pairTop = headerHeight(opts) + 30;
   const drawFrame = (x: number, imgSrc: HTMLImageElement | HTMLCanvasElement, label: string, tint: string) => {
     const sw = imgSrc instanceof HTMLCanvasElement ? imgSrc.width : imgSrc.naturalWidth;
     const sh = imgSrc instanceof HTMLCanvasElement ? imgSrc.height : imgSrc.naturalHeight;
@@ -201,7 +250,7 @@ export function buildVizProposal(
   };
 
   // ── Specifikacija območij ────────────────────────────────
-  let y = 118 + 30 + pairH + 30;
+  let y = headerHeight(opts) + 30 + pairH + 30;
   ctx.textAlign = 'left';
   ctx.font = 'bold 15px system-ui, sans-serif';
   ctx.fillStyle = '#1c1917';
@@ -288,6 +337,15 @@ export function buildVizProposal(
 
   // ── Noga ─────────────────────────────────────────────────
   ctx.textAlign = 'left';
+  if (opts.company?.name) {
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = '#78716c';
+    ctx.fillText(
+      `Pripravil: ${opts.company.name}${opts.company.contact ? ` · ${opts.company.contact}` : ''}`.slice(0, 110),
+      PAD,
+      H - 44,
+    );
+  }
   ctx.font = '11px system-ui, sans-serif';
   ctx.fillStyle = '#a8a29e';
   ctx.fillText(

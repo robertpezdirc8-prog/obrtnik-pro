@@ -535,3 +535,22 @@ Stage Summary:
 - Kamera zdaj OCENI kakovost posnetka, preden ga uporabi za meritve: deterministično (0 AI) izmeri ostrino (VoL na fiksni 240 px — kalibrirano na lastnem cevovodu), pod/prenapostavljenost (delež klipanih pikslov, nebo izključeno iz lažnih alarmov), odseve (sredinski nasičeni zvezki — kritično za steklene ograje) in ločljivost, ter vse povije v oceno 0–100 z akcijskimi nasveti v slovenščini. Poleg tega živi indikator svetlobe v živem predogledu popravi svetlobo ŠE PRED posnetkom (Metashape-slog deterministično odločanje o uporabnosti fotke, ampak ne-blokirajoče).
 - Ključni artefakti: src/lib/image-quality.ts (qualityMetrics, qualityScore, qualityVerdict, QUALITY_THRESHOLDS, razširjen QualityCheck), photo-capture.tsx (kvalitetna kartica + živi indikator svetlobe), tests/verify/quality-calibrate.ts (19/19), research/task21/findings.md.
 - Push: glej naslednji commit (main).
+
+---
+Task ID: 22
+Agent: main (Z.ai Code)
+Task: Nadaljnja nadgradnja kamere ("odlicno nadaljuj" po Task 21) — LASTNA ZNAMKA OBRTNIKA v dokumentih kamere: "Predlog za stranko" in "Merilni list" nosita ime obrata, kontakt in logotip iz Nastavitev (prej trdo kodirano "Obrtnik Pro"). Strogo 0 AI.
+
+Work Log:
+- Motivacija (raziskava task18): Hover poročilo z lastno znamko = jedro vrednosti; pravi obrtnik stranki NE more izročiti dokumenta z napisom "Obrtnik Pro". App že ima Settings (companyName, ownerName, phone, email, logoUrl v prisma) + PUT /api/settings — samo še povezati z dokumenti kamere.
+- src/lib/viz-proposal.ts: NOV ProposalCompany {name, contact, logo?} + opts.company; glava desno — trije varianti: (a) z logotipom: logo desno zgornje (max 200×44) + ime bold + kontakt + podpis, dinamična višina glave 148; (b) brez logotipa: ime + kontakt + podpis (glava 118); (c) brez podatkov: ostane "Obrtnik Pro" (amber); ločnica sledi višini glave (headerH − 18); noga: vrstica "Pripravil: <ime> · <kontakt>" nad disclaimerjem.
+- src/lib/measure-sheet.ts: isti vzorec — MeasureSheetOptions.company, sheetHeaderH (108 → 140 z logotipom), glava desno (logo max 190×40), noga "Izmeril: <ime> · <kontakt>".
+- camera-view.tsx: enkraten fetch /api/settings (unmount varno) → company {name: companyName, contact: [ownerName, phone, email] filter join ' · ', logo: loadImage(logoUrl) ali null} → prop v VizPanel + v makeSheet; brez imena = null (ostane Obrtnik Pro).
+- viz-panel.tsx: prop company → buildVizProposal opts.company.
+- E2E agent-browser: PUT nastavitve "Obrt Novak s.p." + Janez Novak + 040 123 456 + info@obrtnovak.si + testni PNG logotip (160×40, bun+sharp) → ograje.jpg analiza → Vizualizer → "Predlog v galerijo" → dokument (189 KB): logo NOVAK + "Obrt Novak s.p." + kontakt v glavi, "Pripravil: …" v nogi, SKUPAJ 1342,00 € nedotaknjen ✓ (tests/e2e-t22-proposal.jpg); Merilni list (dve točki prek React props + kalibracija "Vrata 200" → 2,00 m) → galerija: logo + ime + "Izmeril: …" ✓ (tests/e2e-t22-sheet.jpg); BREZ logotipa (logoUrl null): kompaktna glava z imenom + kontaktom ✓ (tests/e2e-t22-proposal-nologo.jpg, WPC terasa, SKUPAJ 2392,12 €); mobilni 390×844 sw 390/390 ✓ (e2e-t22-mobile.png); nastavitve po testih obnovljene na privzete; tsc (src) + eslint čista; dev.log brez napak.
+- Lekcija: PhotoCanvas merilne točke se kličejo prek wrap[k].onClick({clientX, clientY}) (handler je onClick na ovojnici, ne pointerdown); kalibracijsko okno se odpre ŠELE po naslednjem eval klicu (React state flush) — ne preverjati v istem bloku.
+
+Stage Summary:
+- Dokumenta kamere ("Predlog za stranko" in "Merilni list") zdaj nosita LASTNO ZNAMKO obrtnika — ime obrata, kontakt in logotip se od čista branje iz Nastavitev (brez ponovnega razvijanja: kdo že ima vpisano podjetje, dobi oba dokumenta takoj v svoji znamki). To je zadnji profesionalni povodec do stranke: Hover poročilo z znamko podjetja, pri nas čisto skriptno. Brez podatkov ostane nevtralno "Obrtnik Pro".
+- Ključni artefakti: viz-proposal.ts (ProposalCompany + 3 varianti glave), measure-sheet.ts (isti vzorec), camera-view.tsx (fetch nastavitev + logo), viz-panel.tsx (prop).
+- Push: glej naslednji commit (main).
