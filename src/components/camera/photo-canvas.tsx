@@ -20,17 +20,17 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import {
   Ruler, Tags, RotateCcw, Check, X, Crosshair, Copy, Download,
-  Square, TriangleRight, Undo2, Maximize, Magnet, Layers3, Sparkles,
+  Square, TriangleRight, Undo2, Maximize, Magnet, Layers3, Sparkles, Route,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { DetectedObject, DetectedSurface, PhotoMeasure, MeasureKind } from '@/lib/camera-types';
 import {
-  angleAt, centroidPct, downloadMeasuresCsv, formatCm, formatDeg, formatM2,
+  angleAt, centroidPct, chainStats, downloadMeasuresCsv, formatCm, formatDeg, formatM2, formatSlope,
   lengthCm, measuresToText, polygonAreaM2, polygonSidesCm, type XY,
 } from '@/lib/measure-geometry';
 import { buildEdgeMap, snapPoint, type EdgeMap } from '@/lib/edge-detect';
 import {
-  calibratePlane, planeAngleDeg, planeDistanceCm, planePolygonAreaM2,
+  calibratePlane, planeAngleDeg, planeChainStats, planeDistanceCm, planePolygonAreaM2,
   planeSidesCm, type PlaneCalib,
 } from '@/lib/homography';
 
@@ -48,7 +48,10 @@ interface PhotoCanvasProps {
   setMeasures: (m: PhotoMeasure[]) => void;
 }
 
-type Mode = 'boxes' | 'length' | 'area' | 'angle' | 'plane';
+type Mode = 'boxes' | 'length' | 'area' | 'angle' | 'chain' | 'plane';
+
+/** Največ točk verige (trasa ograje — zadošča za vse realne primere). */
+const MAX_CHAIN = 16;
 
 let measureSeq = 0;
 const nextId = () => `m${++measureSeq}-${Date.now()}`;
@@ -99,7 +102,7 @@ export function PhotoCanvas({
   const snap = (p: Pt): Pt => (magnet ? snapPoint(p, edge).point : p);
 
   const hasScale = plane !== null || pxPerCm !== null;
-  const needsScale = (mode === 'length' || mode === 'area') && !hasScale;
+  const needsScale = (mode === 'length' || mode === 'area' || mode === 'chain') && !hasScale;
 
   // ── Merjenje: ravnina (perspektiva) ima prednost pred merilom ──
   const measureLen = (a: Pt, b: Pt): number | null => {
@@ -175,6 +178,22 @@ export function PhotoCanvas({
       return;
     }
 
+    if (mode === 'chain') {
+      // Veriga: točke se zbirajo; brez merila odpremo umerjanje po 2. točki
+      // (prvi odsek definira merilo, nato nadaljuješ z odbijanjem trase)
+      if (next.length === 2 && !hasScale) {
+        setPending(next);
+        setCalibOpen(true);
+        return;
+      }
+      if (next.length >= MAX_CHAIN) {
+        finishChain(next);
+        return;
+      }
+      setPending(next);
+      return;
+    }
+
     if (mode === 'angle') {
       if (next.length === 3) {
         setPending([]);
@@ -218,6 +237,36 @@ export function PhotoCanvas({
     }]);
   };
 
+  // ── Veriga / naklon: skupni tek trase + naklon (ravnina ima prednost) ──
+  const finishChain = (pts: Pt[]) => {
+    if (!imgSize || pts.length < 2) return;
+    let segments: number[] = [];
+    let total: number | null = null;
+    let slope: number | null = null;
+    if (plane) {
+      const st = planeChainStats(pts, plane, imgSize);
+      if (st) { segments = st.segmentsCm; total = st.totalCm; slope = st.slopeDeg; }
+    } else if (pxPerCm) {
+      const st = chainStats(pts, imgSize, pxPerCm);
+      if (st) { segments = st.segmentsCm; total = st.totalCm; slope = st.slopeDeg; }
+    }
+    if (total === null) return;
+    setPending([]);
+    setMeasures([...measures, {
+      id: nextId(),
+      label: `Veriga ${countKind('chain') + 1}`,
+      kind: 'chain',
+      value: total,
+      points: pts.map((p) => [p.x, p.y] as [number, number]),
+      sides: segments,
+      slopeDeg: slope ?? 0,
+    }]);
+    toast({
+      title: `Veriga: skupaj ${formatCm(total)}${slope !== null ? ` · naklon ${formatSlope(slope)}` : ''}`,
+      description: `${segments.length} ${segments.length === 1 ? 'odsek' : segments.length === 2 ? 'odseka' : 'odsekov'} — skupni tek gre v kalkulator kot dolžina.`,
+    });
+  };
+
   const countKind = (kind: MeasureKind) => measures.filter((m) => m.kind === kind).length;
 
   const undoPending = () => setPending(pending.slice(0, -1));
@@ -244,6 +293,10 @@ export function PhotoCanvas({
         }]);
       }
       setPending([]);
+    } else if (ptsOverride === undefined && mode === 'chain') {
+      // Veriga: prvi odsek definira merilo — brez dodatne meritve,
+      // točki ostaneta v verigi in nadaljuješ z odbijanjem trase
+      setCalibOpen(false);
     } else {
       const m: PhotoMeasure = {
         id: nextId(), label: 'Merilo (umerjanje)', kind: 'length',
@@ -321,6 +374,7 @@ export function PhotoCanvas({
   // ─── SVG pomožni render ────────────────────────────────────
   const areaMeasures = measures.filter((m) => m.kind === 'area');
   const angleMeasures = measures.filter((m) => m.kind === 'angle');
+  const chainMeasures = measures.filter((m) => m.kind === 'chain');
   const lengthMeasures = measures.filter((m) => m.kind === 'length' || m.kind === 'laser');
   const detectedSurfaces = (surfaces ?? []).filter((s) => s.quad && s.quad.length === 4);
 
@@ -329,6 +383,7 @@ export function PhotoCanvas({
     length: 'Klikni 2 točki za dolžino. Prvi par umeri merilo (ali umeri ravnino).',
     area: 'Klikaj oglišča površine; klik na prvo oglišče (ali gumb) zapre poligon.',
     angle: 'Klikni 3 točke: krak, oglišče kota, krak.',
+    chain: 'Klikaj točke vzdolž ograje (tudi čez klanec) — nato „Zaključi verigo“ za skupni tek in naklon.',
     plane: 'Klikni 4 oglišča znano ravnine (stena, fasada, tla) → vnesi realno širino in višino.',
   };
 
@@ -342,6 +397,7 @@ export function PhotoCanvas({
             ['length', 'Dolžine', <Ruler key="i" className="h-4 w-4" />],
             ['area', 'Površine', <Square key="i" className="h-4 w-4" />],
             ['angle', 'Koti', <TriangleRight key="i" className="h-4 w-4" />],
+            ['chain', 'Veriga', <Route key="i" className="h-4 w-4" />],
             ['plane', 'Ravnina', <Layers3 key="i" className="h-4 w-4" />],
           ] as Array<[Mode, string, React.ReactNode]>).map(([m, label, icon]) => (
             <button
@@ -384,7 +440,7 @@ export function PhotoCanvas({
             <Check className="h-3 w-3 text-green-600" />
             Ravnina umerjena — meritve popravljene za perspektivo
           </Badge>
-        ) : pxPerCm !== null && (mode === 'length' || mode === 'area') ? (
+        ) : pxPerCm !== null && (mode === 'length' || mode === 'area' || mode === 'chain') ? (
           <Badge variant="outline" className="gap-1.5">
             <Check className="h-3 w-3 text-green-600" />
             Merilo umerjeno
@@ -492,6 +548,24 @@ export function PhotoCanvas({
             </g>
           ))}
 
+          {/* verige (trasa ograje) */}
+          {chainMeasures.map((m) => (
+            <polyline
+              key={m.id}
+              points={m.points.map(([x, y]) => `${x},${y}`).join(' ')}
+              fill="none" stroke="currentColor" strokeWidth={2.5}
+              strokeLinejoin="round" strokeLinecap="round"
+              className="text-teal-600" vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {chainMeasures.map((m) => (
+            <g key={`cd-${m.id}`}>
+              {m.points.map(([x, y], i) => (
+                <circle key={i} cx={x} cy={y} r={0.7} className="fill-teal-600" />
+              ))}
+            </g>
+          ))}
+
           {/* čakajoče točke */}
           {pending.map((p, i) => (
             <circle key={`p-${i}`} cx={p.x} cy={p.y} r={0.7} className="fill-amber-500" />
@@ -502,6 +576,14 @@ export function PhotoCanvas({
               points={pending.map((p) => `${p.x},${p.y}`).join(' ')}
               className="fill-amber-500/20 stroke-amber-500"
               strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke"
+            />
+          )}
+          {/* veriga v nastajanju */}
+          {mode === 'chain' && pending.length >= 2 && (
+            <polyline
+              points={pending.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill="none" stroke="currentColor" strokeWidth={2}
+              strokeDasharray="6 4" className="text-teal-500" vectorEffect="non-scaling-stroke"
             />
           )}
         </svg>
@@ -532,6 +614,15 @@ export function PhotoCanvas({
             </span>
           );
         })}
+        {/* oznake verig: skupni tek + naklon v težišču trase */}
+        {chainMeasures.filter((m) => m.value !== null).map((m) => {
+          const c = centroidPct(m.points);
+          return (
+            <span key={`lblc-${m.id}`} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md bg-teal-700 px-1.5 py-0.5 text-[10px] font-bold text-white shadow" style={{ left: `${c.x}%`, top: `${c.y}%` }}>
+              {m.label}: {formatCm(m.value!)}{m.slopeDeg !== undefined && m.slopeDeg >= 1 ? ` · ${formatSlope(m.slopeDeg)}` : ''}
+            </span>
+          );
+        })}
         {/* oznake prepoznanih ravnin */}
         {mode === 'boxes' && detectedSurfaces.map((s, i) => {
           const c = centroidPct(s.quad!);
@@ -548,13 +639,18 @@ export function PhotoCanvas({
         ))}
       </div>
 
-      {/* Pomožni gumbi za poligon */}
-      {(mode === 'area' || mode === 'plane') && pending.length > 0 && (
+      {/* Pomožni gumbi za poligon / verigo */}
+      {((mode === 'area' || mode === 'plane') || (mode === 'chain' && pending.length > 0)) && pending.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {mode === 'area' ? (
             <Button size="sm" onClick={() => closeArea(pending)} disabled={pending.length < 3 || (pxPerCm === null && pending.length < 2)} className="min-h-11">
               <Maximize className="mr-1.5 h-4 w-4" />
               Zapri površino ({pending.length} oglišč)
+            </Button>
+          ) : mode === 'chain' ? (
+            <Button size="sm" onClick={() => finishChain(pending)} disabled={pending.length < 2 || !hasScale} className="min-h-11" data-testid="chain-finish">
+              <Route className="mr-1.5 h-4 w-4" />
+              Zaključi verigo ({pending.length} {pending.length === 1 ? 'točka' : pending.length === 2 ? 'točki' : pending.length < 5 ? 'točke' : 'točk'})
             </Button>
           ) : (
             <Button size="sm" onClick={() => { setPlaneQuad(pending); setPending([]); setPlaneW(''); setPlaneH(''); setPlaneDialog(true); }} disabled={pending.length < 4} className="min-h-11">
@@ -723,9 +819,11 @@ export function PhotoCanvas({
                   <strong className={
                     m.value === null ? 'text-muted-foreground'
                       : m.kind === 'area' ? 'text-green-700'
-                        : m.kind === 'angle' ? 'text-orange-700' : 'text-green-700'
+                        : m.kind === 'chain' ? 'text-teal-700'
+                          : m.kind === 'angle' ? 'text-orange-700' : 'text-green-700'
                   }>
                     {m.value === null ? '—' : m.kind === 'area' ? formatM2(m.value) : m.kind === 'angle' ? formatDeg(m.value) : formatCm(m.value)}
+                    {m.kind === 'chain' && m.slopeDeg !== undefined && m.slopeDeg >= 1 ? ` · ${formatSlope(m.slopeDeg)}` : ''}
                   </strong>
                   <button
                     onClick={() => removeMeasure(m.id)}
@@ -742,7 +840,7 @@ export function PhotoCanvas({
       )}
 
       {/* Merilo/ravnina reset */}
-      {(pxPerCm !== null || plane !== null) && (mode === 'length' || mode === 'area' || mode === 'plane') && (
+      {(pxPerCm !== null || plane !== null) && (mode === 'length' || mode === 'area' || mode === 'chain' || mode === 'plane') && (
         <div className="flex flex-wrap gap-2">
           {plane !== null && (
             <Button variant="ghost" size="sm" onClick={() => setPlane(null)} className="h-8 text-xs">

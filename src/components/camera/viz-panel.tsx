@@ -20,7 +20,7 @@ import {
   Palette, Upload, Download, Save, Crosshair, RefreshCw, Move,
   Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds, Grip,
   Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler, Pipette, Calculator, Wallpaper,
-  Magnet, ChevronsLeftRight,
+  Magnet, ChevronsLeftRight, Wand2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -35,8 +35,8 @@ import {
 import {
   DEFAULT_VIZ_PARAMS, VIZ_COLORS, VIZ_GROUP_LABELS, VIZ_STYLES,
   buildOptionsSheet, colorGroupsForPattern, craftInputsFromQuad, defaultColorForPattern, defaultPatternForCraft,
-  defaultQuadForLayer, drawLayersOnQuad, estimateQuadDimsCm, isLightColor, makeLayer,
-  quadDimsFromWidthCm, recolorQuadPixels, resolveLayerColor, slidersForPattern,
+  defaultQuadForLayer, dominantColorInQuad, drawLayersOnQuad, estimateQuadDimsCm, isLightColor, makeLayer,
+  quadDimsFromWidthCm, resolveLayerColor, slidersForPattern,
   type QuadDimsCm, type SheetVariant, type VizLayer, type VizPattern, type VizParams,
 } from '@/lib/viz';
 
@@ -96,7 +96,8 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   const [beforeAfter, setBeforeAfter] = useState(60);
   const [saving, setSaving] = useState(false);
   const [variants, setVariants] = useState<SheetVariant[]>([]);
-  const [pickMode, setPickMode] = useState(false);
+  /** Izbira barve z fotke: 'color' = nova barva · 'target' = cilj pametnega lakiranja. */
+  const [pickMode, setPickMode] = useState<false | 'color' | 'target'>(false);
   const [customColors, setCustomColors] = useState<CustomColor[]>([]);
   /** Mere (razsežnostne črte) direktno na sliki — Hover measurement PDF slog. */
   const [showDims, setShowDims] = useState(true);
@@ -397,6 +398,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   };
 
   // ── Barva iz fotke (eyedropper): 7×7 patch na izvirni fotki ──
+  // 'color' = nova barva za vzorec · 'target' = ciljna barva pametnega lakiranja
   const pickColorAt = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const pristine = pristineRef.current;
     if (!pristine || !imgEl) return;
@@ -417,12 +419,34 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     }
     if (n === 0) return;
     const hex = `#${[r / n, g / n, b / n].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+    const mode = pickMode;
+    setPickMode(false);
+    if (mode === 'target') {
+      updateLayer({ smartRecolor: { targetHex: hex, tolerance: active.smartRecolor?.tolerance ?? 45 } });
+      toast({ title: `Ciljna barva materiala: ${hex} ✓`, description: 'Lakira se samo material s to barvo — ozadje ostane.' });
+      return;
+    }
     const id = `fotka-${Date.now()}`;
     setCustomColors((cs) => [...cs.slice(-(MAX_CUSTOM - 1)), { id, hex }]);
     updateLayer({ colorId: id, customHex: hex });
-    setPickMode(false);
     toast({ title: `Barva iz fotke: ${hex} ✓`, description: 'Uporabljena na aktivnem območju — deluje v vseh vzorcih.' });
   };
+
+  // ── Pametno lakiranje: maska po barvni podobnosti ──
+  const enableSmartRecolor = () => {
+    if (active.smartRecolor) return;
+    // samodejna ciljna barva: dominantna barva znotraj območja (histogram)
+    const dom = imgEl ? dominantColorInQuad(imgEl, active.quad) : null;
+    updateLayer({ smartRecolor: { targetHex: dom ?? '#808080', tolerance: 45 } });
+    toast({
+      title: 'Pametno lakiranje vklopljeno ✓',
+      description: dom
+        ? `Cilj materiala (samodejno): ${dom}. Klikni „Cilj iz fotke“, če želiš drugo barvo.`
+        : 'Nastavi ciljno barvo s klikom na fotko.',
+    });
+  };
+
+  const disableSmartRecolor = () => updateLayer({ smartRecolor: undefined });
 
   const applySurface = (s: DetectedSurface) => {
     if (!s.quad || s.quad.length !== 4) return;
@@ -474,7 +498,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
 
   // ── Predstavni list opcij ────────────────────────────────
   const addVariant = () => {
-    const exists = variants.some((v) => v.pattern === active.pattern && v.colorId === active.colorId && v.customHex === active.customHex && v.textureId === active.textureId);
+    const exists = variants.some((v) => v.pattern === active.pattern && v.colorId === active.colorId && v.customHex === active.customHex && v.textureId === active.textureId && v.smartRecolor === active.smartRecolor);
     if (exists) {
       toast({ title: 'Ta kombinacija je že med opcijami', variant: 'destructive' });
       return;
@@ -483,7 +507,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
       toast({ title: `Največ ${MAX_VARIANTS} opcij`, description: 'Zbriši eno in poskusi znova.' });
       return;
     }
-    setVariants((vs) => [...vs, { pattern: active.pattern, colorId: active.colorId, customHex: active.customHex, textureId: active.textureId }]);
+    setVariants((vs) => [...vs, { pattern: active.pattern, colorId: active.colorId, customHex: active.customHex, textureId: active.textureId, smartRecolor: active.smartRecolor }]);
     toast({ title: 'Opcija shranjena ✓', description: 'Dodaj še druge in zgradi predstavni list.' });
   };
 
@@ -697,7 +721,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
           {pickMode && (
             <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground shadow" role="status" data-testid="viz-pick-hint">
               <Pipette className="mr-1 inline h-3 w-3" />
-              Klikni na fotko — vzorčim barvo
+              {pickMode === 'target' ? 'Klikni na OBSTOJEČI material — to je cilj, ki ga menjavam' : 'Klikni na fotko — vzorčim barvo'}
             </span>
           )}
         </div>
@@ -1015,11 +1039,11 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
               />
             ))}
             <button
-              onClick={() => setPickMode((p) => !p)}
+              onClick={() => setPickMode((p) => (p === 'color' ? false : 'color'))}
               title="Vzorči barvo iz fotke — klikni na objekt, ki naj ostane isti (npr. fasado)"
-              aria-pressed={pickMode}
+              aria-pressed={pickMode === 'color'}
               aria-label="Vzorči barvo iz fotografije"
-              className={`flex h-9 min-w-9 items-center justify-center gap-1 rounded-lg border-2 px-2 text-[10px] font-medium transition-colors ${pickMode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
+              className={`flex h-9 min-w-9 items-center justify-center gap-1 rounded-lg border-2 px-2 text-[10px] font-medium transition-colors ${pickMode === 'color' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
               data-testid="viz-pick-color"
             >
               <Pipette className="h-3.5 w-3.5" />
@@ -1030,6 +1054,90 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
             {groups.map((g) => VIZ_GROUP_LABELS[g]).join(' · ')} · „Iz fotke“ = vzorči dejansko barvo z objekta
           </p>
         </div>
+
+        {/* Način lakiranja (samo vzorec 'barva'): celotno območje ali pametna selekcija materiala */}
+        {active.pattern === 'barva' && (
+          <div className="space-y-3 rounded-lg border bg-secondary/30 p-3" data-testid="viz-recolor-card">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Wand2 className="mr-1 inline h-3.5 w-3.5" />
+              Način lakiranja
+            </Label>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={disableSmartRecolor}
+                aria-pressed={!active.smartRecolor}
+                className={`min-h-11 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors ${!active.smartRecolor ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
+                data-testid="viz-recolor-all"
+              >
+                <PaintBucket className="mr-1.5 inline h-4 w-4" />
+                Celotno območje
+              </button>
+              <button
+                onClick={enableSmartRecolor}
+                aria-pressed={!!active.smartRecolor}
+                className={`min-h-11 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors ${active.smartRecolor ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
+                data-testid="viz-recolor-smart"
+              >
+                <Wand2 className="mr-1.5 inline h-4 w-4" />
+                Samo material (selekcija)
+              </button>
+            </div>
+            {active.smartRecolor ? (
+              <div className="space-y-3" data-testid="viz-smart-controls">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-8 w-8 shrink-0 rounded-md border-2 border-border"
+                    style={{ backgroundColor: active.smartRecolor.targetHex }}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0 text-xs">
+                    <p className="font-medium">Cilj: barva obstoječega materiala</p>
+                    <p className="truncate text-muted-foreground">{active.smartRecolor.targetHex} · lakira se samo material s to barvo</p>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium">Toleranca podobnosti</span>
+                    <span className="text-muted-foreground">{active.smartRecolor.tolerance}</span>
+                  </div>
+                  <Slider
+                    value={[active.smartRecolor.tolerance]}
+                    min={5}
+                    max={120}
+                    step={1}
+                    onValueChange={(v) => updateLayer({ smartRecolor: { ...active.smartRecolor!, tolerance: v[0] ?? 45 } })}
+                    aria-label="Toleranca podobnosti barve"
+                    data-testid="viz-smart-tolerance"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={pickMode === 'target' ? 'secondary' : 'outline'}
+                    className="min-h-9 text-xs"
+                    onClick={() => setPickMode((p) => (p === 'target' ? false : 'target'))}
+                    aria-pressed={pickMode === 'target'}
+                    data-testid="viz-pick-target"
+                  >
+                    <Pipette className="mr-1.5 h-3.5 w-3.5" />
+                    Cilj iz fotke
+                  </Button>
+                  <Button size="sm" variant="ghost" className="min-h-9 text-xs" onClick={enableSmartRecolor}>
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    Samodejna dominantna
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Klikni na obstoječo kovino/les na fotki (ali pusti samodejno) → skripta prelakira SAMO piksle te barve z izbrano novo barvo; ozadje za režami ostane nedotaknjeno. Višja toleranca = širše zajete odtenki.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                „Celotno območje“ pobarva vse znotraj štirikotnika. Za realistično menjavo barve obstoječe ograje (reže ostanejo) izberi „Samo material“.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Parametri vzorca */}
         {sliders.length > 0 && (
@@ -1095,7 +1203,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
                   <div key={i} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-xs">
                     <span className="h-4 w-4 shrink-0 rounded-sm border border-border" style={{ backgroundColor: c?.hex }} />
                     <span className="min-w-0 flex-1 truncate">
-                      <strong>{i + 1}. {st?.label}{tx ? ` · ${tx.label}` : ''}</strong> · {c?.label}
+                      <strong>{i + 1}. {st?.label}{tx ? ` · ${tx.label}` : ''}{v.smartRecolor ? ' · selekcija' : ''}</strong> · {c?.label}
                     </span>
                     <button
                       onClick={() => setVariants((vs) => vs.filter((_, j) => j !== i))}

@@ -174,3 +174,50 @@ export function planeAngleDeg(a: XY, v: XY, c: XY, plane: PlaneCalib, imgSize: I
   const deg = (ang * 180) / Math.PI;
   return Number.isFinite(deg) ? Math.round(deg * 10) / 10 : null;
 }
+
+export interface PlaneChainStats {
+  /** dolžine odsekov NA RAVNINI v cm */
+  segmentsCm: number[];
+  /** skupni tek po trasi NA RAVNINI v cm */
+  totalCm: number;
+  /** vodoravni razpon (prva → zadnja) na ravnini v cm */
+  spanCm: number;
+  /** višinska razlika na ravnini v cm (absolutna) */
+  riseCm: number;
+  /** naklon trase v stopinjah (iz ravninskih koordinat) */
+  slopeDeg: number;
+  /** naklon v % (rise/span · 100) */
+  slopePct: number;
+}
+
+/**
+ * Statistika verige točk NA KALIBRIRANI RAVNINI (perspektivno popravljeno):
+ * odseki, skupni tek, razpon, višinska razlika, naklon. Uporabi jo, kadar je
+ * umerjena ravnina — meritve čez klanec so potem prave, ne le orientacijske.
+ */
+export function planeChainStats(
+  points: XY[],
+  plane: PlaneCalib,
+  imgSize: ImgSize,
+): PlaneChainStats | null {
+  if (points.length < 2) return null;
+  const cm = points.map((p) => planePoint(plane, p, imgSize));
+  if (cm.some((c) => !Number.isFinite(c.x) || !Number.isFinite(c.y))) return null;
+  const segmentsCm: number[] = [];
+  let total = 0;
+  for (let i = 1; i < cm.length; i++) {
+    const d = Math.hypot(cm[i].x - cm[i - 1].x, cm[i].y - cm[i - 1].y);
+    total += d;
+    segmentsCm.push(Math.round(d * 10) / 10);
+  }
+  const dx = Math.abs(cm[cm.length - 1].x - cm[0].x);
+  const dy = Math.abs(cm[cm.length - 1].y - cm[0].y);
+  return {
+    segmentsCm,
+    totalCm: Math.round(total * 10) / 10,
+    spanCm: Math.round(dx * 10) / 10,
+    riseCm: Math.round(dy * 10) / 10,
+    slopeDeg: Math.round((Math.atan2(dy, dx) * 180) / Math.PI * 10) / 10,
+    slopePct: dx > 0 ? Math.round((dy / dx) * 1000) / 10 : 0,
+  };
+}

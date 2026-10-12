@@ -875,6 +875,180 @@ export function recolorQuadPixels(
   ctx.putImageData(imageData, 0, 0);
 }
 
+// ─── Pametno lakiranje: recolor po barvni podobnosti (maska) ──
+// Tehnika iz raziskave task17 (Capture One / RawTherapee CCM): maska
+// po podobnosti barve z featherjem, recolor z ohranjeno svetlosti.
+// Lakira SAMO materiale, ki barvno ustrezajo ciljni barvi (kovina
+// ograje), ozadje/reže/prirodost ostanejo nedotaknjeni — čisto
+// piksčna skripta, 0 AI.
+
+export interface SmartRecolor {
+  /** Ciljna barva (obstoječi material, ki ga menjavaš) v hex. */
+  targetHex: string;
+  /** Toleranca podobnosti 5–120 (razdalja barv, normalizirano 0–255). */
+  tolerance: number;
+}
+
+/** Utežena RGB razdalja (redmean) normalizirana na 0–255. */
+function colorDistance(r1: number, g1: number, b1: number, r2: number, g2: number, b2: number): number {
+  const rMean = (r1 + r2) / 2;
+  const dr = r1 - r2;
+  const dg = g1 - g2;
+  const db = b1 - b2;
+  const d = Math.sqrt((2 + rMean / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rMean) / 256) * db * db);
+  return (d / 441.67) * 255;
+}
+
+/** Smoothstep — mehak prehod maske (feather brez trdih robov). */
+function smoothstep(t: number): number {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+/**
+ * Dominantna barva znotraj štirikotnika (deterministični histogram
+ * 5 bitov/kanal): tipična barva materiala, ki ga uporabnik želi menjati.
+ * Uporabna kot samodejna ciljna barva pametnega lakiranja.
+ */
+export function dominantColorInQuad(
+  img: HTMLImageElement | HTMLCanvasElement,
+  quadPct: [number, number][],
+): string | null {
+  const iw = 'naturalWidth' in img ? img.naturalWidth : img.width;
+  const ih = 'naturalHeight' in img ? img.naturalHeight : img.height;
+  if (iw < 8 || ih < 8 || quadPct.length !== 4) return null;
+  const scale = Math.min(1, 480 / Math.max(iw, ih));
+  const W = Math.max(2, Math.round(iw * scale));
+  const H = Math.max(2, Math.round(ih * scale));
+  const tmp = document.createElement('canvas');
+  tmp.width = W;
+  tmp.height = H;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true });
+  if (!tctx) return null;
+  tctx.drawImage(img, 0, 0, W, H);
+  const data = tctx.getImageData(0, 0, W, H).data;
+
+  const quadPx = orderQuad(quadPct.map(([x, y]) => ({ x: (x / 100) * W, y: (y / 100) * H })));
+  const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  const Hm = solveHomography(quadPx, unit);
+  if (!Hm) return null;
+
+  const xs = quadPx.map((p) => p.x);
+  const ys = quadPx.map((p) => p.y);
+  const x0 = Math.max(0, Math.floor(Math.min(...xs)));
+  const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
+  const y0 = Math.max(0, Math.floor(Math.min(...ys)));
+  const y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
+
+  // histogram: 5 bitov/kanal → 32³ košar
+  const bins = new Map<number, { n: number; r: number; g: number; b: number }>();
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      const i = (y * W + x) * 4;
+      const key = ((data[i] >> 3) << 10) | ((data[i + 1] >> 3) << 5) | (data[i + 2] >> 3);
+      const b = bins.get(key);
+      if (b) { b.n++; b.r += data[i]; b.g += data[i + 1]; b.b += data[i + 2]; }
+      else bins.set(key, { n: 1, r: data[i], g: data[i + 1], b: data[i + 2] });
+    }
+  }
+  let best: { n: number; r: number; g: number; b: number } | null = null;
+  for (const b of bins.values()) if (!best || b.n > best.n) best = b;
+  if (!best || best.n < 12) return null;
+  return `#${[best.r / best.n, best.g / best.n, best.b / best.n]
+    .map((v) => Math.round(v).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+/**
+ * Pametno lakiranje: prelakira SAMO piksle znotraj štirikotnika, katerih
+ * barva je podobna ciljni barvi obstoječega materiala (maska po podobnosti
+ * s smoothstep featherjem). Nova barva × normalizirana svetlost izvorne
+ * fotke → sence/odboji ohranjeni, ozadje za režami ostane nedotaknjeno.
+ */
+export function recolorQuadPixelsMasked(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | HTMLCanvasElement,
+  quadPct: [number, number][],
+  colorHex: string,
+  smart: SmartRecolor,
+): void {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  if (W < 4 || H < 4 || quadPct.length !== 4) return;
+
+  // Izvorna fotka (za svetlost) — če je ctx že fotka + plasti, svetlost
+  // vseeno teče iz izvorne slike (pristne sence objekta)
+  const tmp = document.createElement('canvas');
+  tmp.width = W;
+  tmp.height = H;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
+  tctx.drawImage(img, 0, 0, W, H);
+  const photo = tctx.getImageData(0, 0, W, H).data;
+
+  const imageData = ctx.getImageData(0, 0, W, H);
+  const data = imageData.data;
+
+  const quadPx = orderQuad(
+    quadPct.map(([x, y]) => ({ x: (x / 100) * W, y: (y / 100) * H })),
+  );
+  const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  const Hm = solveHomography(quadPx, unit); // piksel → (u,v)
+  if (!Hm) return;
+
+  const xs = quadPx.map((p) => p.x);
+  const ys = quadPx.map((p) => p.y);
+  const x0 = Math.max(0, Math.floor(Math.min(...xs)));
+  const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
+  const y0 = Math.max(0, Math.floor(Math.min(...ys)));
+  const y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
+
+  const [tr, tg, tb] = hexToRgb(smart.targetHex);
+  const tol = Math.max(5, Math.min(120, smart.tolerance));
+  const [cr, cg, cb] = hexToRgb(colorHex);
+  const satBoost = 1.06;
+  const lumAt = (i: number) => 0.2126 * photo[i] + 0.7152 * photo[i + 1] + 0.0722 * photo[i + 2];
+
+  // 1. prehod: povprečna svetlost MOČNO maskiranih pikslov (alpha ≥ 0,5)
+  let sum = 0;
+  let count = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      const i = (y * W + x) * 4;
+      const d = colorDistance(data[i], data[i + 1], data[i + 2], tr, tg, tb);
+      if (1 - d / tol < 0.5) continue;
+      sum += lumAt(i);
+      count++;
+    }
+  }
+  if (count === 0) return;
+  const meanLum = sum / count;
+
+  // 2. prehod: mehka maska × recolor z ohranjeno svetlosti
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      const i = (y * W + x) * 4;
+      const d = colorDistance(data[i], data[i + 1], data[i + 2], tr, tg, tb);
+      const alpha = smoothstep(1 - d / tol);
+      if (alpha <= 0.004) continue;
+      const factor = Math.max(0.45, Math.min(1.7, lumAt(i) / Math.max(6, meanLum)));
+      const nr = Math.max(0, Math.min(255, cr * factor * satBoost));
+      const ng = Math.max(0, Math.min(255, cg * factor * satBoost));
+      const nb = Math.max(0, Math.min(255, cb * factor * satBoost));
+      const k = alpha * 0.94;
+      data[i] = Math.round(data[i] * (1 - k) + nr * k);
+      data[i + 1] = Math.round(data[i + 1] * (1 - k) + ng * k);
+      data[i + 2] = Math.round(data[i + 2] * (1 - k) + nb * k);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
 // ─── Ocena dimenzij štirikotnika iz referenčnega objekta ────
 
 export interface QuadDimsCm {
@@ -996,6 +1170,8 @@ export interface VizLayer {
   customHex?: string;
   /** Materialna tekstura (katalog viz-textures) — opačni deli vzorca. */
   textureId?: string;
+  /** Pametno lakiranje (samo vzorec 'barva'): maska po barvni podobnosti. */
+  smartRecolor?: SmartRecolor;
   params: VizParams;
 }
 
@@ -1044,7 +1220,9 @@ export function drawLayersOnQuad(
     const hex = resolveLayerColor(l).hex;
     const texture = getTextureImage(l.textureId) ?? undefined;
     try {
-      if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, hex);
+      if (l.pattern === 'barva' && l.smartRecolor) {
+        recolorQuadPixelsMasked(ctx, img, l.quad, hex, l.smartRecolor);
+      } else if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, hex);
       else drawPatternOnQuad(ctx, img, l.quad, l.pattern, hex, l.params, craft, texture);
     } catch {
       /* posamezna plast ne sme ustaviti upodobitve */
@@ -1061,6 +1239,8 @@ export interface SheetVariant {
   customHex?: string;
   /** Materialna tekstura (katalog viz-textures). */
   textureId?: string;
+  /** Pametno lakiranje (maska po barvni podobnosti) aktivne plasti. */
+  smartRecolor?: SmartRecolor;
 }
 
 interface SheetOpts {
@@ -1148,7 +1328,7 @@ export function buildOptionsSheet(
     cctx.drawImage(img, 0, 0, cellW, cellH);
     const cellLayers = layers.map((l) =>
       l.id === activeLayerId
-        ? { ...l, pattern: v.pattern, colorId: v.colorId, customHex: v.customHex, textureId: v.textureId }
+        ? { ...l, pattern: v.pattern, colorId: v.colorId, customHex: v.customHex, textureId: v.textureId, smartRecolor: v.smartRecolor }
         : l,
     );
     drawLayersOnQuad(cctx, img, cellLayers, craft);
@@ -1192,7 +1372,7 @@ export function buildOptionsSheet(
     ctx.strokeRect(x + 10.5, y + cellH - labelH + 2.5, 21, 21);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px system-ui, sans-serif';
-    ctx.fillText(`${idx + 1} · ${style?.label ?? v.pattern}${texLabel ? ` · ${texLabel}` : ''}`, x + 42, y + cellH - 16);
+    ctx.fillText(`${idx + 1} · ${style?.label ?? v.pattern}${texLabel ? ` · ${texLabel}` : ''}${v.smartRecolor ? ' · selekcija' : ''}`, x + 42, y + cellH - 16);
     ctx.font = '13px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.82)';
     ctx.fillText(color.label, x + 42, y + cellH - 33);

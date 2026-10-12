@@ -109,6 +109,65 @@ export function lengthCm(
   return Math.round((pxDistance(a, b, size) / pxPerCm) * 10) / 10;
 }
 
+// ─── Veriga / naklon (trasa ograje čez teren) ────────────────
+
+export interface ChainStats {
+  /** dolžine posameznih odsekov v cm */
+  segmentsCm: number[];
+  /** skupni tek po trasi v cm */
+  totalCm: number;
+  /** vodoravni razpon (prva → zadnja točka) v cm */
+  spanCm: number;
+  /** višinska razlika (prva → zadnja točka, absolutna) v cm */
+  riseCm: number;
+  /** naklon cele trase v stopinjah (0 = ravno) */
+  slopeDeg: number;
+  /** naklon cele trase v % (rise/span · 100) */
+  slopePct: number;
+}
+
+/**
+ * Statistika verige točk (trasa ograje vzdolž terena): odseki, skupni tek,
+ * vodoravni razpon, višinska razlika in naklon. Izračun v cm pri kalibriranem
+ * merilu (orientacijsko — pri perspektivi uporabi ravninsko kalibracijo;
+ * ravninska verzija je v homography.ts: planeChainStats).
+ */
+export function chainStats(
+  points: PtLike[],
+  size: ImgSize,
+  pxPerCm: number,
+): ChainStats | null {
+  if (points.length < 2 || !pxPerCm || pxPerCm <= 0) return null;
+  const px = points.map((p) => pctToPx(asXY(p), size));
+  const segmentsCm: number[] = [];
+  let totalPx = 0;
+  for (let i = 1; i < px.length; i++) {
+    const d = Math.hypot(px[i].x - px[i - 1].x, px[i].y - px[i - 1].y);
+    totalPx += d;
+    segmentsCm.push(Math.round((d / pxPerCm) * 10) / 10);
+  }
+  const dx = Math.abs(px[px.length - 1].x - px[0].x);
+  const dy = Math.abs(px[px.length - 1].y - px[0].y);
+  const spanCm = Math.round((dx / pxPerCm) * 10) / 10;
+  const riseCm = Math.round((dy / pxPerCm) * 10) / 10;
+  const slopeDeg = Math.round((Math.atan2(dy, dx) * 180) / Math.PI * 10) / 10;
+  const slopePct = dx > 0 ? Math.round((dy / dx) * 1000) / 10 : 0;
+  return {
+    segmentsCm,
+    totalCm: Math.round((totalPx / pxPerCm) * 10) / 10,
+    spanCm,
+    riseCm,
+    slopeDeg,
+    slopePct,
+  };
+}
+
+/** Oblikuj naklon: "12,5° (22 %)" — za oznake in izvoze. */
+export function formatSlope(deg: number): string {
+  const pct = Math.round(Math.tan((deg * Math.PI) / 180) * 1000) / 10;
+  return `${deg.toLocaleString('sl-SI', { maximumFractionDigits: 1 })}° (${pct.toLocaleString('sl-SI', { maximumFractionDigits: 0 })} %)`;
+}
+
 /** Težišče poligona v % (za postavitev oznake). */
 export function centroidPct(points: PtLike[]): XY {
   const xy = points.map(asXY);
@@ -138,6 +197,7 @@ const KIND_LABELS: Record<string, string> = {
   length: 'Dolžina',
   area: 'Površina',
   angle: 'Kot',
+  chain: 'Veriga (naklon)',
   laser: 'Laser',
   voice: 'Glas',
   xr: 'AR 3D',
@@ -149,6 +209,11 @@ export function measuresToText(measures: PhotoMeasure[]): string {
     .map((m) => {
       if (m.kind === 'area') return `${m.label} (površina): ${m.value !== null ? formatM2(m.value) : '—'}`;
       if (m.kind === 'angle') return `${m.label} (kot): ${m.value !== null ? formatDeg(m.value) : '—'}`;
+      if (m.kind === 'chain') {
+        const seg = m.sides?.length ? `${m.sides.length} odsekov · ` : '';
+        const slope = m.slopeDeg !== undefined ? ` · naklon ${formatSlope(m.slopeDeg)}` : '';
+        return `${m.label} (veriga): ${m.value !== null ? formatCm(m.value) : '—'} · ${seg}skupaj${slope}`;
+      }
       return `${m.label}: ${m.value !== null ? formatCm(m.value) : '—'}`;
     })
     .join('\n');
@@ -163,6 +228,12 @@ export function measuresToCsv(measures: PhotoMeasure[]): string {
       rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', 'm²', m.sides?.length ? `strani: ${m.sides.map((s) => formatCm(s)).join(' + ')}` : ''].join(','));
     } else if (m.kind === 'angle') {
       rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', '°', ''].join(','));
+    } else if (m.kind === 'chain') {
+      const note = [
+        m.sides?.length ? `odseki: ${m.sides.map((s) => formatCm(s)).join(' + ')}` : '',
+        m.slopeDeg !== undefined ? `naklon ${formatSlope(m.slopeDeg)}` : '',
+      ].filter(Boolean).join(' · ');
+      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', 'cm', note].join(','));
     } else {
       rows.push([esc(kind), esc(m.label), m.value !== null ? String(Math.round(m.value * 10) / 10).replace('.', ',') : '', 'cm', ''].join(','));
     }
@@ -315,7 +386,7 @@ export function buildPrefillFromMeasures(
   const lens = measures
     .filter(
       (m) =>
-        (m.kind === 'length' || m.kind === 'laser' || m.kind === 'voice') &&
+        (m.kind === 'length' || m.kind === 'laser' || m.kind === 'voice' || m.kind === 'chain') &&
         m.value !== null &&
         m.value >= 20, // pod 20 cm so detajli (držala, ročaji…)
     )

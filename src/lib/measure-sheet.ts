@@ -15,6 +15,7 @@ const KIND_LABEL: Record<PhotoMeasure['kind'], string> = {
   length: 'dolžina',
   area: 'površina',
   angle: 'kot',
+  chain: 'veriga (naklon)',
   laser: 'laser',
   voice: 'glas',
   xr: 'AR',
@@ -101,6 +102,38 @@ function annotateMeasures(
       ctx.fillText(label, sx(cx), by + 10.5);
       ctx.restore();
       idx += 1;
+    } else if (m.kind === 'chain' && m.points.length >= 2) {
+      // veriga: polilinja + razsežnostna črta na vsak odsek (izmenični odmik)
+      const P = m.points.map(([px, py]) => ({ x: sx(px), y: sy(py) }));
+      ctx.save();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(13,148,136,0.95)'; // teal
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      P.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+      for (const p of P) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(13,148,136,0.95)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+      // razsežnostne črte po odsekih (dolžine so v m.sides)
+      const sides = m.sides ?? [];
+      for (let i = 1; i < P.length && i <= sides.length; i++) {
+        const segLabel = sides[i - 1] !== undefined ? formatCm(sides[i - 1]) : '';
+        if (!segLabel) continue;
+        drawDimensionLine(ctx, P[i - 1], P[i], segLabel, {
+          offset: idx % 2 === 0 ? 14 : -14,
+          fontPx: 10,
+        });
+        idx += 1;
+      }
     } else if (m.kind === 'angle' && m.points.length === 3) {
       // oglišče sredi (points[1]) — dve kraki + lok + oznaka
       const v = { x: sx(m.points[1][0]), y: sy(m.points[1][1]) };

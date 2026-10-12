@@ -104,20 +104,22 @@ export function normalizePhotoAnalysis(raw: unknown): PhotoAnalysis {
   };
 }
 
-/** Vrsta meritve: daljica, površina, kot, laser, glas, pravi 3D AR (WebXR). */
-export type MeasureKind = 'length' | 'area' | 'angle' | 'laser' | 'voice' | 'xr';
+/** Vrsta meritve: daljica, površina, kot, veriga (naklon), laser, glas, pravi 3D AR (WebXR). */
+export type MeasureKind = 'length' | 'area' | 'angle' | 'chain' | 'laser' | 'voice' | 'xr';
 
 /** Ena izmerjena vrednost (kalibrirano merilo ali vnos). */
 export interface PhotoMeasure {
   id: string;
   label: string;
   kind: MeasureKind;
-  /** Točke v % slike: daljica 2 · kot 3 (oglišče sredi) · površina N oglišč · laser/glas prazno. */
+  /** Točke v % slike: daljica 2 · kot 3 (oglišče sredi) · površina N oglišč · veriga N točk vzdolž trase · laser/glas prazno. */
   points: [number, number][];
-  /** dolžina/laser/glas: cm · površina: m² · kot: stopinje */
+  /** dolžina/laser/glas/veriga: cm (veriga = skupni tek) · površina: m² · kot: stopinje */
   value: number | null;
-  /** dolžine strani poligona v cm (samo površina) */
+  /** dolžine strani poligona v cm (površina) ali dolžine odsekov verige (chain) */
   sides?: number[];
+  /** naklon verige (chain) v stopinjah — orientacijsko, iz fotke/ravnine */
+  slopeDeg?: number;
 }
 
 /** Predpolnitev iz kamere za kalkulator. */
