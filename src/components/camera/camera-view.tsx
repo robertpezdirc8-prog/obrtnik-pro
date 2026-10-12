@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -46,6 +46,7 @@ import { LaserPanel } from './laser-panel';
 import { VoiceInput } from './voice-input';
 import { WebXrAr } from './webxr-ar';
 import { Measure3dPreview } from './preview-3d';
+import { PostLayoutPanel } from './post-layout-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
@@ -763,6 +764,27 @@ export function CameraView() {
                       V galerijo
                     </Button>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Razpored stebrov + razrez polnil iz meritev (skriptno, 0 AI) */}
+          {allMeasures.length > 0 && (
+            <Card>
+              <CardContent className="p-4 sm:p-5">
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-bold">
+                      <Columns3 className="h-4 w-4 text-primary" />
+                      Razpored stebrov + razrez polnil
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Iz izmerjene trase (veriga čez teren ali daljica) samodejno: število stebrov,
+                      enakomerni razmak, dvigi po celotah in razrez polnil — sledi naklonu ali stopničasto.
+                    </p>
+                  </div>
+                  <PostLayoutPanel measures={allMeasures} />
                 </div>
               </CardContent>
             </Card>

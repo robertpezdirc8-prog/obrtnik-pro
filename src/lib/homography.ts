@@ -178,6 +178,8 @@ export function planeAngleDeg(a: XY, v: XY, c: XY, plane: PlaneCalib, imgSize: I
 export interface PlaneChainStats {
   /** dolžine odsekov NA RAVNINI v cm */
   segmentsCm: number[];
+  /** terenski dvig na odsek na ravnini v cm, pozitivno = navzgor */
+  dropCm: number[];
   /** skupni tek po trasi NA RAVNINI v cm */
   totalCm: number;
   /** vodoravni razpon (prva → zadnja) na ravnini v cm */
@@ -204,16 +206,20 @@ export function planeChainStats(
   const cm = points.map((p) => planePoint(plane, p, imgSize));
   if (cm.some((c) => !Number.isFinite(c.x) || !Number.isFinite(c.y))) return null;
   const segmentsCm: number[] = [];
+  const dropCm: number[] = [];
   let total = 0;
   for (let i = 1; i < cm.length; i++) {
     const d = Math.hypot(cm[i].x - cm[i - 1].x, cm[i].y - cm[i - 1].y);
     total += d;
     segmentsCm.push(Math.round(d * 10) / 10);
+    // terenski dvig na ravnini: manjša y = višje
+    dropCm.push(Math.round((cm[i - 1].y - cm[i].y) * 10) / 10);
   }
   const dx = Math.abs(cm[cm.length - 1].x - cm[0].x);
   const dy = Math.abs(cm[cm.length - 1].y - cm[0].y);
   return {
     segmentsCm,
+    dropCm,
     totalCm: Math.round(total * 10) / 10,
     spanCm: Math.round(dx * 10) / 10,
     riseCm: Math.round(dy * 10) / 10,

@@ -114,6 +114,8 @@ export function lengthCm(
 export interface ChainStats {
   /** dolžine posameznih odsekov v cm */
   segmentsCm: number[];
+  /** višinski padec (dvig terena) na odsek v cm, pozitivno = navzgor; isti indeks kot segmentsCm */
+  dropCm: number[];
   /** skupni tek po trasi v cm */
   totalCm: number;
   /** vodoravni razpon (prva → zadnja točka) v cm */
@@ -140,11 +142,14 @@ export function chainStats(
   if (points.length < 2 || !pxPerCm || pxPerCm <= 0) return null;
   const px = points.map((p) => pctToPx(asXY(p), size));
   const segmentsCm: number[] = [];
+  const dropCm: number[] = [];
   let totalPx = 0;
   for (let i = 1; i < px.length; i++) {
     const d = Math.hypot(px[i].x - px[i - 1].x, px[i].y - px[i - 1].y);
     totalPx += d;
     segmentsCm.push(Math.round((d / pxPerCm) * 10) / 10);
+    // terenski dvig: manjša y-na-sliki = višje (dvig pozitiven)
+    dropCm.push(Math.round(((px[i - 1].y - px[i].y) / pxPerCm) * 10) / 10);
   }
   const dx = Math.abs(px[px.length - 1].x - px[0].x);
   const dy = Math.abs(px[px.length - 1].y - px[0].y);
@@ -154,6 +159,7 @@ export function chainStats(
   const slopePct = dx > 0 ? Math.round((dy / dx) * 1000) / 10 : 0;
   return {
     segmentsCm,
+    dropCm,
     totalCm: Math.round((totalPx / pxPerCm) * 10) / 10,
     spanCm,
     riseCm,

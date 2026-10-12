@@ -7,7 +7,8 @@
 //  3) regresija na realnih fotkah: reference ostane skladna s predlogi
 
 import sharp from 'sharp';
-import { analyzePhotoImage, fuseScaleAgreement, type RgbaImage, type ScaleSuggestion } from '../../src/lib/cv-engine';
+import { analyzePhotoImage, fuseScaleAgreement, type RgbaImage } from '../../src/lib/cv-engine';
+import type { ScaleSuggestion } from '../../src/lib/camera-types';
 
 let fails = 0;
 const check = (cond: boolean, msg: string) => {

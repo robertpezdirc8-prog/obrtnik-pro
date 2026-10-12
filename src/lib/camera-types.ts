@@ -152,6 +152,8 @@ export interface PhotoMeasure {
   value: number | null;
   /** dolžine strani poligona v cm (površina) ali dolžine odsekov verige (chain) */
   sides?: number[];
+  /** terenski dvig na odsek verige v cm, pozitivno = navzgor (chain) — profil za razpored stebrov */
+  segmentsDrop?: number[];
   /** naklon verige (chain) v stopinjah — orientacijsko, iz fotke/ravnine */
   slopeDeg?: number;
 }

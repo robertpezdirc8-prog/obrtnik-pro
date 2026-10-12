@@ -246,14 +246,15 @@ export function PhotoCanvas({
   const finishChain = (pts: Pt[]) => {
     if (!imgSize || pts.length < 2) return;
     let segments: number[] = [];
+    let drops: number[] = [];
     let total: number | null = null;
     let slope: number | null = null;
     if (plane) {
       const st = planeChainStats(pts, plane, imgSize);
-      if (st) { segments = st.segmentsCm; total = st.totalCm; slope = st.slopeDeg; }
+      if (st) { segments = st.segmentsCm; drops = st.dropCm; total = st.totalCm; slope = st.slopeDeg; }
     } else if (pxPerCm) {
       const st = chainStats(pts, imgSize, pxPerCm);
-      if (st) { segments = st.segmentsCm; total = st.totalCm; slope = st.slopeDeg; }
+      if (st) { segments = st.segmentsCm; drops = st.dropCm; total = st.totalCm; slope = st.slopeDeg; }
     }
     if (total === null) return;
     setPending([]);
@@ -264,6 +265,7 @@ export function PhotoCanvas({
       value: total,
       points: pts.map((p) => [p.x, p.y] as [number, number]),
       sides: segments,
+      segmentsDrop: drops,
       slopeDeg: slope ?? 0,
     }]);
     toast({
