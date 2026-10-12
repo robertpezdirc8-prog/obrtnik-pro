@@ -1,12 +1,14 @@
 'use client';
 
 // ─── Pametna kamera — glavni pogled ─────────────────────────
-// Trije načini (zavihki):
+// Štirje načini (zavihki):
 //  1. "Zajem + analiza" — fotografiraj, skripta prepozna objekte, mere,
 //     referenco in predlaga kalkulator.
 //  2. "AR merjenje" — živo tap-to-measure na video kadru:
 //     daljine, površine, koti; zamrznitev; kader gre v analizo.
-//  3. "Merilni pripomočki" — laserski merilnik (Web Bluetooth),
+//  3. "Vizualizer" — menjava ograj/vzorcev/barv na fotki (RAL, WPC,
+//     ploščice …) — skriptni predogled za stranko, pred/po.
+//  4. "Merilni pripomočki" — laserski merilnik (Web Bluetooth),
 //     glasovni vnos meritev, izvoz vseh meritev.
 // Meritve se samodejno shranjujejo v galerijo (PATCH) in se
 // preslikajo v predpolnitve kalkulatorja (buildPrefillFromMeasures).
@@ -18,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -38,6 +40,7 @@ import { LaserPanel } from './laser-panel';
 import { VoiceInput } from './voice-input';
 import { WebXrAr } from './webxr-ar';
 import { Measure3dPreview } from './preview-3d';
+import { VizPanel } from './viz-panel';
 
 interface PhotoRecord {
   id: string;
@@ -49,7 +52,7 @@ interface PhotoRecord {
   createdAt: string;
 }
 
-type CameraTab = 'analiza' | 'ar' | 'orodja';
+type CameraTab = 'analiza' | 'ar' | 'viz' | 'orodja';
 
 const ANALYSIS_STEPS = [
   'Prepoznavam sceno…',
@@ -304,6 +307,7 @@ export function CameraView() {
   const tabs: Array<[CameraTab, string, React.ReactNode]> = [
     ['analiza', 'Zajem + analiza', <ScanSearch key="i" className="h-4 w-4" />],
     ['ar', 'AR merjenje', <Ruler key="i" className="h-4 w-4" />],
+    ['viz', 'Vizualizer', <Palette key="i" className="h-4 w-4" />],
     ['orodja', 'Pripomočki', <Wrench key="i" className="h-4 w-4" />],
   ];
 
@@ -322,12 +326,25 @@ export function CameraView() {
             Skripta prepozna objekte in mere, AR živo meri, laser in glas doda vrednosti — vse gre v kalkulator.
           </p>
         </div>
-        {phase === 'result' && tab === 'analiza' && (
-          <Button variant="outline" size="sm" onClick={() => { setPhase('capture'); setResult(null); setPhotoUrl(null); setLastPhotoId(null); }}>
-            <Camera className="mr-2 h-4 w-4" />
-            Nova fotografija
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {phase === 'result' && tab !== 'viz' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTab('viz')}
+              data-testid="open-viz"
+            >
+              <Palette className="mr-2 h-4 w-4" />
+              Vizualiziraj za stranko
+            </Button>
+          )}
+          {phase === 'result' && tab === 'analiza' && (
+            <Button variant="outline" size="sm" onClick={() => { setPhase('capture'); setResult(null); setPhotoUrl(null); setLastPhotoId(null); }}>
+              <Camera className="mr-2 h-4 w-4" />
+              Nova fotografija
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Zavihki */}
@@ -523,6 +540,41 @@ export function CameraView() {
               <WebXrAr onAddMeasure={addAuxMeasure('xr')} />
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ── Vizualizer: menjava ograj/vzorcev/barv ───────── */}
+      {tab === 'viz' && (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <VizPanel
+                dataUrl={photoUrl}
+                craft={result?.analysis.craft ?? 'ograje'}
+                surfaces={result?.analysis.surfaces ?? []}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                onSaved={loadGallery}
+              />
+            </CardContent>
+          </Card>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              ['1. Označi območje', 'Vleci 4 vogališča na rob ograje, terase ali fasade — ali uporabi ravnino, ki jo je skripta že zaznala.'],
+              ['2. Izberi vzorec in barvo', 'Palice, panel, lamele, mreža, steklo, WPC deke, ploščice — barve RAL in dekorji, razmaki v cm.'],
+              ['3. Pokaži stranki', 'Pred/po primerjava, prenos PNG ali shrani v galerijo — kupci vidijo končni rezultat še pred ponudbo.'],
+            ].map(([t, d]) => (
+              <Card key={t}>
+                <CardContent className="p-4">
+                  <p className="text-sm font-bold">{t}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{d}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 

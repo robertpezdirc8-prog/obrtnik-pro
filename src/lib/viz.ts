@@ -1,0 +1,760 @@
+// ─── Vizualizer: deterministična menjava ograj, vzorcev in barv ──
+// Čisto skriptno, brez AI. Tehnika (iz raziskave, research/task10):
+//  1. Štirikotnik (quad) na fotki = območje prenove (homografija iz 4 točk).
+//  2. Vzorec (palice, lamele, pikete, mreža, steklo, deke, ploščice) se
+//     nariše na pomočni canvas v ravninski teksturi z gostoto v cm.
+//  3. Tekstura se perspektivno pravilno preslika v štirikotnik:
+//     mreža N×N celic, vsaka v 2 trikotnika z afinsko preslikavo
+//     (homografija reši artefakte 2-trikotniške nafine).
+//  4. Senčenje: vzorec × izvorna fotka (multiply) ohranja sence scene +
+//     kontaktna sence na dnu (tehnika barvnih vizualizerjev).
+//  5. Prelakiranje ('barva'): piksli znotraj štirikotnika = izbrana barva
+//     × normalizirana svetlost izvorne fotke → realistična menjava barve
+//     obstoječe ograje/fasade z ohranjenimi senci.
+
+import { applyH, orderQuad, solveHomography } from './homography';
+import type { CraftCategory } from './camera-types';
+
+// ─── Katalog vzorcev ─────────────────────────────────────────
+
+export type VizPattern =
+  | 'panel'        // polna plošča (privacy panel)
+  | 'vertikalne'   // vertikalne palice (iron/alu)
+  | 'horizontalne' // horizontalne lamele
+  | 'piketna'      // piketna ograja
+  | 'mreza'        // varnostna mreža (3D mreža)
+  | 'steklo'       // stekleni sistemi
+  | 'terasa'       // WPC deke
+  | 'ploscice'     // keramične ploščice
+  | 'barva';       // samo prelakiranje (menjava barve)
+
+export interface VizStyleInfo {
+  id: VizPattern;
+  label: string;
+  hint: string;
+  /** Za katere dejavnosti je vzorec smiselen (UI prioriteta). */
+  crafts: CraftCategory[];
+}
+
+export const VIZ_STYLES: VizStyleInfo[] = [
+  { id: 'vertikalne', label: 'Vertikalne palice', hint: 'Klasična alu/inox ograja z navpičnimi palicami', crafts: ['ograje', 'stopnice', 'okna-vrata'] },
+  { id: 'panel', label: 'Polna plošča', hint: 'Zaprt panel — zasebnost (alete/perforirana pločevina)', crafts: ['ograje', 'fasada', 'okna-vrata'] },
+  { id: 'horizontalne', label: 'Horizontalne lamele', hint: 'Vodoravne lamele — sodobna estetika', crafts: ['ograje', 'wpc-terasa', 'fasada'] },
+  { id: 'piketna', label: 'Piketna ograja', hint: 'Klasična piketna ograja z ostrimi vrhovi', crafts: ['ograje'] },
+  { id: 'mreza', label: 'Varnostna mreža', hint: 'Zvarena mreža 3D — varnostne ograje', crafts: ['ograje'] },
+  { id: 'steklo', label: 'Stekleni sistemi', hint: 'Kaljeno steklo z prosojnostjo in odboji', crafts: ['ograje', 'wpc-terasa', 'stopnice'] },
+  { id: 'terasa', label: 'WPC deke', hint: 'Teraske deske s fugami in lisico lesa', crafts: ['wpc-terasa', 'stopnice'] },
+  { id: 'ploscice', label: 'Keramične ploščice', hint: 'Mreža ploščic s fugami (30×60, 60×60 …)', crafts: ['keramika'] },
+  { id: 'barva', label: 'Samo barva (prelakiraj)', hint: 'Obstoječi objekt ostane, spremeni se barva', crafts: ['ograje', 'fasada', 'okna-vrata', 'wpc-terasa', 'nadstreški'] },
+];
+
+// ─── Barvne palete ───────────────────────────────────────────
+
+export type VizColorGroup = 'ral' | 'wpc' | 'keramika' | 'fasada';
+
+export interface VizColor {
+  id: string;
+  label: string;
+  hex: string;
+  group: VizColorGroup;
+}
+
+export const VIZ_COLORS: VizColor[] = [
+  // RAL Classic — povšarsko barvanje aluminija (7016 in 9005 najbolj popularna)
+  { id: 'ral-7016', label: 'RAL 7016 antracit', hex: '#383E42', group: 'ral' },
+  { id: 'ral-9005', label: 'RAL 9005 črna', hex: '#121214', group: 'ral' },
+  { id: 'ral-9006', label: 'RAL 9006 aluminij', hex: '#A5A8A6', group: 'ral' },
+  { id: 'ral-7035', label: 'RAL 7035 svetlo siva', hex: '#C5C7C4', group: 'ral' },
+  { id: 'ral-6005', label: 'RAL 6005 mahovo zelena', hex: '#114232', group: 'ral' },
+  { id: 'ral-3005', label: 'RAL 3005 vinsko rdeča', hex: '#59191F', group: 'ral' },
+  { id: 'ral-5010', label: 'RAL 5010 modra', hex: '#004F7C', group: 'ral' },
+  { id: 'ral-8017', label: 'RAL 8017 rjava', hex: '#442F29', group: 'ral' },
+  { id: 'ral-1015', label: 'RAL 1015 slonokoščena', hex: '#E6D2B5', group: 'ral' },
+  { id: 'ral-9010', label: 'RAL 9010 čista bela', hex: '#F1EDE1', group: 'ral' },
+  // WPC dekorji
+  { id: 'wpc-tikovina', label: 'WPC tikovina', hex: '#8A6A48', group: 'wpc' },
+  { id: 'wpc-svetli-les', label: 'WPC svetli les', hex: '#B99B72', group: 'wpc' },
+  { id: 'wpc-oreh', label: 'WPC oreh', hex: '#5D4433', group: 'wpc' },
+  { id: 'wpc-siva', label: 'WPC siva', hex: '#8E908E', group: 'wpc' },
+  { id: 'wpc-antracit', label: 'WPC antracit', hex: '#3F4145', group: 'wpc' },
+  // Keramika
+  { id: 'ker-bela', label: 'Keramika bela mat', hex: '#E8E6E0', group: 'keramika' },
+  { id: 'ker-siva', label: 'Keramika kamnita siva', hex: '#9D9C98', group: 'keramika' },
+  { id: 'ker-antracit', label: 'Keramika antracit', hex: '#3C3E40', group: 'keramika' },
+  { id: 'ker-bez', label: 'Keramika bež', hex: '#D8C9AC', group: 'keramika' },
+  // Fasada
+  { id: 'fas-bela', label: 'Fasada bela', hex: '#EDEAE2', group: 'fasada' },
+  { id: 'fas-bez', label: 'Fasada bež', hex: '#DCCFB4', group: 'fasada' },
+  { id: 'fas-oker', label: 'Fasada oker', hex: '#C9A96A', group: 'fasada' },
+  { id: 'fas-siva', label: 'Fasada svetlo siva', hex: '#B9B9B4', group: 'fasada' },
+  { id: 'fas-antracit', label: 'Fasada antracit', hex: '#46484B', group: 'fasada' },
+  { id: 'fas-terakota', label: 'Fasada terakota', hex: '#B0684A', group: 'fasada' },
+];
+
+export const VIZ_GROUP_LABELS: Record<VizColorGroup, string> = {
+  ral: 'RAL (kovina)',
+  wpc: 'WPC dekorji',
+  keramika: 'Keramika',
+  fasada: 'Fasada',
+};
+
+/** Katere palete ponudimo za dani vzorec. */
+export function colorGroupsForPattern(p: VizPattern): VizColorGroup[] {
+  switch (p) {
+    case 'terasa': return ['wpc'];
+    case 'ploscice': return ['keramika'];
+    case 'barva': return ['ral', 'fasada', 'wpc', 'keramika'];
+    case 'steklo': return ['ral'];
+    default: return ['ral'];
+  }
+}
+
+/** Privzet vzorec za dejavnost (ko uporabnik prije iz analize). */
+export function defaultPatternForCraft(craft: CraftCategory): VizPattern {
+  switch (craft) {
+    case 'keramika': return 'ploscice';
+    case 'wpc-terasa': return 'terasa';
+    case 'fasada': return 'barva';
+    case 'stopnice': return 'terasa';
+    case 'okna-vrata': return 'panel';
+    case 'nadstreški': return 'barva';
+    default: return 'vertikalne';
+  }
+}
+
+/** Privzeta barva za paleto (prva). */
+export function defaultColorForPattern(p: VizPattern): VizColor {
+  const groups = colorGroupsForPattern(p);
+  const first = VIZ_COLORS.find((c) => c.group === groups[0]);
+  return first ?? VIZ_COLORS[0];
+}
+
+// ─── Parametri vzorca (cm na ravnini) ────────────────────────
+
+export interface VizParams {
+  /** razmak med palicami / lamelami / žicami v cm */
+  spacingCm: number;
+  /** širina palice / lamele / deke v cm */
+  elementCm: number;
+  /** velikost ploščice v cm (stranica) */
+  tileCm: number;
+  /** fuga med ploščicami v cm */
+  jointCm: number;
+  /** prosojnost stekla (0–1) */
+  glassAlpha: number;
+  /** realna širina štirikotnika v cm (določa gostoto vzorca) */
+  quadWidthCm: number;
+}
+
+export const DEFAULT_VIZ_PARAMS: VizParams = {
+  spacingCm: 11,
+  elementCm: 1.8,
+  tileCm: 60,
+  jointCm: 0.3,
+  glassAlpha: 0.35,
+  quadWidthCm: 600,
+};
+
+/** Kazalci za drsnike po vzorcu: [min, max, korak, oznaka]. */
+export interface VizSliderSpec { key: 'spacingCm' | 'elementCm' | 'tileCm' | 'jointCm' | 'glassAlpha'; label: string; min: number; max: number; step: number }
+
+export function slidersForPattern(p: VizPattern): VizSliderSpec[] {
+  switch (p) {
+    case 'vertikalne':
+    case 'piketna':
+      return [
+        { key: 'spacingCm', label: 'Razmak palic', min: 5, max: 20, step: 0.5 },
+        { key: 'elementCm', label: 'Debelina palice', min: 1, max: 6, step: 0.2 },
+      ];
+    case 'horizontalne':
+      return [
+        { key: 'elementCm', label: 'Višina lamele', min: 4, max: 20, step: 0.5 },
+        { key: 'spacingCm', label: 'Reža med lamelami', min: 0.5, max: 8, step: 0.5 },
+      ];
+    case 'panel':
+      return [{ key: 'spacingCm', label: 'Razmak stikov panelov', min: 60, max: 160, step: 5 }];
+    case 'mreza':
+      return [
+        { key: 'spacingCm', label: 'Očesce mreže', min: 5, max: 20, step: 0.5 },
+        { key: 'elementCm', label: 'Debelina žice', min: 0.3, max: 1.5, step: 0.1 },
+      ];
+    case 'terasa':
+      return [
+        { key: 'elementCm', label: 'Širina deke', min: 8, max: 30, step: 0.5 },
+        { key: 'spacingCm', label: 'Fuga med dekami', min: 0.2, max: 1.5, step: 0.1 },
+      ];
+    case 'ploscice':
+      return [
+        { key: 'tileCm', label: 'Velikost ploščice', min: 15, max: 120, step: 5 },
+        { key: 'jointCm', label: 'Fuga', min: 0.1, max: 1, step: 0.1 },
+      ];
+    case 'steklo':
+      return [{ key: 'glassAlpha', label: 'Prosojnost stekla', min: 0.1, max: 0.7, step: 0.05 }];
+    default:
+      return [];
+  }
+}
+
+// ─── Pomožne barvne funkcije (deterministične) ───────────────
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function shade(rgb: [number, number, number], f: number): string {
+  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * f)));
+  return `rgb(${c(rgb[0])},${c(rgb[1])},${c(rgb[2])})`;
+}
+
+/** Približna svetlost barve 0–255 (za avtomatske temne/svetle detajle). */
+function luminance(rgb: [number, number, number]): number {
+  return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+}
+
+// ─── Ravninska tekstura vzorca ───────────────────────────────
+
+/**
+ * Nariše vzorec v ravnino (teksturni canvas). `pxPerCm` povezuje
+ * realne cm-parametre s piksli teksture. Tekstura predstavlja celoten
+ * štirikotnik (širina = quadWidthCm).
+ */
+export function buildPatternCanvas(
+  pattern: VizPattern,
+  colorHex: string,
+  params: VizParams,
+  texW: number,
+  texH: number,
+): HTMLCanvasElement {
+  const tex = document.createElement('canvas');
+  tex.width = Math.max(2, Math.round(texW));
+  tex.height = Math.max(2, Math.round(texH));
+  const ctx = tex.getContext('2d')!;
+  const pxPerCm = tex.width / Math.max(1, params.quadWidthCm);
+  const rgb = hexToRgb(colorHex);
+  const W = tex.width;
+  const H = tex.height;
+
+  const baseFill = (f = 1) => {
+    ctx.fillStyle = shade(rgb, f);
+    ctx.fillRect(0, 0, W, H);
+  };
+
+  switch (pattern) {
+    case 'panel': {
+      baseFill(1);
+      // Subtilen vertikalen gradient (streha svetli, dno temnejši)
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, 'rgba(255,255,255,0.10)');
+      g.addColorStop(1, 'rgba(0,0,0,0.16)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      // Stiki med paneli (določa spacingCm)
+      const jointPx = params.spacingCm * pxPerCm;
+      ctx.fillStyle = 'rgba(0,0,0,0.30)';
+      for (let x = jointPx; x < W; x += jointPx) ctx.fillRect(Math.round(x), 0, Math.max(1, Math.round(pxPerCm * 0.5)), H);
+      // Vrhunski rob plošče
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.fillRect(0, 0, W, Math.max(1, Math.round(pxPerCm)));
+      break;
+    }
+    case 'vertikalne': {
+      baseFill(0); // prozorno ozadje (vidi se scena skozi reže)
+      const gap = Math.max(2, params.spacingCm * pxPerCm);
+      const w = Math.max(1, params.elementCm * pxPerCm);
+      for (let x = 0; x < W; x += gap + w) {
+        // palica s cilindričnim sencenjem (svetel sredinski pas)
+        const g = ctx.createLinearGradient(x, 0, x + w, 0);
+        g.addColorStop(0, shade(rgb, 0.72));
+        g.addColorStop(0.45, shade(rgb, 1.12));
+        g.addColorStop(1, shade(rgb, 0.62));
+        ctx.fillStyle = g;
+        ctx.fillRect(x, 0, w, H);
+      }
+      break;
+    }
+    case 'horizontalne': {
+      baseFill(0);
+      const gap = Math.max(1.5, params.spacingCm * pxPerCm);
+      const h = Math.max(1, params.elementCm * pxPerCm);
+      for (let y = 0; y < H; y += gap + h) {
+        const g = ctx.createLinearGradient(0, y, 0, y + h);
+        g.addColorStop(0, shade(rgb, 1.08));
+        g.addColorStop(0.55, shade(rgb, 0.92));
+        g.addColorStop(1, shade(rgb, 0.66));
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y, W, h);
+      }
+      break;
+    }
+    case 'piketna': {
+      baseFill(0);
+      const gap = Math.max(2, params.spacingCm * pxPerCm);
+      const w = Math.max(1.5, params.elementCm * pxPerCm);
+      const pointH = Math.min(H * 0.12, w * 2);
+      const bodyTop = pointH;
+      for (let x = 0; x < W; x += gap + w) {
+        // oster vrh
+        ctx.fillStyle = shade(rgb, 1.05);
+        ctx.beginPath();
+        ctx.moveTo(x, bodyTop);
+        ctx.lineTo(x + w / 2, 0);
+        ctx.lineTo(x + w, bodyTop);
+        ctx.closePath();
+        ctx.fill();
+        // telo pikete s sencenjem
+        const g = ctx.createLinearGradient(x, 0, x + w, 0);
+        g.addColorStop(0, shade(rgb, 0.78));
+        g.addColorStop(0.5, shade(rgb, 1.1));
+        g.addColorStop(1, shade(rgb, 0.68));
+        ctx.fillStyle = g;
+        ctx.fillRect(x, bodyTop, w, H - bodyTop);
+      }
+      // dva vodoravna nosilca (tatice)
+      const railH = Math.max(2, 3 * pxPerCm);
+      ctx.fillStyle = shade(rgb, 0.9);
+      ctx.fillRect(0, H * 0.28, W, railH);
+      ctx.fillRect(0, H * 0.72 - railH, W, railH);
+      break;
+    }
+    case 'mreza': {
+      baseFill(0);
+      const cell = Math.max(2, params.spacingCm * pxPerCm);
+      const wire = Math.max(1, params.elementCm * pxPerCm);
+      ctx.fillStyle = shade(rgb, 0.95);
+      for (let x = 0; x <= W; x += cell) ctx.fillRect(Math.round(x - wire / 2), 0, wire, H);
+      for (let y = 0; y <= H; y += cell) ctx.fillRect(0, Math.round(y - wire / 2), W, wire);
+      // svetlejši presek za plastiko
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      for (let x = 0; x <= W; x += cell) ctx.fillRect(Math.round(x - wire / 2), 0, Math.max(1, wire * 0.35), H);
+      break;
+    }
+    case 'steklo': {
+      // Prosojno steklo: svetlo-modrik ton + diagonalni odboji
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = `rgba(200, 220, 226, ${params.glassAlpha})`;
+      ctx.fillRect(0, 0, W, H);
+      // Diagonalni odbojni pasovi (deterministični)
+      ctx.save();
+      ctx.translate(W / 2, H / 2);
+      ctx.rotate(-Math.PI / 4);
+      const stripe = Math.max(6, W * 0.09);
+      for (let x = -W; x < W; x += stripe * 2.6) {
+        const g = ctx.createLinearGradient(x, 0, x + stripe, 0);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(0.5, `rgba(255,255,255,${Math.min(0.5, params.glassAlpha + 0.12)})`);
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, -H, stripe, H * 2);
+      }
+      ctx.restore();
+      // Okvir (rob)
+      ctx.strokeStyle = shade(rgb, 0.8);
+      ctx.lineWidth = Math.max(2, 2.5 * pxPerCm);
+      ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, W - ctx.lineWidth, H - ctx.lineWidth);
+      break;
+    }
+    case 'terasa': {
+      baseFill(0);
+      const plank = Math.max(2, params.elementCm * pxPerCm);
+      const gapPx = Math.max(1, params.spacingCm * pxPerCm);
+      const seedR = (n: number) => {
+        const x = Math.sin(n * 127.1) * 43758.5453;
+        return x - Math.floor(x);
+      };
+      let row = 0;
+      for (let y = 0; y < H; y += plank + gapPx, row++) {
+        // lisica lesa: vodoravne valovite linije (determinističen pseudo-naključni vzorec)
+        const tone = 0.9 + seedR(row + 1) * 0.22;
+        const g = ctx.createLinearGradient(0, y, 0, y + plank);
+        g.addColorStop(0, shade(rgb, tone * 1.05));
+        g.addColorStop(0.6, shade(rgb, tone));
+        g.addColorStop(1, shade(rgb, tone * 0.82));
+        ctx.fillStyle = g;
+        ctx.fillRect(0, y, W, plank);
+        // stružnice
+        ctx.fillStyle = 'rgba(0,0,0,0.10)';
+        const lines = 3;
+        for (let i = 1; i <= lines; i++) {
+          const ly = y + (plank * i) / (lines + 1);
+          ctx.fillRect(0, Math.round(ly), W, 1);
+        }
+        // endne razpoke (kompenzacija) vsaka deka
+        const seamX = Math.round(W * (0.28 + seedR(row + 7) * 0.44));
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillRect(seamX, y, 1, plank);
+      }
+      break;
+    }
+    case 'ploscice': {
+      const tile = Math.max(4, params.tileCm * pxPerCm);
+      const joint = Math.max(1, params.jointCm * pxPerCm);
+      ctx.fillStyle = shade(rgb, 0.55); // fuga
+      ctx.fillRect(0, 0, W, H);
+      const seedT = (n: number) => {
+        const x = Math.sin(n * 311.7) * 125829.447;
+        return x - Math.floor(x);
+      };
+      let idx = 0;
+      for (let y = 0; y < H; y += tile + joint) {
+        for (let x = 0; x < W; x += tile + joint, idx++) {
+          const tone = 0.94 + seedT(idx + 1) * 0.10; // subtilen tonalni varing ploščic
+          ctx.fillStyle = shade(rgb, tone);
+          ctx.fillRect(x, y, tile, tile);
+          // rahel svetel rob (bevel)
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          ctx.fillRect(x, y, tile, Math.max(1, tile * 0.04));
+        }
+      }
+      break;
+    }
+    case 'barva':
+    default:
+      baseFill(1);
+      break;
+  }
+  return tex;
+}
+
+// ─── Perspektivna preslikava teksture v štirikotnik ─────────
+
+interface Px { x: number; y: number }
+
+/** Razširi trikotnik od težišča za ~0,7 px — zapre šive med celicami. */
+function expandTriangle(a: Px, b: Px, c: Px): [Px, Px, Px] {
+  const cx = (a.x + b.x + c.x) / 3;
+  const cy = (a.y + b.y + c.y) / 3;
+  const grow = (p: Px): Px => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    const k = 1 + 0.7 / len;
+    return { x: cx + dx * k, y: cy + dy * k };
+  };
+  return [grow(a), grow(b), grow(c)];
+}
+
+/** Afinska preslikava: 3 izvorne → 3 ciljne točke. Vrne matriko [a,b,c,d,e,f] (s → d). */
+function affineFrom3(s0: Px, s1: Px, s2: Px, d0: Px, d1: Px, d2: Px): number[] | null {
+  // det(M), M vrstice = [s_i.x, s_i.y, 1]
+  const detM = s0.x * (s1.y - s2.y) - s0.y * (s1.x - s2.x) + (s1.x * s2.y - s2.x * s1.y);
+  if (Math.abs(detM) < 1e-9) return null;
+  // Cramer za [a,b,e] (x-komponenta) in [c,d,f] (y-komponenta)
+  const detA = d0.x * (s1.y - s2.y) - s0.y * (d1.x - d2.x) + (d1.x * s2.y - d2.x * s1.y);
+  const detB = s0.x * (d1.x - d2.x) - d0.x * (s1.x - s2.x) + (s1.x * d2.x - d1.x * s2.x);
+  const detE = s0.x * (s1.y * d2.x - s2.y * d1.x) - s0.y * (s1.x * d2.x - s2.x * d1.x) + d0.x * (s1.x * s2.y - s2.x * s1.y);
+  const detC = d0.y * (s1.y - s2.y) - s0.y * (d1.y - d2.y) + (d1.y * s2.y - d2.y * s1.y);
+  const detD = s0.x * (d1.y - d2.y) - d0.y * (s1.x - s2.x) + (s1.x * d2.y - d1.y * s2.x);
+  const detF = s0.x * (s1.y * d2.y - s2.y * d1.y) - s0.y * (s1.x * d2.y - s2.x * d1.y) + d0.y * (s1.x * s2.y - s2.x * s1.y);
+  const out = [detA / detM, detB / detM, detC / detM, detD / detM, detE / detM, detF / detM];
+  return out.every((v) => Number.isFinite(v)) ? out : null;
+}
+
+function drawTriangleTextured(
+  ctx: CanvasRenderingContext2D,
+  tex: HTMLCanvasElement,
+  s: [Px, Px, Px],
+  d: [Px, Px, Px],
+): void {
+  const m = affineFrom3(s[0], s[1], s[2], d[0], d[1], d[2]);
+  if (!m) return;
+  const [A, B, C] = expandTriangle(d[0], d[1], d[2]);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(A.x, A.y);
+  ctx.lineTo(B.x, B.y);
+  ctx.lineTo(C.x, C.y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+  ctx.drawImage(tex, 0, 0);
+  ctx.restore();
+}
+
+/** Privzeta realna širina štirikotnika po dejavnosti (cm). */
+function defaultQuadWidthCm(craft: CraftCategory): number {
+  switch (craft) {
+    case 'keramika': return 400;
+    case 'wpc-terasa': return 400;
+    case 'fasada': return 800;
+    case 'stopnice': return 120;
+    case 'okna-vrata': return 200;
+    case 'nadstreški': return 500;
+    default: return 600; // ograje
+  }
+}
+
+/**
+ * Senčenje vzorca po pikslih: vzorec × normalizirana svetlost izvorne
+ * fotke (lum/meanLum, omejeno 0,45–1,7). Vzorec ostane prekrit (opaken),
+ * dobi pa sence in odboje scene — tehnika barvnih vizualizerjev.
+ * Maska = inverzna homografija štirikotnika.
+ */
+function shadePatternPixels(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | HTMLCanvasElement,
+  quadPx: Px[],
+  strength: number,
+): void {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+
+  // Svetlost izvorne fotke (ločen canvas, enake mere)
+  const tmp = document.createElement('canvas');
+  tmp.width = W;
+  tmp.height = H;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
+  tctx.drawImage(img, 0, 0, W, H);
+  const photo = tctx.getImageData(0, 0, W, H).data;
+
+  const imageData = ctx.getImageData(0, 0, W, H);
+  const data = imageData.data;
+
+  const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  const Hm = solveHomography(quadPx, unit); // piksel → (u,v)
+  if (!Hm) return;
+
+  const xs = quadPx.map((p) => p.x);
+  const ys = quadPx.map((p) => p.y);
+  const x0 = Math.max(0, Math.floor(Math.min(...xs)));
+  const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
+  const y0 = Math.max(0, Math.floor(Math.min(...ys)));
+  const y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
+
+  const lumAt = (i: number) => 0.2126 * photo[i] + 0.7152 * photo[i + 1] + 0.0722 * photo[i + 2];
+
+  // 1. prehod: povprečna svetlost fotke znotraj štirikotnika
+  let sum = 0;
+  let count = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      sum += lumAt((y * W + x) * 4);
+      count++;
+    }
+  }
+  if (count === 0) return;
+  const meanLum = sum / count;
+
+  // 2. prehod: vzorec × (svetlost / povprečje)
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      const i = (y * W + x) * 4;
+      const factor = Math.max(0.45, Math.min(1.7, lumAt(i) / Math.max(6, meanLum)));
+      const f = 1 - strength + strength * factor;
+      data[i] = Math.max(0, Math.min(255, Math.round(data[i] * f)));
+      data[i + 1] = Math.max(0, Math.min(255, Math.round(data[i + 1] * f)));
+      data[i + 2] = Math.max(0, Math.min(255, Math.round(data[i + 2] * f)));
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+/**
+ * Nariše vzorec na glavni canvas znotraj štirikotnika (v % slike):
+ *  1. tekstura v ravnini → 2. homografija → 3. mreža trikotnikov →
+ *  4. piksčno senčenje s svetlostjo fotke → 5. kontaktna sence.
+ * `refCmPerPx` (opcijsko) kalibrira gostoto vzorca na realne cm.
+ */
+export function drawPatternOnQuad(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | HTMLCanvasElement,
+  quadPct: [number, number][],
+  pattern: VizPattern,
+  colorHex: string,
+  params: VizParams,
+  craft: CraftCategory,
+): void {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  if (W < 4 || H < 4 || quadPct.length !== 4) return;
+
+  const quadPx = orderQuad(
+    quadPct.map(([x, y]) => ({ x: (x / 100) * W, y: (y / 100) * H })),
+  );
+
+  // Realna širina štirikotnika: kalibrirana (refCmPerPx) ali privzetek po dejavnosti
+  const topPx = Math.hypot(quadPx[1].x - quadPx[0].x, quadPx[1].y - quadPx[0].y);
+  const botPx = Math.hypot(quadPx[2].x - quadPx[3].x, quadPx[2].y - quadPx[3].y);
+  const avgWpx = (topPx + botPx) / 2;
+  const quadWCm = params.quadWidthCm > 20 ? params.quadWidthCm : defaultQuadWidthCm(craft);
+  const pxPerCm = avgWpx / Math.max(30, quadWCm);
+
+  // Višina teksture: srednja višina stranic × pxPerCm
+  const leftPx = Math.hypot(quadPx[3].x - quadPx[0].x, quadPx[3].y - quadPx[0].y);
+  const rightPx = Math.hypot(quadPx[2].x - quadPx[1].x, quadPx[2].y - quadPx[1].y);
+  const quadHCm = ((leftPx + rightPx) / 2) / pxPerCm;
+
+  // 1) Tekstura v ravnini (omejena ločljivost za hitrost)
+  const texW = Math.min(720, Math.max(180, Math.round(avgWpx * 1.4)));
+  const texH = Math.max(90, Math.round((texW * quadHCm) / Math.max(30, quadWCm)));
+  const tex = buildPatternCanvas(pattern, colorHex, { ...params, quadWidthCm: quadWCm }, texW, texH);
+
+  // 2) Homografija: enotski kvadrat → štirikotnik (px)
+  const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  const Hm = solveHomography(unit, quadPx);
+  if (!Hm) return;
+
+  // 3) Mreža celic (adaptivna: 8–22)
+  const n = Math.max(8, Math.min(22, Math.round(Math.min(W, H) / 34)));
+  const path = new Path2D();
+  path.moveTo(quadPx[0].x, quadPx[0].y);
+  for (let i = 1; i < 4; i++) path.lineTo(quadPx[i].x, quadPx[i].y);
+  path.closePath();
+
+  ctx.save();
+  ctx.clip(path);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const u0 = i / n, u1 = (i + 1) / n;
+      const v0 = j / n, v1 = (j + 1) / n;
+      const d00 = applyH(Hm, u0, v0);
+      const d10 = applyH(Hm, u1, v0);
+      const d11 = applyH(Hm, u1, v1);
+      const d01 = applyH(Hm, u0, v1);
+      const s00 = { x: u0 * texW, y: v0 * texH };
+      const s10 = { x: u1 * texW, y: v0 * texH };
+      const s11 = { x: u1 * texW, y: v1 * texH };
+      const s01 = { x: u0 * texW, y: v1 * texH };
+      drawTriangleTextured(ctx, tex, [s00, s10, s11], [d00, d10, d11]);
+      drawTriangleTextured(ctx, tex, [s00, s11, s01], [d00, d11, d01]);
+    }
+  }
+
+  // 4) Senčenje: vzorec × normalizirana svetlost fotke (piksčno,
+  //    prekrit vzorec z senci scene — brez prosojnosti)
+  ctx.restore();
+  shadePatternPixels(ctx, img, quadPx, 0.8);
+
+  // 5) Kontaktna sence na dnu (ograva "utemelji" objekt)
+  const bottomY = Math.max(quadPx[0].y, quadPx[1].y, quadPx[2].y, quadPx[3].y);
+  const topY = Math.min(quadPx[0].y, quadPx[1].y, quadPx[2].y, quadPx[3].y);
+  const qx0 = Math.min(quadPx[0].x, quadPx[1].x, quadPx[2].x, quadPx[3].x);
+  const qx1 = Math.max(quadPx[0].x, quadPx[1].x, quadPx[2].x, quadPx[3].x);
+  const gH = Math.min(H * 0.25, (bottomY - topY) * 0.55);
+  if (gH > 4) {
+    ctx.save();
+    ctx.clip(path);
+    const g = ctx.createLinearGradient(0, bottomY - gH, 0, bottomY);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.22)');
+    ctx.fillStyle = g;
+    ctx.fillRect(qx0, topY, qx1 - qx0, bottomY - topY);
+    ctx.restore();
+  }
+}
+
+// ─── Prelakiranje: menjava barve obstoječega objekta ─────────
+
+/**
+ * Pikslno prelakira območje štirikotnika: nova barva × normalizirana
+ * svetlost izvorne fotke (multiply z ohranjenimi senci). Maska =
+ * inverzna homografija (piksel → enotski kvadrat; znotraj = pobarvan).
+ */
+export function recolorQuadPixels(
+  ctx: CanvasRenderingContext2D,
+  quadPct: [number, number][],
+  colorHex: string,
+  strength = 0.92,
+): void {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  if (W < 4 || H < 4 || quadPct.length !== 4) return;
+
+  const quadPx = orderQuad(
+    quadPct.map(([x, y]) => ({ x: (x / 100) * W, y: (y / 100) * H })),
+  );
+  const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  const Hm = solveHomography(quadPx, unit); // piksel → (u,v)
+  if (!Hm) return;
+
+  const imageData = ctx.getImageData(0, 0, W, H);
+  const data = imageData.data;
+
+  // Meja štirikotnika
+  const xs = quadPx.map((p) => p.x);
+  const ys = quadPx.map((p) => p.y);
+  const x0 = Math.max(0, Math.floor(Math.min(...xs)));
+  const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs)));
+  const y0 = Math.max(0, Math.floor(Math.min(...ys)));
+  const y1 = Math.min(H - 1, Math.ceil(Math.max(...ys)));
+
+  const [cr, cg, cb] = hexToRgb(colorHex);
+
+  // 1. prehod: povprečna svetlost znotraj maske
+  let sum = 0;
+  let count = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      const i = (y * W + x) * 4;
+      sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      count++;
+    }
+  }
+  if (count === 0) return;
+  const meanLum = sum / count;
+
+  // 2. prehod: barva × (svetlost / povprečje)
+  const satBoost = 1.06; // subtilen dvig nasičenosti, da barva ne umre v sivi
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const p = applyH(Hm, x + 0.5, y + 0.5);
+      if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
+      const i = (y * W + x) * 4;
+      const lum = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / Math.max(1, meanLum);
+      const nr = Math.max(0, Math.min(255, cr * lum * satBoost));
+      const ng = Math.max(0, Math.min(255, cg * lum * satBoost));
+      const nb = Math.max(0, Math.min(255, cb * lum * satBoost));
+      data[i] = Math.round(data[i] * (1 - strength) + nr * strength);
+      data[i + 1] = Math.round(data[i + 1] * (1 - strength) + ng * strength);
+      data[i + 2] = Math.round(data[i + 2] * (1 - strength) + nb * strength);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// ─── Ocena dimenzij štirikotnika iz referenčnega objekta ────
+
+export interface QuadDimsCm {
+  topW: number;
+  botW: number;
+  leftH: number;
+  rightH: number;
+}
+
+/**
+ * Oceni realne dimenzije štirikotnika (cm) z merilom iz referenčnega
+ * objekta (npr. vrata ≈ 200 cm): cmPerPx = assumedCm / višina okvirja.
+ * Ocena velja, kadar sta referenca in štirikotnik približno v isti
+ * ravnini (za vizualizer je to dovolj natančno za gostoto vzorca).
+ */
+export function estimateQuadDimsCm(
+  quadPct: [number, number][],
+  imgW: number,
+  imgH: number,
+  ref: { box: [number, number, number, number]; assumedCm: number },
+): QuadDimsCm | null {
+  if (quadPct.length !== 4 || imgW < 4 || imgH < 4) return null;
+  const refHpx = (ref.box[3] / 100) * imgH;
+  if (refHpx < 8) return null;
+  const cmPerPx = ref.assumedCm / refHpx;
+  const q = orderQuad(quadPct.map(([x, y]) => ({ x: (x / 100) * imgW, y: (y / 100) * imgH })));
+  const dist = (a: Px, b: Px) => Math.hypot(b.x - a.x, b.y - a.y) * cmPerPx;
+  return {
+    topW: Math.round(dist(q[0], q[1])),
+    botW: Math.round(dist(q[3], q[2])),
+    leftH: Math.round(dist(q[0], q[3])),
+    rightH: Math.round(dist(q[1], q[2])),
+  };
+}
+
+/** Približna svetlost izvorne barve — za UI (svetle swatch-e dobijo temnejši rob). */
+export function isLightColor(hex: string): boolean {
+  return luminance(hexToRgb(hex)) > 160;
+}
