@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -32,6 +32,7 @@ import type { ProcessedImage } from '@/lib/image-quality';
 import {
   buildPrefillFromMeasures, downloadMeasuresCsv, formatCm, formatM2, formatDeg, measuresToText,
 } from '@/lib/measure-geometry';
+import { buildMeasureSheet, loadImage } from '@/lib/measure-sheet';
 import { PhotoCapture } from './photo-capture';
 import { PhotoCanvas } from './photo-canvas';
 import { AnalysisPanel } from './analysis-panel';
@@ -224,6 +225,67 @@ export function CameraView() {
       toast({ title: 'Meritve kopirane ✓' });
     } catch {
       toast({ title: 'Odložišče ni dostopno', variant: 'destructive' });
+    }
+  };
+
+  // ── Merilni list: fotka z anotiranimi merami + tabela (Hover standard) ──
+  const [sheetBusy, setSheetBusy] = useState(false);
+
+  const makeSheet = async () => {
+    if (!photoUrl || allMeasures.length === 0) return null;
+    const img = await loadImage(photoUrl);
+    const craft = result?.analysis.craft;
+    return buildMeasureSheet(img, allMeasures, {
+      craftLabel: craft ? CRAFT_LABELS[craft] : undefined,
+      scene: result?.analysis.sceneDescription ?? null,
+    });
+  };
+
+  const downloadSheet = async () => {
+    setSheetBusy(true);
+    try {
+      const sheet = await makeSheet();
+      if (!sheet) {
+        toast({ title: 'Ni meritev za merilni list', variant: 'destructive' });
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = sheet.toDataURL('image/png');
+      a.download = `merilni-list-${Date.now()}.png`;
+      a.click();
+      toast({ title: 'Merilni list prenesen ✓', description: 'Fotka z merami + tabela — pripravljeno za dostavitelja.' });
+    } catch {
+      toast({ title: 'Merilni lista ni bilo mogoče zgraditi', variant: 'destructive' });
+    } finally {
+      setSheetBusy(false);
+    }
+  };
+
+  const saveSheetToGallery = async () => {
+    setSheetBusy(true);
+    try {
+      const sheet = await makeSheet();
+      if (!sheet) {
+        toast({ title: 'Ni meritev za merilni list', variant: 'destructive' });
+        return;
+      }
+      const craft = result?.analysis.craft;
+      const res = await fetch('/api/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Merilni list — ${craft ? CRAFT_LABELS[craft] : 'meritve'}`,
+          craftId: craft ?? null,
+          dataUrl: sheet.toDataURL('image/jpeg', 0.85),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: 'Merilni list shranjen ✓', description: 'V galeriji — zavihek Galerija.' });
+      loadGallery();
+    } catch {
+      toast({ title: 'Shranjevanje ni uspelo', variant: 'destructive' });
+    } finally {
+      setSheetBusy(false);
     }
   };
 
@@ -523,6 +585,35 @@ export function CameraView() {
               <Measure3dPreview measures={measures} defaultHeightM={detectedDefaultHeightM} />
             </CardContent>
           </Card>
+
+          {/* Merilni list — Hover measurement-PDF standard (skriptno, 0 AI) */}
+          {allMeasures.length > 0 && (
+            <Card>
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="flex items-center gap-2 text-sm font-bold">
+                      <FileText className="h-4 w-4 text-primary" />
+                      Merilni list
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Fotka z anotiranimi merami (razsežnostne črte, poligoni, koti) + tabela — pripravljeno za dostavitelja ali vodjo.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="min-h-10" onClick={() => void downloadSheet()} disabled={sheetBusy} data-testid="sheet-download">
+                      <Download className="mr-1.5 h-4 w-4" />
+                      {sheetBusy ? 'Pripravljam…' : 'Prenesi PNG'}
+                    </Button>
+                    <Button size="sm" variant="outline" className="min-h-10" onClick={() => void saveSheetToGallery()} disabled={sheetBusy} data-testid="sheet-save">
+                      <Save className="mr-1.5 h-4 w-4" />
+                      V galerijo
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

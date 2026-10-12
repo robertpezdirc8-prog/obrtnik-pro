@@ -255,7 +255,59 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     ctx.fillRect(clipW - 1, 0, 2, h);
     // Mere tudi na živem predogledu (export gre na off canvas)
     annotateDims(canvas);
-  }, [imgEl, renderLayers, beforeAfter, craft, showDims, dims, activeId, texTick]);
+
+    // ── Povečevalno steklo pri vlečenju vogališča (preciznost na mobilnem):
+    // 3× vstavek NAD vogališčem s prečkico — prst ne zakrije točne lege ──
+    if (dragging !== null) {
+      const [qx, qy] = active.quad[dragging] ?? active.quad[0];
+      const cx = (qx / 100) * w;
+      const cy = (qy / 100) * h;
+      const R = 46;
+      const Z = 3;
+      const srcW = (2 * R) / Z;
+      // središče lupe nad vogališčem (prst je spodaj); če je vogal pri vrhu → pod
+      let lx = cx;
+      let ly = cy - R - 20;
+      if (ly < R + 6) ly = cy + R + 20;
+      lx = Math.max(R + 6, Math.min(w - R - 6, lx));
+      ly = Math.max(R + 6, Math.min(h - R - 6, ly));
+      ctx.save();
+      // priključna črta vogališče → lupe
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(lx, ly);
+      ctx.stroke();
+      // obroč + povečana vsebina iz ČISTE fotke (robovi objekta ostanejo vidni)
+      ctx.beginPath();
+      ctx.arc(lx, ly, R, 0, Math.PI * 2);
+      ctx.save();
+      ctx.clip();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(pristine, cx - srcW / 2, cy - srcW / 2, srcW, srcW, lx - R, ly - R, 2 * R, 2 * R);
+      ctx.imageSmoothingEnabled = true;
+      ctx.restore();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255,255,255,0.98)';
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.arc(lx, ly, R + 2, 0, Math.PI * 2);
+      ctx.stroke();
+      // prečkica v središču = točna lega vogališča
+      ctx.strokeStyle = 'rgba(255,215,90,0.98)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(lx - 10, ly);
+      ctx.lineTo(lx + 10, ly);
+      ctx.moveTo(lx, ly - 10);
+      ctx.lineTo(lx, ly + 10);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }, [imgEl, renderLayers, beforeAfter, craft, showDims, dims, activeId, texTick, dragging, active]);
 
   // ── Vlečenje vogalov ─────────────────────────────────────
   const pctFromEvent = (e: React.PointerEvent): [number, number] => {

@@ -61,6 +61,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   // AUTO-ZAJEM ob mirovanju (deterministični frame-diff skript)
   const [autoCap, setAutoCap] = useState(false);
   const [steady, setSteady] = useState(false);
+  const [steadyProgress, setSteadyProgress] = useState(0);
   const [autoFired, setAutoFired] = useState(false);
   const prevGrayRef = useRef<Float32Array | null>(null);
   const trackerRef = useRef(makeStabilityTracker());
@@ -219,6 +220,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   useEffect(() => {
     if (!autoCap || !camActive || photo || busy) {
       setSteady(false);
+      setSteadyProgress(0);
       return;
     }
     const canvas = document.createElement('canvas');
@@ -229,6 +231,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     prevGrayRef.current = null;
     trackerRef.current.reset();
     setSteady(false);
+    setSteadyProgress(0);
     const id = setInterval(() => {
       const video = videoRef.current;
       if (!video || !video.videoWidth) return;
@@ -238,6 +241,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
       prevGrayRef.current = gray;
       const fired = trackerRef.current.push(diff);
       setSteady(trackerRef.current.isStable);
+      setSteadyProgress(Math.min(1, trackerRef.current.streak / 5));
       if (fired) {
         setAutoFired(true);
         captureRef.current?.();
@@ -246,6 +250,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     return () => {
       clearInterval(id);
       setSteady(false);
+      setSteadyProgress(0);
     };
   }, [autoCap, camActive, photo, busy]);
 
@@ -492,12 +497,30 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
           )}
           {camActive && (
             <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
-              <button
-                onClick={captureFrame}
-                disabled={busy}
-                aria-label="Posnemi fotografijo"
-                className="h-16 w-16 rounded-full border-4 border-white bg-primary shadow-lg transition-transform active:scale-95 disabled:opacity-50"
-              />
+              <span className="relative inline-flex">
+                {/* Progress obroč: koliko mirovanja še manjka (percent-done feedback) */}
+                {autoCap && (
+                  <svg className="pointer-events-none absolute -inset-2" viewBox="0 0 80 80" aria-hidden="true" data-testid="capture-ring">
+                    <circle cx="40" cy="40" r="37" fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="4" />
+                    <circle
+                      cx="40" cy="40" r="37" fill="none"
+                      stroke={steady ? '#4ade80' : '#fbbf24'}
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 37}
+                      strokeDashoffset={2 * Math.PI * 37 * (1 - steadyProgress)}
+                      transform="rotate(-90 40 40)"
+                      style={{ transition: 'stroke-dashoffset 150ms linear' }}
+                    />
+                  </svg>
+                )}
+                <button
+                  onClick={captureFrame}
+                  disabled={busy}
+                  aria-label="Posnemi fotografijo"
+                  className="h-16 w-16 rounded-full border-4 border-white bg-primary shadow-lg transition-transform active:scale-95 disabled:opacity-50"
+                />
+              </span>
             </div>
           )}
         </div>
