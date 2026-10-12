@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import {
   Camera, RefreshCw, Upload, ScanSearch, AlertTriangle, CheckCircle2, Images, Zap,
-  ListChecks, Crop, RotateCw, Check, Circle, Grid3x3, Compass,
+  ListChecks, Crop, RotateCw, Check, Circle, Grid3x3, Compass, Focus, Sun, Sparkles,
 } from 'lucide-react';
 import { processImage, checkQuality, estimateTilt, autoLevel, type ProcessedImage, type QualityCheck } from '@/lib/image-quality';
 import { grayFromImageData, makeStabilityTracker, meanAbsDiff } from '@/lib/stability';
@@ -66,6 +66,9 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   const prevGrayRef = useRef<Float32Array | null>(null);
   const trackerRef = useRef(makeStabilityTracker());
   const captureRef = useRef<() => void>(() => undefined);
+
+  // Živi indikator svetlobe (deterministični histogram na vzorcu 64×48)
+  const [liveLight, setLiveLight] = useState<'ok' | 'dark' | 'bright' | null>(null);
 
   // Naloži izbor + stanje vodiča (obvezno v efektu — SSR varno)
   useEffect(() => {
@@ -181,7 +184,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     setPhoto(processed);
     setLeveled(false);
     setManualDeg(0);
-    const [q, t] = await Promise.all([checkQuality(processed.dataUrl), estimateTilt(processed.dataUrl)]);
+    const [q, t] = await Promise.all([checkQuality(processed.dataUrl, processed.width, processed.height), estimateTilt(processed.dataUrl)]);
     setQuality(q);
     setTilt(t);
   };
@@ -192,7 +195,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     try {
       const leveledImg = await autoLevel(photo.dataUrl, deg);
       setPhoto(leveledImg);
-      const [q, t] = await Promise.all([checkQuality(leveledImg.dataUrl), estimateTilt(leveledImg.dataUrl)]);
+      const [q, t] = await Promise.all([checkQuality(leveledImg.dataUrl, leveledImg.width, leveledImg.height), estimateTilt(leveledImg.dataUrl)]);
       setQuality(q);
       setTilt(t);
       setLeveled(true);
@@ -254,6 +257,45 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     };
   }, [autoCap, camActive, photo, busy]);
 
+  // ── Živa svetloba: 64×48 vzorec vs. 600 ms → povprečje + klipanje.
+  //    Isti pragovi kot končna kontrola kakovosti (samo mehkejši pragi
+  //    zaradi majhnega vzorca) — pokaze se, da uporabnik popravi
+  //    svetlobo PRED posnetkom, ne šele pri opozorilu po njem.
+  useEffect(() => {
+    if (!camActive || photo) {
+      setLiveLight(null);
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 48;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    const id = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth) return;
+      ctx.drawImage(video, 0, 0, 64, 48);
+      const gray = grayFromImageData(ctx.getImageData(0, 0, 64, 48).data);
+      let sum = 0;
+      let dark = 0;
+      let bright = 0;
+      for (let i = 0; i < gray.length; i++) {
+        sum += gray[i];
+        if (gray[i] < 12) dark++;
+        if (gray[i] > 243) bright++;
+      }
+      const mean = sum / gray.length;
+      const darkPct = (100 * dark) / gray.length;
+      const brightPct = (100 * bright) / gray.length;
+      setLiveLight(
+        mean < 55 || darkPct > 30 ? 'dark'
+        : mean > 215 || brightPct > 30 ? 'bright'
+        : 'ok',
+      );
+    }, 600);
+    return () => clearInterval(id);
+  }, [camActive, photo]);
+
   // ─── Predogled s kontrola kakovosti + naklon ─────────────
   if (photo) {
     return (
@@ -263,20 +305,38 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
         </div>
 
         {quality && !quality.ok && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <div className="flex-1">
-              <p className="font-semibold">Kontrola kakovosti</p>
-              <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
-                {quality.warnings.map((w, i) => <li key={i}>{w}</li>)}
-              </ul>
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm" role="alert" data-testid="quality-card">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <p className="flex-1 font-semibold">Kontrola kakovosti</p>
+              <span className="rounded-full bg-amber-200/70 px-2 py-0.5 text-[11px] font-bold text-amber-900" data-testid="quality-score">
+                {quality.score}/100 · {quality.verdict}
+              </span>
             </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${quality.blurScore >= 90 ? 'border-green-300 bg-green-50 text-green-800' : 'border-amber-400 bg-amber-100 text-amber-900'}`}>
+                <Focus className="h-3 w-3" /> Ostrina {quality.blurScore < 35 ? 'slaba' : quality.blurScore < 90 ? 'mejna' : 'ok'}
+              </span>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${quality.exposureOk ? 'border-green-300 bg-green-50 text-green-800' : 'border-amber-400 bg-amber-100 text-amber-900'}`}>
+                <Sun className="h-3 w-3" /> Svetloba {quality.exposureOk ? 'ok' : 'slaba'}
+              </span>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${quality.glareOk ? 'border-green-300 bg-green-50 text-green-800' : 'border-amber-400 bg-amber-100 text-amber-900'}`} data-testid="quality-glare">
+                <Sparkles className="h-3 w-3" /> Odsevi {quality.glareOk ? 'brez' : `${quality.glarePct.toFixed(1).replace('.', ',')} %`}
+              </span>
+            </div>
+            <ul className="mt-1.5 list-inside list-disc text-xs text-muted-foreground" data-testid="quality-tips">
+              {quality.warnings.map((w, i) => <li key={`w${i}`}>{w}</li>)}
+              {quality.tips.map((t, i) => <li key={`t${i}`} className="text-foreground/80">Nasvet: {t}</li>)}
+            </ul>
           </div>
         )}
         {quality?.ok && (
-          <div className="flex items-center gap-2 rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+          <div className="flex items-center gap-2 rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800" data-testid="quality-card">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            Fotografija je ostro in dobro osvetljena — pripravljena za analizo.
+            <span className="flex-1">Fotografija je ostro in dobro osvetljena — pripravljena za analizo.</span>
+            <span className="rounded-full bg-green-200/70 px-2 py-0.5 text-[11px] font-bold text-green-900" data-testid="quality-score">
+              {quality.score}/100 · {quality.verdict}
+            </span>
           </div>
         )}
         {autoFired && (
@@ -486,6 +546,16 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
               <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white" data-testid="capture-level-state">
                 {levelOk ? 'Ravno ✓' : `${Math.abs(orient.gamma).toFixed(0)}°`}
               </span>
+            </div>
+          )}
+          {/* Živi indikator svetlobe (histogram na vzorcu) — popravi svetlobo PRED posnetkom */}
+          {camActive && liveLight && (
+            <div
+              className={`absolute bottom-4 left-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold text-white ${liveLight === 'ok' ? 'bg-black/55' : 'bg-amber-900/70'}`}
+              data-testid="capture-light"
+            >
+              <Sun className={`h-3 w-3 ${liveLight === 'ok' ? 'text-green-400' : 'text-amber-300'}`} />
+              {liveLight === 'ok' ? 'Svetloba: prav ✓' : liveLight === 'dark' ? 'Pretemno — poišči svetlobo' : 'Presvetlo — se umakni od sonca'}
             </div>
           )}
           {/* Auto-zajem: indikator mirovanja (deterministični frame-diff) */}
