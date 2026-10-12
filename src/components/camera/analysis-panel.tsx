@@ -270,7 +270,7 @@ export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPan
             {suggestedProducts.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border p-2.5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{p.name}</p>
+                  <p className="line-clamp-1 text-sm font-medium">{p.name}</p>
                   <p className="text-xs text-muted-foreground">{formatEUR(p.unitPrice)} / {p.unit}</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => addProduct(p)} className="shrink-0 h-8">
@@ -285,8 +285,8 @@ export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPan
 
       {/* CTA */}
       {analysis.craft !== 'drugo' && (
-        <Button size="lg" className="w-full min-h-12" onClick={openCalculator}>
-          <Calculator className="mr-2 h-5 w-5" />
+        <Button size="lg" className="w-full min-h-12 whitespace-normal" onClick={openCalculator}>
+          <Calculator className="mr-2 h-5 w-5 shrink-0" />
           {hasPrefill ? 'Odpri kalkulator s predpolnjenimi merami' : `Odpri kalkulator: ${craftMeta?.name ?? craftLabel}`}
         </Button>
       )}

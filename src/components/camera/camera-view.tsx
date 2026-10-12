@@ -41,6 +41,9 @@ import { VoiceInput } from './voice-input';
 import { WebXrAr } from './webxr-ar';
 import { Measure3dPreview } from './preview-3d';
 import { VizPanel } from './viz-panel';
+import { BarCounter } from './bar-counter';
+import { ShotPicker } from './shot-picker';
+import type { VizBarSuggest } from '@/lib/bar-count';
 
 interface PhotoRecord {
   id: string;
@@ -81,8 +84,12 @@ export function CameraView() {
   const [measures, setMeasures] = useState<PhotoMeasure[]>([]);
   const [lastPhotoId, setLastPhotoId] = useState<string | null>(null);
   const [auxMeasures, setAuxMeasures] = useState<PhotoMeasure[]>([]);
+  const [barSuggest, setBarSuggest] = useState<VizBarSuggest | null>(null);
 
   const [gallery, setGallery] = useState<PhotoRecord[] | null>(null);
+
+  // Nova fotografija → počisti predlog števca palic
+  useEffect(() => { setBarSuggest(null); }, [photoUrl]);
 
   // Animacija korakov med analizo
   useEffect(() => {
@@ -366,11 +373,18 @@ export function CameraView() {
       {/* ── Zajem + analiza ─────────────────────────────────────── */}
       {tab === 'analiza' && phase === 'capture' && (
         <div className="grid gap-4 lg:grid-cols-5">
-          <Card className="lg:col-span-3">
-            <CardContent className="p-4 sm:p-5">
-              <PhotoCapture onAnalyze={(img) => void handleAnalyze(img)} busy={busy} initialCraft={result?.analysis.craft ?? null} />
-            </CardContent>
-          </Card>
+          <div className="space-y-4 lg:col-span-3">
+            <Card>
+              <CardContent className="p-4 sm:p-5">
+                <PhotoCapture onAnalyze={(img) => void handleAnalyze(img)} busy={busy} initialCraft={result?.analysis.craft ?? null} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 sm:p-5">
+                <ShotPicker onPick={(img) => void handleAnalyze(img)} disabled={busy} />
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Nasveti + kako deluje */}
           <div className="space-y-4 lg:col-span-2">
@@ -474,6 +488,21 @@ export function CameraView() {
             </Card>
           </div>
           <Card>
+            <CardContent className="p-4 sm:p-5">
+              <BarCounter
+                dataUrl={photoUrl}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                onMeasure={addAuxMeasure('length')}
+                onSuggest={(s) => { setBarSuggest(s); setTab('viz'); }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
             <CardContent className="p-4 sm:p-5 space-y-3">
               <h3 className="flex items-center gap-2 text-sm font-bold">
                 <Box className="h-4 w-4 text-primary" />
@@ -557,6 +586,7 @@ export function CameraView() {
                     ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
                     : null
                 }
+                barSuggest={barSuggest}
                 onSaved={loadGallery}
               />
             </CardContent>
@@ -564,7 +594,7 @@ export function CameraView() {
           <div className="grid gap-4 sm:grid-cols-3">
             {[
               ['1. Označi območje', 'Vleci 4 vogališča na rob ograje, terase ali fasade — ali uporabi ravnino, ki jo je skripta že zaznala.'],
-              ['2. Izberi vzorec in barvo', 'Palice, panel, lamele, mreža, steklo, WPC deke, ploščice — barve RAL in dekorji, razmaki v cm.'],
+              ['2. Izberi vzorec in barvo', 'Palice, panel, lamele (tudi lamelni zaslon 45°), mreža, steklo, WPC deke, ploščice — barve RAL in dekorji, razmaki v cm ali izmerjeno s fotke.'],
               ['3. Pokaži stranki', 'Pred/po primerjava, prenos PNG ali shrani v galerijo — kupci vidijo končni rezultat še pred ponudbo.'],
             ].map(([t, d]) => (
               <Card key={t}>
@@ -609,7 +639,7 @@ export function CameraView() {
                     <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-1.5 text-sm">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0">
-                          {m.kind === 'laser' ? 'laser' : 'glas'}
+                          {m.kind === 'laser' ? 'laser' : m.kind === 'voice' ? 'glas' : m.kind === 'xr' ? 'AR' : 'meritev'}
                         </Badge>
                         <span className="truncate font-medium">{m.label}</span>
                       </span>

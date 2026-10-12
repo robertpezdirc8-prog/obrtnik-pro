@@ -21,6 +21,7 @@ export type VizPattern =
   | 'panel'        // polna plošča (privacy panel)
   | 'vertikalne'   // vertikalne palice (iron/alu)
   | 'horizontalne' // horizontalne lamele
+  | 'lamele45'     // nagnjene lamele 45° (lamelni zaslon)
   | 'piketna'      // piketna ograja
   | 'mreza'        // varnostna mreža (3D mreža)
   | 'steklo'       // stekleni sistemi
@@ -40,6 +41,7 @@ export const VIZ_STYLES: VizStyleInfo[] = [
   { id: 'vertikalne', label: 'Vertikalne palice', hint: 'Klasična alu/inox ograja z navpičnimi palicami', crafts: ['ograje', 'stopnice', 'okna-vrata'] },
   { id: 'panel', label: 'Polna plošča', hint: 'Zaprt panel — zasebnost (alete/perforirana pločevina)', crafts: ['ograje', 'fasada', 'okna-vrata'] },
   { id: 'horizontalne', label: 'Horizontalne lamele', hint: 'Vodoravne lamele — sodobna estetika', crafts: ['ograje', 'wpc-terasa', 'fasada'] },
+  { id: 'lamele45', label: 'Lamelni zaslon 45°', hint: 'Nagnjene lamele — zaslon za zasebnost in senčenje', crafts: ['ograje', 'fasada', 'okna-vrata'] },
   { id: 'piketna', label: 'Piketna ograja', hint: 'Klasična piketna ograja z ostrimi vrhovi', crafts: ['ograje'] },
   { id: 'mreza', label: 'Varnostna mreža', hint: 'Zvarena mreža 3D — varnostne ograje', crafts: ['ograje'] },
   { id: 'steklo', label: 'Stekleni sistemi', hint: 'Kaljeno steklo z prosojnostjo in odboji', crafts: ['ograje', 'wpc-terasa', 'stopnice'] },
@@ -171,6 +173,11 @@ export function slidersForPattern(p: VizPattern): VizSliderSpec[] {
         { key: 'elementCm', label: 'Višina lamele', min: 4, max: 20, step: 0.5 },
         { key: 'spacingCm', label: 'Reža med lamelami', min: 0.5, max: 8, step: 0.5 },
       ];
+    case 'lamele45':
+      return [
+        { key: 'elementCm', label: 'Širina lamele', min: 2, max: 16, step: 0.5 },
+        { key: 'spacingCm', label: 'Reža med lamelami', min: 1, max: 12, step: 0.5 },
+      ];
     case 'panel':
       return [{ key: 'spacingCm', label: 'Razmak stikov panelov', min: 60, max: 160, step: 5 }];
     case 'mreza':
@@ -286,6 +293,28 @@ export function buildPatternCanvas(
         ctx.fillStyle = g;
         ctx.fillRect(0, y, W, h);
       }
+      break;
+    }
+    case 'lamele45': {
+      // Nagnjene lamele (lamelni zaslon): vzporedne palice pod 45°
+      // s cilindričnim senčenjem pravokotno na lamele.
+      // Pokritost: u = (x+y)/√2 ∈ [0, 0,71·(W+H)] za vsak piksel canvasa,
+      // zato pasovi tečejo od 0 do 0,75·(W+H) — robovi vedno pokriti.
+      baseFill(0);
+      const gap = Math.max(2, params.spacingCm * pxPerCm);
+      const w = Math.max(1.5, params.elementCm * pxPerCm);
+      const span = (W + H) * 0.75 + w;
+      ctx.save();
+      ctx.rotate(Math.PI / 4);
+      for (let x = 0; x < span; x += gap + w) {
+        const g = ctx.createLinearGradient(x, 0, x + w, 0);
+        g.addColorStop(0, shade(rgb, 0.70));
+        g.addColorStop(0.45, shade(rgb, 1.14));
+        g.addColorStop(1, shade(rgb, 0.60));
+        ctx.fillStyle = g;
+        ctx.fillRect(x, -(W + H), w, 2 * (W + H));
+      }
+      ctx.restore();
       break;
     }
     case 'piketna': {

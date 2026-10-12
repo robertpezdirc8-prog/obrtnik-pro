@@ -18,8 +18,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Palette, Upload, Download, Save, Crosshair, RefreshCw, Move,
-  Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket,
-  Layers, Plus, X, CopyPlus, FileImage, Trash2,
+  Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds,
+  Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -39,6 +39,8 @@ interface VizPanelProps {
   surfaces: DetectedSurface[];
   /** Referenčni objekt za oceno dimenzij (box v % + assumedCm). */
   reference: { box: [number, number, number, number]; assumedCm: number } | null;
+  /** Predlog iz števca palic (meritev z fotke) — enoklikovna uporaba. */
+  barSuggest?: { spacingCm: number; elementCm: number; count: number; confidence: 'visoka' | 'srednja' | 'nizka' } | null;
   onSaved?: () => void;
 }
 
@@ -51,6 +53,7 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
   vertikalne: <Fence className="h-4 w-4" />,
   panel: <PanelTop className="h-4 w-4" />,
   horizontalne: <Rows3 className="h-4 w-4" />,
+  lamele45: <Blinds className="h-4 w-4" />,
   piketna: <Columns3 className="h-4 w-4" />,
   mreza: <Grid3x3 className="h-4 w-4" />,
   steklo: <Square className="h-4 w-4" />,
@@ -59,7 +62,7 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
   barva: <PaintBucket className="h-4 w-4" />,
 };
 
-export function VizPanel({ dataUrl, craft, surfaces, reference, onSaved }: VizPanelProps) {
+export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSaved }: VizPanelProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -547,6 +550,30 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, onSaved }: VizPa
             </Button>
           </div>
         </div>
+
+        {/* Predlog iz števca palic (meritve) */}
+        {barSuggest && barSuggest.count >= 2 && (
+          <div className="rounded-lg border border-green-500/40 bg-green-500/5 p-2.5" data-testid="viz-bar-suggest">
+            <p className="text-[11px] font-semibold text-green-700">
+              Izmerjeno s fotke: {barSuggest.count} palic · razmak {barSuggest.spacingCm} cm · debelina {barSuggest.elementCm} cm
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-1.5 min-h-8 text-[11px]"
+              onClick={() => {
+                const patch: Partial<VizLayer> = { params: { ...active.params, spacingCm: barSuggest.spacingCm, elementCm: barSuggest.elementCm } };
+                const hasSpacing = slidersForPattern(active.pattern).some((s) => s.key === 'spacingCm');
+                if (!hasSpacing) patch.pattern = 'vertikalne';
+                updateLayer(patch);
+              }}
+              data-testid="viz-use-bar-suggest"
+            >
+              <Ruler className="mr-1 h-3 w-3" />
+              Uporabi izmerjene vrednosti
+            </Button>
+          </div>
+        )}
 
         {/* Vzorci */}
         <div className="space-y-2">
