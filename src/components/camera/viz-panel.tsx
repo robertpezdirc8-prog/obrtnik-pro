@@ -43,6 +43,7 @@ import {
   buildVizProposal, printProposalCanvas,
   type ProposalLayerSpec, type ProposalMeasureRow, type ProposalEstimate,
 } from '@/lib/viz-proposal';
+import { detectPatternInQuad, type PatternSuggestion } from '@/lib/pattern-detect';
 import { runCalculator } from '@/lib/pricing';
 import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
 import { CRAFT_LABELS } from '@/lib/camera-types';
@@ -118,6 +119,10 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   const [magnet, setMagnet] = useState(true);
   /** Vlečenje pred/po lovilca direktno na platnu. */
   const [dividerDrag, setDividerDrag] = useState(false);
+  /** Zaznani obstoječi vzorec v aktivnem območju (skripta, 0 AI). */
+  const [patSug, setPatSug] = useState<PatternSuggestion | null>(null);
+  /** Dominantna (obstoječa) barva materiala v aktivnem območju. */
+  const [existingHex, setExistingHex] = useState<string | null>(null);
 
   const activeIdx = Math.max(0, layers.findIndex((l) => l.id === activeId));
   const active = layers[activeIdx] ?? layers[0];
@@ -162,6 +167,31 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     });
     return () => { alive = false; };
   }, []);
+
+  // ── Zaznavanje obstoječega vzorca + barve (skripta, debounce med vlečenjem) ──
+  useEffect(() => {
+    if (!imgEl) { setPatSug(null); setExistingHex(null); return; }
+    const t = setTimeout(() => {
+      try {
+        const pristine = pristineRef.current;
+        let data: ImageData | null = null;
+        if (pristine) data = pristine.getContext('2d')?.getImageData(0, 0, pristine.width, pristine.height) ?? null;
+        if (!data) {
+          const c = document.createElement('canvas');
+          c.width = imgEl.naturalWidth;
+          c.height = imgEl.naturalHeight;
+          c.getContext('2d')!.drawImage(imgEl, 0, 0);
+          data = c.getContext('2d')!.getImageData(0, 0, c.width, c.height);
+        }
+        setPatSug(detectPatternInQuad({ width: data.width, height: data.height, data: data.data as unknown as Uint8ClampedArray }, active.quad.map(([x, y]) => ({ x, y }))));
+        const dom = dominantColorInQuad(imgEl, active.quad);
+        setExistingHex(dom);
+      } catch {
+        /* detekcija ne sme ustaviti UI */
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [imgEl, active.quad, activeId, texTick]);
 
   // Nalaganje slike
   useEffect(() => {
@@ -636,6 +666,10 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     return buildVizProposal(imgEl, off, {
       craftLabel: CRAFT_LABELS[craft],
       layers: layerSpecs,
+      existingLabel:
+        patSug
+          ? `${VIZ_STYLES.find((s) => s.id === patSug.pattern)?.label ?? patSug.pattern}${existingHex ? ` · obstoječa barva ${existingHex}` : ''}`
+          : null,
       measures: measuresSummary.length > 0 ? measuresSummary : undefined,
       estimate,
     });
@@ -1055,6 +1089,73 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
             >
               <Ruler className="mr-1 h-3 w-3" />
               Uporabi izmerjene vrednosti
+            </Button>
+          </div>
+        )}
+
+        {/* Kaj je na fotki? — zaznavanje obstoječega vzorca (skripta) */}
+        {patSug && (
+          <div className="space-y-2 rounded-lg border border-teal-500/40 bg-teal-500/5 p-3" data-testid="viz-detect-card">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium">
+                Na fotki: <strong>{VIZ_STYLES.find((s) => s.id === patSug.pattern)?.label ?? patSug.pattern}</strong>{' '}
+                <span className="text-muted-foreground">· {patSug.detail.toLowerCase()} · zanesljivost {patSug.confidence}</span>
+              </p>
+              {existingHex && (
+                <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span
+                    className="inline-block h-4 w-4 rounded border border-border"
+                    style={{ background: existingHex }}
+                    aria-hidden="true"
+                  />
+                  {existingHex}
+                </span>
+              )}
+            </div>
+            {(() => {
+              if (!patSug.pitchPx || patSug.direction === 'd45' || patSug.direction === 'd135' || !imgEl || !quoteDims) return null;
+              const q = active.quad;
+              const topPx = Math.hypot((q[1][0] - q[0][0]) / 100 * imgEl.naturalWidth, (q[1][1] - q[0][1]) / 100 * imgEl.naturalHeight);
+              const botPx = Math.hypot((q[2][0] - q[3][0]) / 100 * imgEl.naturalWidth, (q[2][1] - q[3][1]) / 100 * imgEl.naturalHeight);
+              const cmPerPx = (quoteDims.topW + quoteDims.botW) / Math.max(1, topPx + botPx);
+              const pitchCm = patSug.pitchPx * cmPerPx;
+              const widthCm = (patSug.barWidthPx ?? 0) * cmPerPx;
+              if (pitchCm < 3 || pitchCm > 60) return null;
+              return (
+                <p className="text-[11px] text-muted-foreground" data-testid="viz-detect-pitch">
+                  Izmerjena perioda: razmak ≈ <strong className="text-foreground">{pitchCm.toLocaleString('sl-SI', { maximumFractionDigits: 1 })} cm</strong>
+                  {widthCm >= 1 ? ` · debelina ≈ ${widthCm.toLocaleString('sl-SI', { maximumFractionDigits: 1 })} cm` : ''}
+                </p>
+              );
+            })()}
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-9"
+              onClick={() => {
+                let params: VizParams = { ...active.params };
+                if (patSug.pitchPx && patSug.direction && patSug.direction !== 'd45' && patSug.direction !== 'd135' && imgEl && quoteDims) {
+                  const q = active.quad;
+                  const topPx = Math.hypot((q[1][0] - q[0][0]) / 100 * imgEl.naturalWidth, (q[1][1] - q[0][1]) / 100 * imgEl.naturalHeight);
+                  const botPx = Math.hypot((q[2][0] - q[3][0]) / 100 * imgEl.naturalWidth, (q[2][1] - q[3][1]) / 100 * imgEl.naturalHeight);
+                  const cmPerPx = (quoteDims.topW + quoteDims.botW) / Math.max(1, topPx + botPx);
+                  const pitchCm = patSug.pitchPx * cmPerPx;
+                  const widthCm = (patSug.barWidthPx ?? 0) * cmPerPx;
+                  if (pitchCm >= 3 && pitchCm <= 60) {
+                    params = {
+                      ...params,
+                      spacingCm: Math.max(5, Math.min(20, Math.round((pitchCm - widthCm) * 2) / 2)),
+                      elementCm: Math.max(1, Math.min(6, Math.round(widthCm * 10) / 10)),
+                    };
+                  }
+                }
+                updateLayer({ pattern: patSug.pattern, params });
+                toast({ title: `Vzorec „${VIZ_STYLES.find((s) => s.id === patSug.pattern)?.label ?? patSug.pattern}“ uporabljen ✓`, description: 'Zaznano stanje preneseno v predlog — prilagodi po želji.' });
+              }}
+              data-testid="viz-detect-apply"
+            >
+              <Wand2 className="mr-1.5 h-4 w-4" />
+              Uporabi zaznano
             </Button>
           </div>
         )}

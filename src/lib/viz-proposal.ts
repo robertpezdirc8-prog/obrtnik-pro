@@ -60,6 +60,8 @@ export interface VizProposalOptions {
   layers: ProposalLayerSpec[];
   /** Podnaslov (opis scene iz analize) ali null. */
   scene?: string | null;
+  /** Zaznani obstoječi vzorec/barva (skripta) — pod oznako TRENUTNO STANJE. */
+  existingLabel?: string | null;
   measures?: ProposalMeasureRow[];
   estimate?: ProposalEstimate | null;
 }
@@ -171,7 +173,7 @@ export function buildVizProposal(
     ctx.fillStyle = tint;
     ctx.fillText(label, x, pairTop - 10);
   };
-  drawFrame(PAD, beforeImg, 'TRENUTNO STANJE', '#78716c');
+  drawFrame(PAD, beforeImg, `TRENUTNO STANJE${opts.existingLabel ? ` — ${opts.existingLabel}` : ''}`, '#78716c');
   drawFrame(PAD + eachW + gap, afterCanvas, `PREDLOG — ${opts.layers[0]?.patternLabel ?? 'nov videz'}`, '#b45309');
 
   // ── Pomožna risba tabele ─────────────────────────────────
