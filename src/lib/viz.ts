@@ -14,6 +14,7 @@
 
 import { applyH, orderQuad, solveHomography } from './homography';
 import type { CraftCategory } from './camera-types';
+import type { CraftInputs } from './types';
 
 // ─── Katalog vzorcev ─────────────────────────────────────────
 
@@ -22,6 +23,7 @@ export type VizPattern =
   | 'vertikalne'   // vertikalne palice (iron/alu)
   | 'horizontalne' // horizontalne lamele
   | 'lamele45'     // nagnjene lamele 45° (lamelni zaslon)
+  | 'vozlik'       // diagonalna križna mreža (vozlik/trellis)
   | 'piketna'      // piketna ograja
   | 'mreza'        // varnostna mreža (3D mreža)
   | 'steklo'       // stekleni sistemi
@@ -42,6 +44,7 @@ export const VIZ_STYLES: VizStyleInfo[] = [
   { id: 'panel', label: 'Polna plošča', hint: 'Zaprt panel — zasebnost (alete/perforirana pločevina)', crafts: ['ograje', 'fasada', 'okna-vrata'] },
   { id: 'horizontalne', label: 'Horizontalne lamele', hint: 'Vodoravne lamele — sodobna estetika', crafts: ['ograje', 'wpc-terasa', 'fasada'] },
   { id: 'lamele45', label: 'Lamelni zaslon 45°', hint: 'Nagnjene lamele — zaslon za zasebnost in senčenje', crafts: ['ograje', 'fasada', 'okna-vrata'] },
+  { id: 'vozlik', label: 'Vozlik (križna mreža)', hint: 'Diagonalno križana mreža — klasična vozlik ograja ali nadstrešek', crafts: ['ograje', 'nadstreški', 'fasada'] },
   { id: 'piketna', label: 'Piketna ograja', hint: 'Klasična piketna ograja z ostrimi vrhovi', crafts: ['ograje'] },
   { id: 'mreza', label: 'Varnostna mreža', hint: 'Zvarena mreža 3D — varnostne ograje', crafts: ['ograje'] },
   { id: 'steklo', label: 'Stekleni sistemi', hint: 'Kaljeno steklo z prosojnostjo in odboji', crafts: ['ograje', 'wpc-terasa', 'stopnice'] },
@@ -177,6 +180,11 @@ export function slidersForPattern(p: VizPattern): VizSliderSpec[] {
       return [
         { key: 'elementCm', label: 'Širina lamele', min: 2, max: 16, step: 0.5 },
         { key: 'spacingCm', label: 'Reža med lamelami', min: 1, max: 12, step: 0.5 },
+      ];
+    case 'vozlik':
+      return [
+        { key: 'spacingCm', label: 'Mreža vozlika', min: 8, max: 30, step: 1 },
+        { key: 'elementCm', label: 'Debelina letve', min: 1.5, max: 8, step: 0.5 },
       ];
     case 'panel':
       return [{ key: 'spacingCm', label: 'Razmak stikov panelov', min: 60, max: 160, step: 5 }];
@@ -315,6 +323,34 @@ export function buildPatternCanvas(
         ctx.fillRect(x, -(W + H), w, 2 * (W + H));
       }
       ctx.restore();
+      break;
+    }
+    case 'vozlik': {
+      // Diagonalna križna mreža (vozlik/trellis): dve mreži diagonalnih
+      // pasov (±45°) s cilindričnim senčenjem; vozlišča rahlo temnejša
+      // (prekrivanje letvi). Pokritost pasov do 0,75·(W+H) — robovi pokriti.
+      baseFill(0);
+      const gap = Math.max(2, params.spacingCm * pxPerCm);
+      const w = Math.max(1.5, params.elementCm * pxPerCm);
+      const span = (W + H) * 0.75 + w;
+      const drawDiagonals = (dir: 1 | -1, lighten: number) => {
+        ctx.save();
+        ctx.translate(W / 2, H / 2);
+        ctx.rotate(dir * Math.PI / 4);
+        for (let x = -(W + H) / 2; x < span; x += gap + w) {
+          const g = ctx.createLinearGradient(x, 0, x + w, 0);
+          g.addColorStop(0, shade(rgb, 0.66 * lighten));
+          g.addColorStop(0.45, shade(rgb, 1.1 * lighten));
+          g.addColorStop(1, shade(rgb, 0.58 * lighten));
+          ctx.fillStyle = g;
+          ctx.fillRect(x, -(W + H), w, 2 * (W + H));
+        }
+        ctx.restore();
+      };
+      // spodnja diagonalna smer nekoliko temnejša (zasenčena letvica),
+      // zgornja svetlejša → realističen preplet
+      drawDiagonals(-1, 0.82);
+      drawDiagonals(1, 1.0);
       break;
     }
     case 'piketna': {
@@ -788,6 +824,72 @@ export function isLightColor(hex: string): boolean {
   return luminance(hexToRgb(hex)) > 160;
 }
 
+/**
+ * Dimenzije štirikotnika, kadar referenčnega objekta ni: uporabnik
+ * vpiše realno širino (cm), višina pa sledi razmerju strani fotke.
+ * Deterministična geometrija (brez AI) — dovolj natančno za
+ * prefill kalkulatorja in gostoto vzorca.
+ */
+export function quadDimsFromWidthCm(
+  quadPct: [number, number][],
+  imgW: number,
+  imgH: number,
+  widthCm: number,
+): QuadDimsCm | null {
+  if (quadPct.length !== 4 || imgW < 4 || imgH < 4 || widthCm < 30) return null;
+  const q = orderQuad(quadPct.map(([x, y]) => ({ x: (x / 100) * imgW, y: (y / 100) * imgH })));
+  const topPx = Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y);
+  const botPx = Math.hypot(q[2].x - q[3].x, q[2].y - q[3].y);
+  const avgWpx = (topPx + botPx) / 2;
+  if (avgWpx < 4) return null;
+  const cmPerPx = widthCm / avgWpx;
+  const leftPx = Math.hypot(q[3].x - q[0].x, q[3].y - q[0].y);
+  const rightPx = Math.hypot(q[2].x - q[1].x, q[2].y - q[1].y);
+  return {
+    topW: Math.round(topPx * cmPerPx),
+    botW: Math.round(botPx * cmPerPx),
+    leftH: Math.round(leftPx * cmPerPx),
+    rightH: Math.round(rightPx * cmPerPx),
+  };
+}
+
+const r2 = (v: number): number => Math.round(v * 100) / 100;
+
+/**
+ * Preslikava ocenjenih dimenzij območja (cm) v vhode kalkulatorja
+ * za dano dejavnost — zapre zanko "stranka vidi vizualizacijo →
+ * obrtnik takoj dobi odmerek" (raziskava task13: jedro vrednosti
+ * Hover Design Pro). Vrne samo polja, ki so iz geometrije izvedljiva.
+ */
+export function craftInputsFromQuad(
+  craft: CraftCategory,
+  dims: QuadDimsCm,
+): Partial<CraftInputs> {
+  const wM = r2((dims.topW + dims.botW) / 200); // povprečna širina v m
+  const hM = r2((dims.leftH + dims.rightH) / 200); // povprečna višina v m
+  const longM = r2(Math.max(wM, hM));
+  const shortM = r2(Math.min(wM, hM));
+  switch (craft) {
+    case 'ograje':
+      return { length: wM, height: hM };
+    case 'stopnice':
+      // širina odprtja/ograje na stopnicah
+      return wM > 0.3 ? { railingLength: wM, railingNeeded: true } : {};
+    case 'keramika':
+      return { floorLength: longM, floorWidth: shortM };
+    case 'wpc-terasa':
+      return { deckLength: longM, deckWidth: shortM };
+    case 'okna-vrata':
+      return wM > 0.2 && hM > 0.2 ? { windowSize: r2(wM * hM) } : {};
+    case 'nadstreški':
+      return { canopyWidth: wM, canopyDepth: hM };
+    case 'fasada':
+      return { facadePerimeter: wM, facadeHeight: hM };
+    default:
+      return {};
+  }
+}
+
 // ─── Plasti: več območij prenove na isti fotografiji ─────────
 // (raziskava task11: realna scena ima več odsekov — čelna ograja,
 // vrata, stranski del; vsak lahko dobi svoj vzorec/barvo)
@@ -799,7 +901,17 @@ export interface VizLayer {
   quad: [number, number][];
   pattern: VizPattern;
   colorId: string;
+  /** Barva iz fotke (eyedropper) — preglasi paletni colorId. */
+  customHex?: string;
   params: VizParams;
+}
+
+/** Efektivna barva plasti: custom iz fotke, sicer katalog. */
+export function resolveLayerColor(l: VizLayer): VizColor {
+  if (l.customHex) {
+    return { id: l.colorId, label: 'Iz fotke', hex: l.customHex, group: 'ral' };
+  }
+  return VIZ_COLORS.find((c) => c.id === l.colorId) ?? VIZ_COLORS[0];
 }
 
 /** Privzeti štirikotniki za nova območja (razporejeni po fotki). */
@@ -836,10 +948,10 @@ export function drawLayersOnQuad(
   craft: CraftCategory,
 ): void {
   for (const l of layers) {
-    const color = VIZ_COLORS.find((c) => c.id === l.colorId) ?? VIZ_COLORS[0];
+    const hex = resolveLayerColor(l).hex;
     try {
-      if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, color.hex);
-      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, color.hex, l.params, craft);
+      if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, hex);
+      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, hex, l.params, craft);
     } catch {
       /* posamezna plast ne sme ustaviti upodobitve */
     }
@@ -851,6 +963,8 @@ export function drawLayersOnQuad(
 export interface SheetVariant {
   pattern: VizPattern;
   colorId: string;
+  /** Barva iz fotke (eyedropper) — če je nastavljena, preglosi colorId. */
+  customHex?: string;
 }
 
 interface SheetOpts {
@@ -938,7 +1052,9 @@ export function buildOptionsSheet(
       cctx,
       img,
       layers.map((l) =>
-        l.id === activeLayerId ? { ...l, pattern: v.pattern, colorId: v.colorId } : l,
+        l.id === activeLayerId
+          ? { ...l, pattern: v.pattern, colorId: v.colorId, customHex: v.customHex }
+          : l,
       ),
       craft,
     );
@@ -957,7 +1073,9 @@ export function buildOptionsSheet(
     ctx.fillStyle = grad;
     ctx.fillRect(x, y + cellH - labelH - 14, cellW, labelH + 14);
 
-    const color = VIZ_COLORS.find((c) => c.id === v.colorId) ?? VIZ_COLORS[0];
+    const color: VizColor = v.customHex
+      ? { id: v.colorId, label: 'Iz fotke', hex: v.customHex, group: 'ral' }
+      : VIZ_COLORS.find((c) => c.id === v.colorId) ?? VIZ_COLORS[0];
     const style = VIZ_STYLES.find((s) => s.id === v.pattern);
     ctx.fillStyle = color.hex;
     ctx.fillRect(x + 10, y + cellH - labelH + 2, 22, 22);

@@ -26,8 +26,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
 import { buildProjectFromPhotos, type ProjectSummary } from '@/lib/photo-project';
 import { formatEUR } from '@/lib/format';
-import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind } from '@/lib/camera-types';
-import type { CraftId } from '@/lib/types';
+import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind, type CraftCategory } from '@/lib/camera-types';
+import type { CraftId, CraftInputs } from '@/lib/types';
 import type { ProcessedImage } from '@/lib/image-quality';
 import {
   buildPrefillFromMeasures, downloadMeasuresCsv, formatCm, formatM2, formatDeg, measuresToText,
@@ -203,6 +203,18 @@ export function CameraView() {
       setActiveCraft(null);
       setCameraPrefill(null);
     }
+    setView('kalkulatorji');
+  };
+
+  // Vizualizer → kalkulator: odmerek za označeno območje (raziskava task13:
+  // "vizualizacija + natančne mere = win bids" — Hover Design Pro)
+  const openCalcFromViz = (craft: CraftCategory, inputs: Partial<CraftInputs>) => {
+    setActiveCraft(craft);
+    setCameraPrefill({
+      craft: craft as CraftId,
+      inputs,
+      photoTitle: `Vizualizacija — ${CRAFT_LABELS[craft]}`,
+    });
     setView('kalkulatorji');
   };
 
@@ -587,6 +599,7 @@ export function CameraView() {
                     : null
                 }
                 barSuggest={barSuggest}
+                onQuote={openCalcFromViz}
                 onSaved={loadGallery}
               />
             </CardContent>

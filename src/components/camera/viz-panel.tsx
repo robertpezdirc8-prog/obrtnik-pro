@@ -18,18 +18,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Palette, Upload, Download, Save, Crosshair, RefreshCw, Move,
-  Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds,
-  Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler,
+  Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds, Grip,
+  Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler, Pipette, Calculator,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
 import type { CraftCategory, DetectedSurface } from '@/lib/camera-types';
+import type { CraftInputs } from '@/lib/types';
 import {
   DEFAULT_VIZ_PARAMS, VIZ_COLORS, VIZ_GROUP_LABELS, VIZ_STYLES,
-  buildOptionsSheet, colorGroupsForPattern, defaultColorForPattern, defaultPatternForCraft,
+  buildOptionsSheet, colorGroupsForPattern, craftInputsFromQuad, defaultColorForPattern, defaultPatternForCraft,
   defaultQuadForLayer, drawLayersOnQuad, estimateQuadDimsCm, isLightColor, makeLayer,
-  recolorQuadPixels, slidersForPattern,
-  type SheetVariant, type VizLayer, type VizPattern, type VizParams,
+  quadDimsFromWidthCm, recolorQuadPixels, resolveLayerColor, slidersForPattern,
+  type QuadDimsCm, type SheetVariant, type VizLayer, type VizPattern, type VizParams,
 } from '@/lib/viz';
 
 interface VizPanelProps {
@@ -41,6 +42,8 @@ interface VizPanelProps {
   reference: { box: [number, number, number, number]; assumedCm: number } | null;
   /** Predlog iz števca palic (meritev z fotke) — enoklikovna uporaba. */
   barSuggest?: { spacingCm: number; elementCm: number; count: number; confidence: 'visoka' | 'srednja' | 'nizka' } | null;
+  /** "Pošlji v kalkulator" — prefill iz ocenjenih dimenzij območja. */
+  onQuote?: (craft: CraftCategory, inputs: Partial<CraftInputs>) => void;
   onSaved?: () => void;
 }
 
@@ -54,6 +57,7 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
   panel: <PanelTop className="h-4 w-4" />,
   horizontalne: <Rows3 className="h-4 w-4" />,
   lamele45: <Blinds className="h-4 w-4" />,
+  vozlik: <Grip className="h-4 w-4" />,
   piketna: <Columns3 className="h-4 w-4" />,
   mreza: <Grid3x3 className="h-4 w-4" />,
   steklo: <Square className="h-4 w-4" />,
@@ -62,11 +66,16 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
   barva: <PaintBucket className="h-4 w-4" />,
 };
 
-export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSaved }: VizPanelProps) {
+/** Barva iz fotke (eyedropper): max 3 shranjene, najstarejša pade ven. */
+interface CustomColor { id: string; hex: string }
+const MAX_CUSTOM = 3;
+
+export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved }: VizPanelProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const afterRef = useRef<HTMLCanvasElement | null>(null);
+  const pristineRef = useRef<HTMLCanvasElement | null>(null); // izvorna fotka (za eyedropper)
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [uploaded, setUploaded] = useState<{ dataUrl: string } | null>(null);
@@ -80,6 +89,8 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
   const [beforeAfter, setBeforeAfter] = useState(60);
   const [saving, setSaving] = useState(false);
   const [variants, setVariants] = useState<SheetVariant[]>([]);
+  const [pickMode, setPickMode] = useState(false);
+  const [customColors, setCustomColors] = useState<CustomColor[]>([]);
 
   const activeIdx = Math.max(0, layers.findIndex((l) => l.id === activeId));
   const active = layers[activeIdx] ?? layers[0];
@@ -89,13 +100,15 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
   }, [activeId]);
 
   // Sprememba vzorca → če barva aktivne plasti ni več veljavna, zamenjaj
+  // (custom barva iz fotke je vedno veljavna — ni vezana na palete)
   useEffect(() => {
+    if (active.customHex) return;
     const groups = colorGroupsForPattern(active.pattern);
     const cur = VIZ_COLORS.find((c) => c.id === active.colorId);
     if (!cur || !groups.includes(cur.group)) {
       updateLayer({ colorId: defaultColorForPattern(active.pattern).id });
     }
-  }, [active.pattern, active.colorId, updateLayer]);
+  }, [active.pattern, active.colorId, active.customHex, updateLayer]);
 
   // Nalaganje slike
   useEffect(() => {
@@ -113,6 +126,19 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
     if (!imgEl || !reference) return null;
     return estimateQuadDimsCm(active.quad, imgEl.naturalWidth, imgEl.naturalHeight, reference);
   }, [imgEl, reference, active.quad]);
+
+  // Brez reference: uporabnikova ročna širina + razmerje strani fotke
+  const quoteDims = useMemo<QuadDimsCm | null>(() => {
+    if (!imgEl) return null;
+    if (dims) return dims;
+    return quadDimsFromWidthCm(active.quad, imgEl.naturalWidth, imgEl.naturalHeight, active.params.quadWidthCm);
+  }, [imgEl, dims, active.quad, active.params.quadWidthCm]);
+
+  const quoteInputs = useMemo<Partial<CraftInputs> | null>(() => {
+    if (!quoteDims || craft === 'drugo') return null;
+    const inp = craftInputsFromQuad(craft, quoteDims);
+    return Object.keys(inp).length > 0 ? inp : null;
+  }, [quoteDims, craft]);
 
   // Plasti za upodobitev: aktivna plast dobi kalibrirano širino iz reference
   const renderLayers = useMemo<VizLayer[]>(() => {
@@ -141,6 +167,12 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
     off.height = h;
     const octx = off.getContext('2d')!;
     octx.drawImage(imgEl, 0, 0, w, h);
+    // Čista izvorna fotka (pred plastmi) — vzorčenje barve iz fotke
+    const pristine = document.createElement('canvas');
+    pristine.width = w;
+    pristine.height = h;
+    pristine.getContext('2d')!.drawImage(imgEl, 0, 0, w, h);
+    pristineRef.current = pristine;
     try {
       drawLayersOnQuad(octx, imgEl, renderLayers, craft);
     } catch {
@@ -179,6 +211,34 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
         ? { ...l, quad: l.quad.map((pt, j) => (j === dragging ? p : pt)) as Quad }
         : l,
     ));
+  };
+
+  // ── Barva iz fotke (eyedropper): 7×7 patch na izvirni fotki ──
+  const pickColorAt = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const pristine = pristineRef.current;
+    if (!pristine || !imgEl) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return;
+    const px = Math.max(0, Math.min(pristine.width - 1, Math.round(((e.clientX - rect.left) / rect.width) * pristine.width)));
+    const py = Math.max(0, Math.min(pristine.height - 1, Math.round(((e.clientY - rect.top) / rect.height) * pristine.height)));
+    const ctx = pristine.getContext('2d');
+    if (!ctx) return;
+    const R = 3; // radij patcha (7×7) — povprečje namesto posameznega piksla (šum)
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let y = py - R; y <= py + R; y++) {
+      for (let x = px - R; x <= px + R; x++) {
+        if (x < 0 || y < 0 || x >= pristine.width || y >= pristine.height) continue;
+        const d = ctx.getImageData(x, y, 1, 1).data;
+        r += d[0]; g += d[1]; b += d[2]; n++;
+      }
+    }
+    if (n === 0) return;
+    const hex = `#${[r / n, g / n, b / n].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+    const id = `fotka-${Date.now()}`;
+    setCustomColors((cs) => [...cs.slice(-(MAX_CUSTOM - 1)), { id, hex }]);
+    updateLayer({ colorId: id, customHex: hex });
+    setPickMode(false);
+    toast({ title: `Barva iz fotke: ${hex} ✓`, description: 'Uporabljena na aktivnem območju — deluje v vseh vzorcih.' });
   };
 
   const applySurface = (s: DetectedSurface) => {
@@ -231,7 +291,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
 
   // ── Predstavni list opcij ────────────────────────────────
   const addVariant = () => {
-    const exists = variants.some((v) => v.pattern === active.pattern && v.colorId === active.colorId);
+    const exists = variants.some((v) => v.pattern === active.pattern && v.colorId === active.colorId && v.customHex === active.customHex);
     if (exists) {
       toast({ title: 'Ta kombinacija je že med opcijami', variant: 'destructive' });
       return;
@@ -240,7 +300,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
       toast({ title: `Največ ${MAX_VARIANTS} opcij`, description: 'Zbriši eno in poskusi znova.' });
       return;
     }
-    setVariants((vs) => [...vs, { pattern: active.pattern, colorId: active.colorId }]);
+    setVariants((vs) => [...vs, { pattern: active.pattern, colorId: active.colorId, customHex: active.customHex }]);
     toast({ title: 'Opcija shranjena ✓', description: 'Dodaj še druge in zgradi predstavni list.' });
   };
 
@@ -369,7 +429,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
       <div className="lg:col-span-3">
         <div
           ref={stageRef}
-          className="relative select-none overflow-hidden rounded-xl border bg-secondary"
+          className={`relative select-none overflow-hidden rounded-xl border bg-secondary ${pickMode ? 'cursor-crosshair' : ''}`}
           onPointerMove={onStageMove}
           onPointerUp={() => setDragging(null)}
           onPointerLeave={() => setDragging(null)}
@@ -380,6 +440,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
             className="block h-auto w-full touch-none"
             aria-label="Predogled vizualizacije"
             data-testid="viz-canvas"
+            onClick={pickMode ? pickColorAt : undefined}
           />
           {/* Ogrodje aktivnega štirikotnika (viewBox 0–100 → % koordinati) */}
           {showHandles && (
@@ -423,6 +484,12 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
           <span className="absolute right-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">
             PREJ
           </span>
+          {pickMode && (
+            <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-[11px] font-semibold text-primary-foreground shadow" role="status" data-testid="viz-pick-hint">
+              <Pipette className="mr-1 inline h-3 w-3" />
+              Klikni na fotko — vzorčim barvo
+            </span>
+          )}
         </div>
 
         {/* Pred/po drsnik */}
@@ -451,6 +518,34 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
               <strong className="text-foreground">{((dims.topW + dims.botW) / 200).toFixed(2)} m</strong>{' '}
               · višina ≈ <strong className="text-foreground">{((dims.leftH + dims.rightH) / 200).toFixed(2)} m</strong>
             </span>
+          </div>
+        )}
+
+        {/* Odmerek za območje — referenca ali ročna širina (razmerje strani) */}
+        {!dims && quoteDims && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+            <Crosshair className="h-3.5 w-3.5 text-primary" />
+            <span>
+              Ocena območja (po vpeti širini {active.params.quadWidthCm} cm): širina ≈{' '}
+              <strong className="text-foreground">{((quoteDims.topW + quoteDims.botW) / 200).toFixed(2)} m</strong>{' '}
+              · višina ≈ <strong className="text-foreground">{((quoteDims.leftH + quoteDims.rightH) / 200).toFixed(2)} m</strong>
+            </span>
+          </div>
+        )}
+        {quoteInputs && (
+          <div className="mt-3 space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-3" data-testid="viz-quote">
+            <p className="text-xs text-muted-foreground">
+              Stranka vidi predlog na svoji fotki — ti takoj dobiš odmerek za to območje.
+            </p>
+            <Button
+              size="sm"
+              className="min-h-10"
+              onClick={() => onQuote?.(craft, quoteInputs)}
+              data-testid="viz-quote-go"
+            >
+              <Calculator className="mr-1.5 h-4 w-4" />
+              Pošlji v kalkulator
+            </Button>
           </div>
         )}
 
@@ -496,9 +591,9 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
               {showHandles ? 'Skrij vogališča' : 'Pokaži vogališča'}
             </button>
           </div>
-          <div className="flex flex-wrap gap-1.5" data-testid="viz-layers">
+          <div className="flex flex-wrap gap-1.5" data-testid="viz-layer-chips">
             {layers.map((l, i) => {
-              const c = VIZ_COLORS.find((cc) => cc.id === l.colorId);
+              const c = resolveLayerColor(l);
               return (
                 <span key={l.id} className="relative">
                   <button
@@ -507,7 +602,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
                     className={`flex min-h-9 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${activeId === l.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
                     data-testid={`viz-layer-${i}`}
                   >
-                    <span className="h-3 w-3 rounded-sm border border-border" style={{ backgroundColor: c?.hex }} />
+                    <span className="h-3 w-3 rounded-sm border border-border" style={{ backgroundColor: c.hex }} />
                     {l.label}
                   </button>
                   {layers.length > 1 && activeId === l.id && (
@@ -605,25 +700,51 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
               Barva
             </Label>
             <Badge variant="secondary" className="text-[10px]">
-              {VIZ_COLORS.find((c) => c.id === active.colorId)?.label}
+              {resolveLayerColor(active).label}{active.customHex ? ` · ${active.customHex}` : ''}
             </Badge>
           </div>
           <div className="flex flex-wrap gap-1.5" data-testid="viz-colors">
             {colors.map((c) => (
               <button
                 key={c.id}
-                onClick={() => updateLayer({ colorId: c.id })}
+                onClick={() => updateLayer({ colorId: c.id, customHex: undefined })}
                 title={c.label}
                 aria-label={c.label}
-                aria-pressed={active.colorId === c.id}
-                className={`h-9 w-9 rounded-lg border-2 transition-transform hover:scale-105 ${active.colorId === c.id ? 'border-primary ring-2 ring-primary/30' : 'border-border'} ${isLightColor(c.hex) ? 'shadow-inner' : ''}`}
+                aria-pressed={active.colorId === c.id && !active.customHex}
+                className={`h-9 w-9 rounded-lg border-2 transition-transform hover:scale-105 ${active.colorId === c.id && !active.customHex ? 'border-primary ring-2 ring-primary/30' : 'border-border'} ${isLightColor(c.hex) ? 'shadow-inner' : ''}`}
                 style={{ backgroundColor: c.hex }}
                 data-testid={`viz-color-${c.id}`}
               />
             ))}
+            {customColors.length > 0 && (
+              <span className="mx-1 h-9 w-px self-center bg-border" aria-hidden="true" />
+            )}
+            {customColors.map((c, i) => (
+              <button
+                key={c.id}
+                onClick={() => updateLayer({ colorId: c.id, customHex: c.hex })}
+                title={`Iz fotke · ${c.hex}`}
+                aria-label={`Barva iz fotke ${c.hex}`}
+                aria-pressed={active.customHex === c.hex}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg border-2 transition-transform hover:scale-105 ${active.customHex === c.hex ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                style={{ backgroundColor: c.hex }}
+                data-testid={`viz-custom-color-${i}`}
+              />
+            ))}
+            <button
+              onClick={() => setPickMode((p) => !p)}
+              title="Vzorči barvo iz fotke — klikni na objekt, ki naj ostane isti (npr. fasado)"
+              aria-pressed={pickMode}
+              aria-label="Vzorči barvo iz fotografije"
+              className={`flex h-9 min-w-9 items-center justify-center gap-1 rounded-lg border-2 px-2 text-[10px] font-medium transition-colors ${pickMode ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
+              data-testid="viz-pick-color"
+            >
+              <Pipette className="h-3.5 w-3.5" />
+              Iz fotke
+            </button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            {groups.map((g) => VIZ_GROUP_LABELS[g]).join(' · ')}
+            {groups.map((g) => VIZ_GROUP_LABELS[g]).join(' · ')} · „Iz fotke“ = vzorči dejansko barvo z objekta
           </p>
         </div>
 
@@ -682,7 +803,9 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onSa
           {variants.length > 0 && (
             <div className="space-y-1.5" data-testid="viz-variants">
               {variants.map((v, i) => {
-                const c = VIZ_COLORS.find((cc) => cc.id === v.colorId);
+                const c = v.customHex
+                  ? { hex: v.customHex, label: 'Iz fotke' }
+                  : VIZ_COLORS.find((cc) => cc.id === v.colorId);
                 const st = VIZ_STYLES.find((s) => s.id === v.pattern);
                 return (
                   <div key={i} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-xs">
