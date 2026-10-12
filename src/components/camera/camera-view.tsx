@@ -348,14 +348,14 @@ export function CameraView() {
       </div>
 
       {/* Zavihki */}
-      <div className="flex w-full rounded-lg border p-0.5 bg-secondary/50 sm:w-fit" role="tablist" aria-label="Načini pametne kamere">
+      <div className="flex w-full max-w-full overflow-x-auto scroll-area rounded-lg border p-0.5 bg-secondary/50 sm:w-fit" role="tablist" aria-label="Načini pametne kamere">
         {tabs.map(([id, label, icon]) => (
           <button
             key={id}
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-[40px] sm:flex-none ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`flex flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-[40px] sm:flex-none ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {icon}
             {label}
@@ -368,7 +368,7 @@ export function CameraView() {
         <div className="grid gap-4 lg:grid-cols-5">
           <Card className="lg:col-span-3">
             <CardContent className="p-4 sm:p-5">
-              <PhotoCapture onAnalyze={(img) => void handleAnalyze(img)} busy={busy} />
+              <PhotoCapture onAnalyze={(img) => void handleAnalyze(img)} busy={busy} initialCraft={result?.analysis.craft ?? null} />
             </CardContent>
           </Card>
 
@@ -469,7 +469,7 @@ export function CameraView() {
             </Card>
             <Card>
               <CardContent className="p-4 sm:p-5">
-                <AnalysisPanel result={result} onOpenCalculator={() => openCalculator(result.analysis.craft)} />
+                <AnalysisPanel key={lastPhotoId ?? 'ad-hoc'} result={result} onOpenCalculator={() => openCalculator(result.analysis.craft)} planKey={lastPhotoId} />
               </CardContent>
             </Card>
           </div>

@@ -1,11 +1,14 @@
 'use client';
 
 // ─── Prikaz rezultatov samodejne analize + predlogi izdelkov ───────
+// Vključno z interaktivnim MERILNIM NAČRTOM (measurementsNeeded →
+// checklist z oznakami "izmerjeno", shranjeno po fotografiji).
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Sparkles, CheckCircle2, AlertTriangle, Ruler, Calculator, PlusCircle, Info, Lightbulb, Layers3, Package, ShieldAlert, ClipboardList } from 'lucide-react';
+import { Sparkles, CheckCircle2, AlertTriangle, Ruler, Calculator, PlusCircle, Info, Lightbulb, Layers3, Package, ShieldAlert, ClipboardList, Circle, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft } from '@/lib/store';
 import { formatEUR } from '@/lib/format';
@@ -16,16 +19,45 @@ import { craftBySlug } from '@/lib/crafts-meta';
 interface AnalysisPanelProps {
   result: AnalyzeResponse;
   onOpenCalculator: () => void;
+  /** Id fotografije — ključ za shranjevanje merilnega načrta. */
+  planKey?: string | null;
 }
 
-export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) {
+const PLAN_LS_PREFIX = 'obrtnik-na';
+
+export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPanelProps) {
   const { analysis, suggestedProducts } = result;
   const { toast } = useToast();
   const addItems = useDraft((s) => s.addItems);
 
+  // ── Merilni načrt: done-stanja po fotki (localStorage) ──
+  // Lazy init + remount prek key propa (camera-view) namesto set-state v efektu.
+  const planLsKey = `${PLAN_LS_PREFIX}-${planKey ?? 'ad-hoc'}`;
+  const [planDone, setPlanDone] = useState<Record<string, boolean>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = window.localStorage.getItem(`${PLAN_LS_PREFIX}-${planKey ?? 'ad-hoc'}`);
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+  const togglePlanItem = (idx: number) => {
+    setPlanDone((prev) => {
+      const next = { ...prev, [idx]: !prev[idx] };
+      try { window.localStorage.setItem(planLsKey, JSON.stringify(next)); } catch { /* ni kritično */ }
+      return next;
+    });
+  };
+  const resetPlan = () => {
+    setPlanDone({});
+    try { window.localStorage.removeItem(planLsKey); } catch { /* ni kritično */ }
+  };
+
   const craftLabel = CRAFT_LABELS[analysis.craft];
   const craftMeta = analysis.craft !== 'drugo' ? craftBySlug(analysis.craft as CraftId) : undefined;
   const hasPrefill = Object.keys(analysis.prefill).length > 0;
+  const planDoneCount = analysis.measurementsNeeded.reduce((n, _m, i) => n + (planDone[i] ? 1 : 0), 0);
 
   const addProduct = (p: { id: string; name: string; unit: string; unitPrice: number }) => {
     addItems([{ key: `pred-${p.id}`, name: p.name, quantity: 1, unit: p.unit, unitPrice: p.unitPrice, productId: p.id }]);
@@ -171,21 +203,51 @@ export function AnalysisPanel({ result, onOpenCalculator }: AnalysisPanelProps) 
         </div>
       )}
 
-      {/* Potrebne meritve */}
+      {/* Merilni načrt — interaktiven checklist */}
       {analysis.measurementsNeeded.length > 0 && (
-        <section aria-label="Potrebne meritve">
-          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            Izmeri še na terenu
-          </h3>
+        <section aria-label="Merilni načrt" data-testid="measure-plan">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-sm font-bold">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Merilni načrt — izmeri na terenu
+            </h3>
+            <div className="flex items-center gap-2">
+              <Badge variant={planDoneCount === analysis.measurementsNeeded.length ? 'default' : 'secondary'} className="text-[10px]" data-testid="plan-progress">
+                {planDoneCount}/{analysis.measurementsNeeded.length} izmerjeno
+              </Badge>
+              {planDoneCount > 0 && (
+                <button onClick={resetPlan} className="text-muted-foreground hover:text-foreground" aria-label="Ponastavi merilni načrt">
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <Progress value={(planDoneCount / analysis.measurementsNeeded.length) * 100} className="mb-2 h-1.5" aria-label="Napredek merjenja" />
           <ul className="space-y-1.5">
-            {analysis.measurementsNeeded.map((m, i) => (
-              <li key={i} className="flex items-start gap-2 rounded-lg bg-secondary/50 px-3 py-2 text-sm">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-                {m}
-              </li>
-            ))}
+            {analysis.measurementsNeeded.map((m, i) => {
+              const done = !!planDone[i];
+              return (
+                <li key={i}>
+                  <button
+                    onClick={() => togglePlanItem(i)}
+                    aria-pressed={done}
+                    className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${done ? 'border-green-300 bg-green-50/70' : 'border-border bg-secondary/40 hover:bg-accent/50'}`}
+                    data-testid={`plan-item-${i}`}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                    ) : (
+                      <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    )}
+                    <span className={done ? 'text-green-900' : ''}>{m}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Klikni na vrstico, ko meritev vzameš (AR merjenje, laser ali trak) — načrt se shrani ob fotki.
+          </p>
         </section>
       )}
 

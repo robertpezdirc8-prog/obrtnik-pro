@@ -2,28 +2,67 @@
 
 // ─── Zajem fotografije: živa kamera ali nalaganje ───────────
 // Na mobilnem uporablja zadnjo kamero (facingMode: environment).
-// Vključuje kontrolo kakovosti (ostrina, svetlost) s priporočili.
+// Kontrola kakovosti (ostrina, svetlost) + NAKLON (deterministični
+// deskew) z enoklikovno izravnavo + SNEMALNI VODIČ po dejavnosti.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Camera, RefreshCw, Upload, ScanSearch, AlertTriangle, CheckCircle2, Images, Zap } from 'lucide-react';
-import { processImage, checkQuality, type ProcessedImage, type QualityCheck } from '@/lib/image-quality';
+import { Progress } from '@/components/ui/progress';
+import { Slider } from '@/components/ui/slider';
+import {
+  Camera, RefreshCw, Upload, ScanSearch, AlertTriangle, CheckCircle2, Images, Zap,
+  ListChecks, Crop, RotateCw, Check, Circle,
+} from 'lucide-react';
+import { processImage, checkQuality, estimateTilt, autoLevel, type ProcessedImage, type QualityCheck } from '@/lib/image-quality';
+import {
+  CAPTURE_GUIDES, GUIDE_CRAFTS, loadGuideDone, resetGuideShots, toggleGuideShot,
+} from '@/lib/capture-guide';
+import { CRAFT_LABELS, type CraftCategory } from '@/lib/camera-types';
 
 interface PhotoCaptureProps {
   onAnalyze: (img: ProcessedImage) => void;
   busy: boolean;
+  /** Dejavnost zadnje analize — predizbor snemalnega vodiča. */
+  initialCraft?: CraftCategory | null;
 }
 
 type CaptureMode = 'live' | 'upload';
 
-export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
+const GUIDE_LS_KEY = 'obrtnik-vodnik-izbor';
+
+export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProps) {
   const [mode, setMode] = useState<CaptureMode>('live');
   const [photo, setPhoto] = useState<ProcessedImage | null>(null);
   const [quality, setQuality] = useState<QualityCheck | null>(null);
+  const [tilt, setTilt] = useState<number>(0);
+  const [leveling, setLeveling] = useState(false);
+  const [leveled, setLeveled] = useState(false);
+  const [manualDeg, setManualDeg] = useState(0);
   const [camError, setCamError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [camActive, setCamActive] = useState(false);
+
+  // Snemalni vodič
+  const [guideCraft, setGuideCraft] = useState<CraftCategory>('ograje');
+  const [guideDone, setGuideDone] = useState<Record<string, boolean>>({});
+
+  // Naloži izbor + stanje vodiča (obvezno v efektu — SSR varno)
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(GUIDE_LS_KEY);
+      if (saved && (GUIDE_CRAFTS as string[]).includes(saved)) setGuideCraft(saved as CraftCategory);
+    } catch { /* ni kritično */ }
+  }, []);
+  useEffect(() => { setGuideDone(loadGuideDone(guideCraft)); }, [guideCraft]);
+  useEffect(() => {
+    if (initialCraft) setGuideCraft(initialCraft);
+  }, [initialCraft]);
+
+  const pickGuideCraft = (c: CraftCategory) => {
+    setGuideCraft(c);
+    try { window.localStorage.setItem(GUIDE_LS_KEY, c); } catch { /* ni kritično */ }
+  };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -89,18 +128,42 @@ export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
 
   const handleProcessed = async (processed: ProcessedImage) => {
     setPhoto(processed);
-    const q = await checkQuality(processed.dataUrl);
+    setLeveled(false);
+    setManualDeg(0);
+    const [q, t] = await Promise.all([checkQuality(processed.dataUrl), estimateTilt(processed.dataUrl)]);
     setQuality(q);
+    setTilt(t);
+  };
+
+  const applyLevel = async (deg: number) => {
+    if (!photo || deg === 0) return;
+    setLeveling(true);
+    try {
+      const leveledImg = await autoLevel(photo.dataUrl, deg);
+      setPhoto(leveledImg);
+      const [q, t] = await Promise.all([checkQuality(leveledImg.dataUrl), estimateTilt(leveledImg.dataUrl)]);
+      setQuality(q);
+      setTilt(t);
+      setLeveled(true);
+      setManualDeg(0);
+    } catch {
+      /* izravnava ni kritična — fotka ostane */
+    } finally {
+      setLeveling(false);
+    }
   };
 
   const retake = () => {
     setPhoto(null);
     setQuality(null);
+    setTilt(0);
+    setLeveled(false);
+    setManualDeg(0);
     setCamError(null);
     if (mode === 'live') void startCamera();
   };
 
-  // ─── Predogled s kontrola kakovosti ──────────────────────
+  // ─── Predogled s kontrola kakovosti + naklon ─────────────
   if (photo) {
     return (
       <div className="space-y-3">
@@ -126,6 +189,56 @@ export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
           </div>
         )}
 
+        {tilt !== 0 && !leveled && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="tilt-warning">
+            <RotateCw className="h-4 w-4 shrink-0" />
+            <span className="flex-1">
+              Skripta zazna naklon ≈ <strong>{Math.abs(tilt)}°</strong> — izravnava izboljša meritve in vizualizer.
+            </span>
+            <Button size="sm" variant="outline" className="min-h-9 border-amber-400 text-amber-800 hover:bg-amber-100" onClick={() => setManualDeg(Math.max(-10, Math.min(10, tilt)))} data-testid="tilt-use-detected">
+              <Crop className="mr-1.5 h-3.5 w-3.5" />
+              Uporabi zaznano ({tilt}°)
+            </Button>
+          </div>
+        )}
+
+        {/* Ročna izravnava naklona (deterministični deskew) */}
+        <div className="rounded-xl border p-3 space-y-2" data-testid="tilt-box">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sm font-semibold">
+              <Crop className="h-4 w-4 text-primary" />
+              Naklon fotografije
+            </span>
+            <span className="text-xs font-medium text-muted-foreground" data-testid="tilt-value">
+              {manualDeg > 0 ? `+${manualDeg}` : manualDeg}°
+            </span>
+          </div>
+          <Slider
+            value={[manualDeg]}
+            min={-10}
+            max={10}
+            step={0.5}
+            onValueChange={(v) => setManualDeg(v[0] ?? 0)}
+            aria-label="Naklon v stopinjah"
+            data-testid="tilt-slider"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="min-h-9" onClick={() => void applyLevel(manualDeg)} disabled={leveling || manualDeg === 0} data-testid="level-photo">
+              <Crop className="mr-1.5 h-3.5 w-3.5" />
+              {leveling ? 'Izravnavam…' : 'Izravnaj fotko'}
+            </Button>
+            <Button size="sm" variant="ghost" className="min-h-9" onClick={() => setManualDeg(0)}>
+              Ponastavi naklon
+            </Button>
+            {leveled && (
+              <span className="flex items-center gap-1.5 text-xs text-green-700" data-testid="tilt-leveled">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Izravnano ✓
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-col sm:flex-row gap-2">
           <Button size="lg" className="flex-1 min-h-12" onClick={() => onAnalyze(photo)} disabled={busy}>
             {busy ? (
@@ -150,6 +263,9 @@ export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
   }
 
   // ─── Zajem ────────────────────────────────────────────────
+  const shots = CAPTURE_GUIDES[guideCraft];
+  const doneCount = shots.filter((s) => guideDone[s.id]).length;
+
   return (
     <div className="space-y-3">
       <div className="flex rounded-lg border p-0.5 bg-secondary/50 w-fit">
@@ -262,6 +378,72 @@ export function PhotoCapture({ onAnalyze, busy }: PhotoCaptureProps) {
           Na fotografijo ujami <strong>cel objekt</strong> in <strong>znano referenco</strong> (vrata, okno,
           ploščico ali osebo) — analiza jo uporabi za oceno mer in za umerjanje merila.
         </p>
+      </div>
+
+      {/* Snemalni vodič po dejavnosti */}
+      <div className="rounded-xl border p-3 sm:p-4" data-testid="capture-guide">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-1.5 text-sm font-bold">
+            <ListChecks className="h-4 w-4 text-primary" />
+            Snemalni vodič
+          </h3>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-[10px]" data-testid="guide-progress">
+              {doneCount}/{shots.length} posnetkov
+            </Badge>
+            {doneCount > 0 && (
+              <button
+                onClick={() => setGuideDone(resetGuideShots(guideCraft))}
+                className="text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                Ponastavi
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1" role="tablist" aria-label="Dejavnost vodiča">
+          {GUIDE_CRAFTS.map((c) => (
+            <button
+              key={c}
+              role="tab"
+              aria-selected={guideCraft === c}
+              onClick={() => pickGuideCraft(c)}
+              className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors min-h-[28px] ${guideCraft === c ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'}`}
+              data-testid={`guide-craft-${c}`}
+            >
+              {CRAFT_LABELS[c]}
+            </button>
+          ))}
+        </div>
+
+        <Progress value={(doneCount / shots.length) * 100} className="mt-3 h-1.5" aria-label="Napredek snemanja" />
+
+        <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto scroll-area pr-1">
+          {shots.map((s) => {
+            const done = !!guideDone[s.id];
+            return (
+              <li key={s.id}>
+                <button
+                  onClick={() => setGuideDone(toggleGuideShot(guideCraft, s.id))}
+                  aria-pressed={done}
+                  className={`flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${done ? 'border-green-300 bg-green-50/70' : 'border-border hover:bg-accent/40'}`}
+                  data-testid={`guide-shot-${s.id}`}
+                >
+                  {done ? (
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
+                  ) : (
+                    <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" />
+                  )}
+                  <span className="min-w-0">
+                    <span className={`block text-xs font-semibold ${done ? 'text-green-800' : ''}`}>{s.label}</span>
+                    <span className="block text-[11px] text-muted-foreground">{s.hint}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </div>
   );

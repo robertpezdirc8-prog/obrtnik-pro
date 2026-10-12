@@ -758,3 +758,194 @@ export function estimateQuadDimsCm(
 export function isLightColor(hex: string): boolean {
   return luminance(hexToRgb(hex)) > 160;
 }
+
+// ─── Plasti: več območij prenove na isti fotografiji ─────────
+// (raziskava task11: realna scena ima več odsekov — čelna ograja,
+// vrata, stranski del; vsak lahko dobi svoj vzorec/barvo)
+
+export interface VizLayer {
+  id: string;
+  label: string;
+  /** 4 oglišča v % slike */
+  quad: [number, number][];
+  pattern: VizPattern;
+  colorId: string;
+  params: VizParams;
+}
+
+/** Privzeti štirikotniki za nova območja (razporejeni po fotki). */
+const LAYER_QUAD_PRESETS: [number, number][][] = [
+  [[12, 46], [88, 46], [88, 88], [12, 88]],
+  [[10, 6], [62, 6], [62, 40], [10, 40]],
+  [[68, 10], [94, 10], [94, 42], [68, 42]],
+  [[14, 44], [46, 44], [46, 68], [14, 68]],
+];
+
+export function defaultQuadForLayer(index: number): [number, number][] {
+  const i = Math.max(0, Math.min(LAYER_QUAD_PRESETS.length - 1, index));
+  return LAYER_QUAD_PRESETS[i].map(([x, y]) => [x, y] as [number, number]);
+}
+
+/** Nova plast s privzetim vzorcem/barvo za dejavnost. */
+export function makeLayer(id: string, index: number, craft: CraftCategory): VizLayer {
+  const pattern = defaultPatternForCraft(craft);
+  return {
+    id,
+    label: `Območje ${index + 1}`,
+    quad: defaultQuadForLayer(index),
+    pattern,
+    colorId: defaultColorForPattern(pattern).id,
+    params: { ...DEFAULT_VIZ_PARAMS },
+  };
+}
+
+/** Nariše vse plasti zaporedno (fotka mora biti že narisana na ctx). */
+export function drawLayersOnQuad(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | HTMLCanvasElement,
+  layers: VizLayer[],
+  craft: CraftCategory,
+): void {
+  for (const l of layers) {
+    const color = VIZ_COLORS.find((c) => c.id === l.colorId) ?? VIZ_COLORS[0];
+    try {
+      if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, color.hex);
+      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, color.hex, l.params, craft);
+    } catch {
+      /* posamezna plast ne sme ustaviti upodobitve */
+    }
+  }
+}
+
+// ─── Predstavni list opcij (2×N mreža variant za stranko) ────
+
+export interface SheetVariant {
+  pattern: VizPattern;
+  colorId: string;
+}
+
+interface SheetOpts {
+  title: string;
+  subtitle: string;
+  footer: string;
+}
+
+/**
+ * Zgradi "predstavni list" — ista fotka z istimi območji, vsaka celica
+ * z drugo kombinacijo vzorca/barve na aktivni plasti (ostale plasti
+ * ostanejo). 2 stolpca, oznake + zavihki "OPCIJA n". Deterministični
+ * canvas kompozit (0 AI) — standardna predstavitev opcij stranki.
+ */
+export function buildOptionsSheet(
+  img: HTMLImageElement | HTMLCanvasElement,
+  layers: VizLayer[],
+  activeLayerId: string,
+  variants: SheetVariant[],
+  craft: CraftCategory,
+  opts: SheetOpts,
+): HTMLCanvasElement | null {
+  const imgW = 'naturalWidth' in img ? img.naturalWidth : img.width;
+  const imgH = 'naturalHeight' in img ? img.naturalHeight : img.height;
+  if (imgW < 8 || imgH < 8 || variants.length === 0) return null;
+
+  const margin = 24;
+  const gap = 20;
+  const labelH = 42;
+  const headerH = 96;
+  const footerH = 34;
+
+  // Velikost celice: ohrani razmerje fotke, omeji višino
+  let cellW = 620;
+  let cellH = Math.round((cellW * imgH) / imgW);
+  if (cellH > 480) {
+    cellH = 480;
+    cellW = Math.max(280, Math.round((cellH * imgW) / imgH));
+  }
+  if (cellH < 220) {
+    cellH = 220;
+    cellW = Math.max(280, Math.round((cellH * imgW) / imgH));
+  }
+
+  const cols = 2;
+  const rows = Math.ceil(variants.length / cols);
+  const sheetW = cols * cellW + (cols + 1) * margin;
+  const sheetH = headerH + rows * (cellH + gap) + footerH + gap;
+
+  const sheet = document.createElement('canvas');
+  sheet.width = sheetW;
+  sheet.height = sheetH;
+  const ctx = sheet.getContext('2d')!;
+
+  // Ozadje + glava
+  ctx.fillStyle = '#f4f4f5';
+  ctx.fillRect(0, 0, sheetW, sheetH);
+  ctx.fillStyle = '#18181b';
+  ctx.fillRect(0, 0, sheetW, headerH);
+  ctx.fillStyle = '#fafafa';
+  ctx.font = 'bold 26px system-ui, sans-serif';
+  ctx.fillText(opts.title, margin, 42);
+  ctx.fillStyle = '#a1a1aa';
+  ctx.font = '15px system-ui, sans-serif';
+  ctx.fillText(opts.subtitle.slice(0, 90), margin, 70);
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Obrtnik Pro · skriptni predogled', sheetW - margin, 42);
+  ctx.textAlign = 'left';
+
+  // Celice z variantami
+  variants.forEach((v, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = margin + col * (cellW + gap);
+    const y = headerH + gap + row * (cellH + gap);
+
+    // "Po" slika celice: vse plasti, aktivna z varianto
+    const cell = document.createElement('canvas');
+    cell.width = cellW;
+    cell.height = cellH;
+    const cctx = cell.getContext('2d')!;
+    cctx.drawImage(img, 0, 0, cellW, cellH);
+    drawLayersOnQuad(
+      cctx,
+      img,
+      layers.map((l) =>
+        l.id === activeLayerId ? { ...l, pattern: v.pattern, colorId: v.colorId } : l,
+      ),
+      craft,
+    );
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.18)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    ctx.drawImage(cell, x, y, cellW, cellH);
+    ctx.restore();
+
+    // Oznaka na dnu celice
+    const grad = ctx.createLinearGradient(0, y + cellH - labelH - 14, 0, y + cellH);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.66)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y + cellH - labelH - 14, cellW, labelH + 14);
+
+    const color = VIZ_COLORS.find((c) => c.id === v.colorId) ?? VIZ_COLORS[0];
+    const style = VIZ_STYLES.find((s) => s.id === v.pattern);
+    ctx.fillStyle = color.hex;
+    ctx.fillRect(x + 10, y + cellH - labelH + 2, 22, 22);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.strokeRect(x + 10.5, y + cellH - labelH + 2.5, 21, 21);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.fillText(`${idx + 1} · ${style?.label ?? v.pattern}`, x + 42, y + cellH - 16);
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillText(color.label, x + 42, y + cellH - 33);
+  });
+
+  // Noga
+  ctx.fillStyle = '#71717a';
+  ctx.font = '13px system-ui, sans-serif';
+  ctx.fillText(opts.footer, margin, sheetH - gap + 8);
+
+  return sheet;
+}
