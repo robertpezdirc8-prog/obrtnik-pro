@@ -15,6 +15,7 @@ import {
   ListChecks, Crop, RotateCw, Check, Circle, Grid3x3, Compass,
 } from 'lucide-react';
 import { processImage, checkQuality, estimateTilt, autoLevel, type ProcessedImage, type QualityCheck } from '@/lib/image-quality';
+import { grayFromImageData, makeStabilityTracker, meanAbsDiff } from '@/lib/stability';
 import {
   CAPTURE_GUIDES, GUIDE_CRAFTS, loadGuideDone, resetGuideShots, toggleGuideShot,
 } from '@/lib/capture-guide';
@@ -56,6 +57,14 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   // Libela (DeviceOrientation — deterministični senzorski skript)
   const [orient, setOrient] = useState<{ beta: number | null; gamma: number | null }>({ beta: null, gamma: null });
   const [hasOrient, setHasOrient] = useState(false);
+
+  // AUTO-ZAJEM ob mirovanju (deterministični frame-diff skript)
+  const [autoCap, setAutoCap] = useState(false);
+  const [steady, setSteady] = useState(false);
+  const [autoFired, setAutoFired] = useState(false);
+  const prevGrayRef = useRef<Float32Array | null>(null);
+  const trackerRef = useRef(makeStabilityTracker());
+  const captureRef = useRef<() => void>(() => undefined);
 
   // Naloži izbor + stanje vodiča (obvezno v efektu — SSR varno)
   useEffect(() => {
@@ -145,6 +154,8 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     void handleProcessed(processed);
   };
 
+  captureRef.current = captureFrame;
+
   const compressVideo = (video: HTMLVideoElement): ProcessedImage => {
     const canvas = document.createElement('canvas');
     const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
@@ -156,6 +167,7 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
+    setAutoFired(false);
     try {
       const processed = await processImage(file);
       await handleProcessed(processed);
@@ -198,8 +210,44 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
     setLeveled(false);
     setManualDeg(0);
     setCamError(null);
+    setAutoFired(false);
     if (mode === 'live') void startCamera();
   };
+
+  // ── Auto-zajem: 4 vzorce/s → 64×48 sivine → mean abs diff →
+  //    5 zaporednih mirnih vzorcev (≈ 1,25 s) = samodejni posnetek ──
+  useEffect(() => {
+    if (!autoCap || !camActive || photo || busy) {
+      setSteady(false);
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 48;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    prevGrayRef.current = null;
+    trackerRef.current.reset();
+    setSteady(false);
+    const id = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth) return;
+      ctx.drawImage(video, 0, 0, 64, 48);
+      const gray = grayFromImageData(ctx.getImageData(0, 0, 64, 48).data);
+      const diff = meanAbsDiff(prevGrayRef.current, gray);
+      prevGrayRef.current = gray;
+      const fired = trackerRef.current.push(diff);
+      setSteady(trackerRef.current.isStable);
+      if (fired) {
+        setAutoFired(true);
+        captureRef.current?.();
+      }
+    }, 250);
+    return () => {
+      clearInterval(id);
+      setSteady(false);
+    };
+  }, [autoCap, camActive, photo, busy]);
 
   // ─── Predogled s kontrola kakovosti + naklon ─────────────
   if (photo) {
@@ -224,6 +272,12 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
           <div className="flex items-center gap-2 rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             Fotografija je ostro in dobro osvetljena — pripravljena za analizo.
+          </div>
+        )}
+        {autoFired && (
+          <div className="flex items-center gap-2 rounded-xl border border-green-300 bg-green-50 px-3 py-2 text-xs text-green-800" data-testid="capture-auto-fired">
+            <Zap className="h-3.5 w-3.5 shrink-0" />
+            Samodejni posnetek — kadr je bil miren, zato oster.
           </div>
         )}
 
@@ -336,6 +390,17 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
             <Grid3x3 className="mr-1.5 h-3.5 w-3.5" />
             Mreža: {grid === 'tretjine' ? 'tretjine' : grid === 'zlati' ? 'zlati rez' : 'izklop'}
           </Button>
+          <Button
+            size="sm"
+            variant={autoCap ? 'secondary' : 'outline'}
+            className="min-h-9 text-xs"
+            onClick={() => setAutoCap((v) => !v)}
+            aria-pressed={autoCap}
+            data-testid="capture-auto"
+          >
+            <Zap className="mr-1.5 h-3.5 w-3.5" />
+            Auto-zajem: {autoCap ? 'vklopljen' : 'izklopljen'}
+          </Button>
           {!hasOrient && camActive && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground" data-testid="capture-level-unsupported">
               <Compass className="h-3.5 w-3.5" />
@@ -416,6 +481,13 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
               <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white" data-testid="capture-level-state">
                 {levelOk ? 'Ravno ✓' : `${Math.abs(orient.gamma).toFixed(0)}°`}
               </span>
+            </div>
+          )}
+          {/* Auto-zajem: indikator mirovanja (deterministični frame-diff) */}
+          {autoCap && camActive && (
+            <div className="absolute left-3 top-14 flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white" data-testid="capture-steady">
+              <span className={`h-2 w-2 rounded-full ${steady ? 'bg-green-400' : 'bg-amber-300'}`} />
+              {steady ? 'Miren kadr — posnamem ✓' : 'Drži mirno …'}
             </div>
           )}
           {camActive && (

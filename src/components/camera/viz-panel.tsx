@@ -20,6 +20,7 @@ import {
   Palette, Upload, Download, Save, Crosshair, RefreshCw, Move,
   Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds, Grip,
   Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler, Pipette, Calculator, Wallpaper,
+  Magnet, ChevronsLeftRight,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -27,6 +28,7 @@ import type { CraftCategory, DetectedSurface } from '@/lib/camera-types';
 import type { CraftInputs } from '@/lib/types';
 import { drawQuadDimensions } from '@/lib/annotate';
 import { orderQuad } from '@/lib/homography';
+import { buildEdgeMap, snapPoint, type EdgeMap } from '@/lib/edge-detect';
 import {
   VIZ_TEXTURES, getTextureById, preloadVizTextures, texturesForPattern,
 } from '@/lib/viz-textures';
@@ -100,6 +102,11 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   const [showDims, setShowDims] = useState(true);
   /** Tick po prednalaganju tekstur (sproži ponovno upodobitev). */
   const [texTick, setTexTick] = useState(0);
+  /** MAGNET: vogališče se pri spustu pripne na najmočnejši rob (Sobel karta). */
+  const [edge, setEdge] = useState<EdgeMap | null>(null);
+  const [magnet, setMagnet] = useState(true);
+  /** Vlečenje pred/po lovilca direktno na platnu. */
+  const [dividerDrag, setDividerDrag] = useState(false);
 
   const activeIdx = Math.max(0, layers.findIndex((l) => l.id === activeId));
   const active = layers[activeIdx] ?? layers[0];
@@ -125,6 +132,16 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
       updateLayer({ textureId: undefined });
     }
   }, [active.pattern, active.textureId, updateLayer]);
+
+  // Karta robov za magnet (enkrat na fotografijo) — isto kot foto platno
+  useEffect(() => {
+    if (!src) { setEdge(null); return; }
+    let alive = true;
+    buildEdgeMap(src).then((m) => {
+      if (alive) setEdge(m);
+    });
+    return () => { alive = false; };
+  }, [src]);
 
   // Prednalaganje teksturnih tile-ov (6 slik ≈ 380 KB skupaj)
   useEffect(() => {
@@ -250,6 +267,12 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   };
 
   const onStageMove = (e: React.PointerEvent) => {
+    // Lovilcec pred/po ima prednost (ločen od vogališč)
+    if (dividerDrag) {
+      const [x] = pctFromEvent(e);
+      setBeforeAfter(Math.max(0, Math.min(100, Math.round(x))));
+      return;
+    }
     if (dragging === null) return;
     const p = pctFromEvent(e);
     setLayers((ls) => ls.map((l, i) =>
@@ -257,6 +280,68 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
         ? { ...l, quad: l.quad.map((pt, j) => (j === dragging ? p : pt)) as Quad }
         : l,
     ));
+  };
+
+  // Spust vogališča: magnet pripne na najmočnejši rob v bližini
+  const endDrag = () => {
+    if (dragging !== null && magnet && edge) {
+      setLayers((ls) => ls.map((l, i) =>
+        i === activeIdx
+          ? {
+              ...l,
+              quad: l.quad.map((pt, j) => {
+                if (j !== dragging) return pt;
+                const s = snapPoint({ x: pt[0], y: pt[1] }, edge).point;
+                return [Math.round(s.x * 10) / 10, Math.round(s.y * 10) / 10] as [number, number];
+              }) as Quad,
+            }
+          : l,
+      ));
+    }
+    setDragging(null);
+  };
+
+  // »Pripni na robove«: vseh 4 vogališč aktivnega območja naenkrat
+  const snapCorners = () => {
+    if (!edge) {
+      toast({ title: 'Karta robov še ni pripravljena', description: 'Poskusi čez trenutek.' });
+      return;
+    }
+    let snapped = 0;
+    setLayers((ls) => ls.map((l, i) =>
+      i === activeIdx
+        ? {
+            ...l,
+            quad: l.quad.map((pt) => {
+              const r = snapPoint({ x: pt[0], y: pt[1] }, edge);
+              if (r.snapped) snapped += 1;
+              return [Math.round(r.point.x * 10) / 10, Math.round(r.point.y * 10) / 10] as [number, number];
+            }) as Quad,
+          }
+        : l,
+    ));
+    toast({
+      title: snapped > 0 ? `Pripeto ${snapped}/4 vogališč na robove ✓` : 'Robov v bližini ni',
+      description: snapped > 0 ? 'Območje sedi na robovih objekta.' : 'Vleči vogališča bližje robu objekta in poskusi znova.',
+    });
+  };
+
+  const onStagePointerUp = () => {
+    if (dividerDrag) setDividerDrag(false);
+    else endDrag();
+  };
+
+  const onStagePointerLeave = () => {
+    setDividerDrag(false);
+    endDrag();
+  };
+
+  // Tipkovnica na lovilcecu (dostopnost): puščice premikajo primerjavo
+  const onDividerKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') setBeforeAfter((v) => Math.max(0, v - 2));
+    else if (e.key === 'ArrowRight') setBeforeAfter((v) => Math.min(100, v + 2));
+    else return;
+    e.preventDefault();
   };
 
   // ── Barva iz fotke (eyedropper): 7×7 patch na izvirni fotki ──
@@ -480,8 +565,8 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
           ref={stageRef}
           className={`relative select-none overflow-hidden rounded-xl border bg-secondary ${pickMode ? 'cursor-crosshair' : ''}`}
           onPointerMove={onStageMove}
-          onPointerUp={() => setDragging(null)}
-          onPointerLeave={() => setDragging(null)}
+          onPointerUp={onStagePointerUp}
+          onPointerLeave={onStagePointerLeave}
           data-testid="viz-stage"
         >
           <canvas
@@ -526,6 +611,30 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
                 <Move className="h-3.5 w-3.5 text-white" />
               </button>
             ))}
+          {/* Vlečni lovilcec pred/po — industrijski standard vizualizerjev
+              (CodyHouse image-comparison): palica + ročaj direktno na sliki,
+              sinhroniziran z drsnikom pod platnom */}
+          <div
+            role="slider"
+            tabIndex={0}
+            aria-label="Pred po lovilcec"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={beforeAfter}
+            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setDividerDrag(true); }}
+            onKeyDown={onDividerKeyDown}
+            className={`absolute inset-y-0 z-10 w-7 -translate-x-1/2 cursor-col-resize touch-none `}
+            style={{ left: `${beforeAfter}%` }}
+            data-testid="viz-divider"
+          >
+            <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/90 shadow-[0_0_6px_rgba(0,0,0,0.6)]" aria-hidden="true" />
+            <span
+              className={`absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white shadow-lg transition-transform ${dividerDrag ? 'scale-110 bg-primary' : 'bg-black/55 hover:scale-105'}`}
+              aria-hidden="true"
+            >
+              <ChevronsLeftRight className="h-4 w-4 text-white" />
+            </span>
+          </div>
           {/* Značke prej/po */}
           <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">
             PO — {styleInfo.label}
@@ -698,12 +807,30 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
               ))}
             </div>
           )}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" className="min-h-8 text-[11px]" onClick={resetQuad}>
               <RefreshCw className="mr-1 h-3 w-3" />
               Ponastavi območje
             </Button>
+            <Button
+              size="sm"
+              variant={magnet ? 'secondary' : 'ghost'}
+              className="min-h-8 text-[11px]"
+              onClick={() => setMagnet((v) => !v)}
+              aria-pressed={magnet}
+              data-testid="viz-magnet"
+            >
+              <Magnet className="mr-1 h-3 w-3" />
+              Magnet {magnet ? 'vklopljen' : 'izklopljen'}
+            </Button>
+            <Button size="sm" variant="outline" className="min-h-8 text-[11px]" onClick={snapCorners} data-testid="viz-snap-corners">
+              <Crosshair className="mr-1 h-3 w-3" />
+              Pripni na robove
+            </Button>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Magnet ob spustu vogališča pripne na rob objekta (Sobel robovi) — „Pripni na robove“ poravna vsa štiri hkrati.
+          </p>
         </div>
 
         {/* Predlog iz števca palic (meritve) */}
