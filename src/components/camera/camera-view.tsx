@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -48,6 +48,7 @@ import { WebXrAr } from './webxr-ar';
 import { Measure3dPreview } from './preview-3d';
 import { PostLayoutPanel } from './post-layout-panel';
 import { StairPanel } from './stair-panel';
+import { TilePanel } from './tile-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
@@ -277,6 +278,17 @@ export function CameraView() {
       craft: 'stopnice',
       inputs,
       photoTitle: 'Stopnice — samodejni profil s fotke',
+    });
+    setView('kalkulatorji');
+  };
+
+  // Keramična mreža → kalkulator keramike (meritvena skripta, 0 AI)
+  const openCalcTile = (inputs: { tilePattern?: 'ravno' | 'diagonalno' | 'ribja-kost' }) => {
+    setActiveCraft('keramika');
+    setCameraPrefill({
+      craft: 'keramika',
+      inputs,
+      photoTitle: 'Keramika — samodejna mreža ploščic s fotke',
     });
     setView('kalkulatorji');
   };
@@ -823,6 +835,31 @@ export function CameraView() {
                     : null
                 }
                 onSendToCalculator={openCalcStairs}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Keramika — samodejna mreža ploščic iz fotke (meritvena skripta, 0 AI) */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Grid3X3 className="h-4 w-4 text-primary" />
+                  Keramika — samodejna mreža ploščic
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Iz fotke prepozna vzorec polaganja (ravno / diagonalno / ribja kost) in (s kalibracijo)
+                  izmeri velikost ploščice z ujemanjem na uveljavljene formate — vzorec določa odpadek.
+                </p>
+              </div>
+              <TilePanel
+                dataUrl={photoUrl}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                onSendToCalculator={openCalcTile}
               />
             </CardContent>
           </Card>
