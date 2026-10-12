@@ -33,6 +33,7 @@ import {
   buildPrefillFromMeasures, downloadMeasuresCsv, formatCm, formatM2, formatDeg, measuresToText,
 } from '@/lib/measure-geometry';
 import { buildMeasureSheet, loadImage } from '@/lib/measure-sheet';
+import type { ProposalMeasureRow } from '@/lib/viz-proposal';
 import { PhotoCapture } from './photo-capture';
 import { PhotoCanvas } from './photo-canvas';
 import { AnalysisPanel } from './analysis-panel';
@@ -183,6 +184,23 @@ export function CameraView() {
   const allMeasures = [...measures, ...auxMeasures];
   const detectedHeightCm = result?.analysis.objects.find((o) => (o.estHeightCm ?? 0) >= 80)?.estHeightCm ?? null;
   const detectedDefaultHeightM = detectedHeightCm ? Math.round((detectedHeightCm / 100) * 10) / 10 : undefined;
+
+  // Povzetek meritev za "Predlog za stranko" (vizualizer → dokument)
+  const MEASURE_KIND_SHORT: Record<MeasureKind, string> = {
+    length: 'dolžina', area: 'površina', angle: 'kot', chain: 'veriga',
+    laser: 'laser', voice: 'glas', xr: 'AR',
+  };
+  const vizMeasures: ProposalMeasureRow[] = allMeasures
+    .filter((m) => m.value !== null)
+    .map((m) => ({
+      label: `${m.label || 'Meritev'} · ${MEASURE_KIND_SHORT[m.kind] ?? m.kind}`,
+      value:
+        m.kind === 'area'
+          ? formatM2(m.value!)
+          : m.kind === 'angle'
+            ? formatDeg(m.value!)
+            : formatCm(m.value!),
+    }));
 
   const openCalculator = (craft?: string) => {
     const c = craft && craft !== 'drugo' ? craft : null;
@@ -692,6 +710,7 @@ export function CameraView() {
                 barSuggest={barSuggest}
                 onQuote={openCalcFromViz}
                 onSaved={loadGallery}
+                measuresSummary={vizMeasures}
               />
             </CardContent>
           </Card>

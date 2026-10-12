@@ -20,7 +20,7 @@ import {
   Palette, Upload, Download, Save, Crosshair, RefreshCw, Move,
   Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds, Grip,
   Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler, Pipette, Calculator, Wallpaper,
-  Magnet, ChevronsLeftRight, Wand2,
+  Magnet, ChevronsLeftRight, Wand2, ClipboardList,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -39,6 +39,14 @@ import {
   quadDimsFromWidthCm, resolveLayerColor, slidersForPattern,
   type QuadDimsCm, type SheetVariant, type VizLayer, type VizPattern, type VizParams,
 } from '@/lib/viz';
+import {
+  buildVizProposal, printProposalCanvas,
+  type ProposalLayerSpec, type ProposalMeasureRow, type ProposalEstimate,
+} from '@/lib/viz-proposal';
+import { runCalculator } from '@/lib/pricing';
+import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
+import { CRAFT_LABELS } from '@/lib/camera-types';
+import type { CraftId } from '@/lib/types';
 
 interface VizPanelProps {
   /** Aktualna fotografija (iz analize) ali null → lastno nalaganje. */
@@ -52,6 +60,8 @@ interface VizPanelProps {
   /** "Pošlji v kalkulator" — prefill iz ocenjenih dimenzij območja. */
   onQuote?: (craft: CraftCategory, inputs: Partial<CraftInputs>) => void;
   onSaved?: () => void;
+  /** Povzetek meritev s fotke (za predlog za stranko) — iz kamere. */
+  measuresSummary?: ProposalMeasureRow[];
 }
 
 type Quad = [number, number][];
@@ -77,7 +87,7 @@ const PATTERN_ICONS: Record<VizPattern, React.ReactNode> = {
 interface CustomColor { id: string; hex: string }
 const MAX_CUSTOM = 3;
 
-export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved }: VizPanelProps) {
+export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved, measuresSummary = [] }: VizPanelProps) {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -571,6 +581,110 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     }
   };
 
+  // ── Predlog za stranko (Hover: measure · design · estimate v enem) ──
+  // En dokument: pred/po fotki + specifikacija območij + meritve + ocena.
+  const buildProposalCanvas = (): HTMLCanvasElement | null => {
+    const off = afterRef.current;
+    if (!imgEl || !off) return null;
+    const fmtM = (cm: number): string => (cm / 100).toLocaleString('sl-SI', { maximumFractionDigits: 1 });
+    const layerSpecs: ProposalLayerSpec[] = renderLayers.map((l, i) => {
+      const d = l.id === activeId && dims
+        ? dims
+        : quadDimsFromWidthCm(l.quad, off.width, off.height, l.params.quadWidthCm);
+      const dimsLabel = d
+        ? `${fmtM((d.topW + d.botW) / 2)} × ${fmtM((d.leftH + d.rightH) / 2)} m`
+        : '—';
+      const color = resolveLayerColor(l);
+      const colorLabel = l.customHex ?? VIZ_COLORS.find((c) => c.id === l.colorId)?.label ?? color.hex;
+      const paramsLabel = slidersForPattern(l.pattern)
+        .map((s) =>
+          s.key === 'glassAlpha'
+            ? `${s.label.toLowerCase()} ${l.params[s.key]}`
+            : `${s.label.toLowerCase()} ${(l.params[s.key] as number).toLocaleString('sl-SI', { maximumFractionDigits: 1 })} cm`,
+        )
+        .join(' · ');
+      return {
+        label: l.label ?? `Območje ${i + 1}`,
+        patternLabel: VIZ_STYLES.find((s) => s.id === l.pattern)?.label ?? l.pattern,
+        colorLabel,
+        paramsLabel: paramsLabel || '—',
+        dimsLabel,
+        hex: color.hex,
+      };
+    });
+    // Groba ocena: prefill iz dimenzij območja + privzete vrednosti → kalkulator
+    let estimate: ProposalEstimate | null = null;
+    if (craft !== 'drugo' && quoteDims) {
+      try {
+        const inp = { ...CRAFT_INPUT_DEFAULTS, ...craftInputsFromQuad(craft as CraftId, quoteDims) } as CraftInputs;
+        const res = runCalculator(craft as CraftId, inp, 35);
+        const total = res.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+        if (res.lines.length > 0 && total > 0) {
+          estimate = {
+            lines: res.lines.slice(0, 8).map((l) => ({
+              name: l.name,
+              qty: `${l.quantity.toLocaleString('sl-SI', { maximumFractionDigits: 2 })} ${l.unit}`,
+              total: `${(l.quantity * l.unitPrice).toLocaleString('sl-SI', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`,
+            })),
+            totalNoVat: Math.round(total * 100) / 100,
+          };
+        }
+      } catch {
+        estimate = null; // ocena ne sme ustaviti dokumenta
+      }
+    }
+    return buildVizProposal(imgEl, off, {
+      craftLabel: CRAFT_LABELS[craft],
+      layers: layerSpecs,
+      measures: measuresSummary.length > 0 ? measuresSummary : undefined,
+      estimate,
+    });
+  };
+
+  const openProposal = () => {
+    const doc = buildProposalCanvas();
+    if (!doc) {
+      toast({ title: 'Predloga ni bilo mogoče zgraditi', variant: 'destructive' });
+      return;
+    }
+    const ok = printProposalCanvas(doc, `Predlog prenove — ${CRAFT_LABELS[craft]}`);
+    if (!ok) toast({ title: 'Brskalnik je zavrnil novo okno', description: 'Dovoli pojavna okna ali uporabi Prenesi.' });
+  };
+
+  const downloadProposal = () => {
+    const doc = buildProposalCanvas();
+    if (!doc) return;
+    const a = document.createElement('a');
+    a.href = doc.toDataURL('image/png');
+    a.download = `predlog-${craft}-${Date.now()}.png`;
+    a.click();
+    toast({ title: 'Predlog prenesen ✓', description: 'En dokument: pred/po · mere · ocena — za stranko.' });
+  };
+
+  const saveProposalToGallery = async () => {
+    const doc = buildProposalCanvas();
+    if (!doc) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/photos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Predlog za stranko — ${CRAFT_LABELS[craft]}`,
+          craftId: craft,
+          dataUrl: doc.toDataURL('image/jpeg', 0.85),
+        }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: 'Predlog shranjen v galerijo ✓', description: 'Pripravljen za pošiljanje stranki.' });
+      onSaved?.();
+    } catch {
+      toast({ title: 'Shranjevanje ni uspelo', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveToGallery = async () => {
     const off = afterRef.current;
     if (!off) return;
@@ -785,6 +899,18 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
 
         {/* Akcije */}
         <div className="mt-3 flex flex-wrap gap-2">
+          <Button size="sm" className="min-h-10" onClick={openProposal} data-testid="viz-proposal">
+            <ClipboardList className="mr-1.5 h-4 w-4" />
+            Predlog za stranko
+          </Button>
+          <Button size="sm" variant="outline" className="min-h-10" onClick={downloadProposal} data-testid="viz-proposal-download">
+            <Download className="mr-1.5 h-4 w-4" />
+            Prenesi predlog
+          </Button>
+          <Button size="sm" variant="outline" className="min-h-10" onClick={() => void saveProposalToGallery()} disabled={saving} data-testid="viz-proposal-save">
+            <Save className="mr-1.5 h-4 w-4" />
+            Predlog v galerijo
+          </Button>
           <Button size="sm" className="min-h-10" onClick={downloadPng} data-testid="viz-download">
             <Download className="mr-1.5 h-4 w-4" />
             Prenesi PNG
