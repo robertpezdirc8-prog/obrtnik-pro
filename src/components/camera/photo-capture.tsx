@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import {
   Camera, RefreshCw, Upload, ScanSearch, AlertTriangle, CheckCircle2, Images, Zap,
-  ListChecks, Crop, RotateCw, Check, Circle,
+  ListChecks, Crop, RotateCw, Check, Circle, Grid3x3, Compass,
 } from 'lucide-react';
 import { processImage, checkQuality, estimateTilt, autoLevel, type ProcessedImage, type QualityCheck } from '@/lib/image-quality';
 import {
@@ -28,8 +28,11 @@ interface PhotoCaptureProps {
 }
 
 type CaptureMode = 'live' | 'upload';
+/** Prekrivna mreža za kompozicijo (raziskava task14: Griddr/ruščina). */
+type GridMode = 'tretjine' | 'zlati' | 'off';
 
 const GUIDE_LS_KEY = 'obrtnik-vodnik-izbor';
+const GRID_LS_KEY = 'obrtnik-mreza';
 
 export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProps) {
   const [mode, setMode] = useState<CaptureMode>('live');
@@ -47,6 +50,13 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   const [guideCraft, setGuideCraft] = useState<CraftCategory>('ograje');
   const [guideDone, setGuideDone] = useState<Record<string, boolean>>({});
 
+  // Mreža za kompozicijo (tretjine / zlati rez / off) — persist
+  const [grid, setGrid] = useState<GridMode>('tretjine');
+
+  // Libela (DeviceOrientation — deterministični senzorski skript)
+  const [orient, setOrient] = useState<{ beta: number | null; gamma: number | null }>({ beta: null, gamma: null });
+  const [hasOrient, setHasOrient] = useState(false);
+
   // Naloži izbor + stanje vodiča (obvezno v efektu — SSR varno)
   useEffect(() => {
     try {
@@ -58,6 +68,29 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   useEffect(() => {
     if (initialCraft) setGuideCraft(initialCraft);
   }, [initialCraft]);
+
+  // Mreža + libela: obvezno v efektu (SSR varno)
+  useEffect(() => {
+    try {
+      const g = window.localStorage.getItem(GRID_LS_KEY);
+      if (g === 'tretjine' || g === 'zlati' || g === 'off') setGrid(g);
+    } catch { /* ni kritično */ }
+  }, []);
+  useEffect(() => {
+    const onOrient = (e: DeviceOrientationEvent) => {
+      if (e.beta === null && e.gamma === null) return;
+      setHasOrient(true);
+      setOrient({ beta: e.beta, gamma: e.gamma });
+    };
+    window.addEventListener('deviceorientation', onOrient);
+    return () => window.removeEventListener('deviceorientation', onOrient);
+  }, []);
+
+  const cycleGrid = () => {
+    const next: GridMode = grid === 'tretjine' ? 'zlati' : grid === 'zlati' ? 'off' : 'tretjine';
+    setGrid(next);
+    try { window.localStorage.setItem(GRID_LS_KEY, next); } catch { /* ni kritično */ }
+  };
 
   const pickGuideCraft = (c: CraftCategory) => {
     setGuideCraft(c);
@@ -80,6 +113,11 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   const startCamera = async () => {
     setCamError(null);
     setStarting(true);
+    // iOS 13+: dovoljenje za senzor orientacije (libela) — na gest uporabnika
+    try {
+      const DOE = DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> };
+      if (typeof DOE.requestPermission === 'function') await DOE.requestPermission().catch(() => undefined);
+    } catch { /* libela ni kritična */ }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1440 } },
@@ -266,6 +304,11 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   const shots = CAPTURE_GUIDES[guideCraft];
   const doneCount = shots.filter((s) => guideDone[s.id]).length;
 
+  // Libela: telefon pokonci (beta ≈ 90°) in raven (|gamma| < 1,5°)
+  const levelOk =
+    orient.beta !== null && orient.gamma !== null &&
+    Math.abs(orient.gamma) < 1.5 && Math.abs(orient.beta - 90) < 4;
+
   return (
     <div className="space-y-3">
       <div className="flex rounded-lg border p-0.5 bg-secondary/50 w-fit">
@@ -286,6 +329,21 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
           Naloži sliko
         </button>
       </div>
+
+      {mode === 'live' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" className="min-h-9 text-xs" onClick={cycleGrid} aria-pressed={grid !== 'off'} data-testid="capture-grid">
+            <Grid3x3 className="mr-1.5 h-3.5 w-3.5" />
+            Mreža: {grid === 'tretjine' ? 'tretjine' : grid === 'zlati' ? 'zlati rez' : 'izklop'}
+          </Button>
+          {!hasOrient && camActive && (
+            <span className="flex items-center gap-1 text-[11px] text-muted-foreground" data-testid="capture-level-unsupported">
+              <Compass className="h-3.5 w-3.5" />
+              Libela: senzor orientacije ni na voljo (namizni brskalnik)
+            </span>
+          )}
+        </div>
+      )}
 
       {mode === 'live' ? (
         <div className="relative overflow-hidden rounded-xl border bg-zinc-950 aspect-[3/4] sm:aspect-[4/3]">
@@ -315,13 +373,23 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
               <p className="text-sm opacity-90">{camError}</p>
             </div>
           )}
-          {/* AR namigi: mreža tretjin + vogalniški okvir */}
+          {/* AR namigi: mreža (tretjine/zlati rez) + vogalniški okvir */}
           <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-            <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-35">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="border-[0.5px] border-white/20" />
-              ))}
-            </div>
+            {grid === 'tretjine' && (
+              <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-35" data-testid="capture-grid-overlay">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={i} className="border-[0.5px] border-white/20" />
+                ))}
+              </div>
+            )}
+            {grid === 'zlati' && (
+              <div className="absolute inset-0 opacity-40" data-testid="capture-grid-overlay">
+                <span className="absolute inset-y-0 left-[38.2%] w-px bg-white/30" />
+                <span className="absolute inset-y-0 left-[61.8%] w-px bg-white/30" />
+                <span className="absolute inset-x-0 top-[38.2%] h-px bg-white/30" />
+                <span className="absolute inset-x-0 top-[61.8%] h-px bg-white/30" />
+              </div>
+            )}
             <span className="absolute left-3 top-3 h-8 w-8 rounded-tl-lg border-l-2 border-t-2 border-primary/80" />
             <span className="absolute right-3 top-3 h-8 w-8 rounded-tr-lg border-r-2 border-t-2 border-primary/80" />
             <span className="absolute bottom-3 left-3 h-8 w-8 rounded-bl-lg border-b-2 border-l-2 border-primary/80" />
@@ -330,6 +398,26 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
               Postavi objekt in referenco v okvir
             </span>
           </div>
+          {/* Libela: pokoncen in raven držanje telefona = zelena (senzorski skript) */}
+          {hasOrient && orient.beta !== null && orient.gamma !== null && (
+            <div className="absolute right-3 top-14 flex flex-col items-center gap-1" data-testid="capture-level">
+              <div className="relative h-14 w-14 rounded-full border-2 border-white/70 bg-black/40">
+                <span className="absolute left-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-white/25" aria-hidden="true" />
+                <span className="absolute top-1/2 left-2 right-2 h-px -translate-y-1/2 bg-white/25" aria-hidden="true" />
+                <span
+                  className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow ${levelOk ? 'bg-green-400' : 'bg-amber-300'}`}
+                  style={{
+                    left: `calc(50% + ${Math.max(-22, Math.min(22, orient.gamma * 0.75))}px)`,
+                    top: `calc(50% + ${Math.max(-22, Math.min(22, (90 - orient.beta) * 0.75))}px)`,
+                  }}
+                  data-testid="capture-level-dot"
+                />
+              </div>
+              <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white" data-testid="capture-level-state">
+                {levelOk ? 'Ravno ✓' : `${Math.abs(orient.gamma).toFixed(0)}°`}
+              </span>
+            </div>
+          )}
           {camActive && (
             <div className="absolute inset-x-0 bottom-0 flex justify-center p-4">
               <button

@@ -13,8 +13,10 @@
 //     obstoječe ograje/fasade z ohranjenimi senci.
 
 import { applyH, orderQuad, solveHomography } from './homography';
+import { drawQuadDimensions } from './annotate';
 import type { CraftCategory } from './camera-types';
 import type { CraftInputs } from './types';
+import { getTextureImage, getTextureById } from './viz-textures';
 
 // ─── Katalog vzorcev ─────────────────────────────────────────
 
@@ -231,9 +233,81 @@ function luminance(rgb: [number, number, number]): number {
 // ─── Ravninska tekstura vzorca ───────────────────────────────
 
 /**
+ * Zrcalno tlakovanje teksture po canvasu (mirror tiling) — vsak
+ * drugi tile je zrcaljen, zato so šivi med tili nevidni tudi na
+ * ne-popolnoma seamless sliki (deterministična tehnika).
+ */
+function drawMirroredTexture(
+  ctx: CanvasRenderingContext2D,
+  tex: HTMLImageElement | HTMLCanvasElement,
+  W: number,
+  H: number,
+  tilePx = 256,
+): void {
+  const tw = tilePx;
+  const th = tilePx;
+  for (let y = 0; y < H; y += th) {
+    for (let x = 0; x < W; x += tw) {
+      const flipX = (x / tw) % 2 === 1;
+      const flipY = (y / th) % 2 === 1;
+      ctx.save();
+      ctx.translate(x + tw / 2, y + th / 2);
+      ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+      ctx.drawImage(tex, -tw / 2, -th / 2, tw, th);
+      ctx.restore();
+    }
+  }
+}
+
+/** Regija elementa vzorca (palica/deka/ploščica) za teksturo: matrika + pravokotnik. */
+interface TexRegion {
+  m: { a: number; b: number; c: number; d: number; e: number; f: number };
+  r: [number, number, number, number];
+}
+
+/**
+ * Tekstura materiala na elemente vzorca. BREZ regij: 'source-atop'
+ * po celem canvasu (polne površine — panel). Z regijami: tekstura
+ * samo v pravokotnikih elementov (palice, lamele, deke, ploščice) —
+ * črno ozadje med elementi (sence) ostane nedotaknjeno.
+ */
+function applyTextureFill(
+  ctx: CanvasRenderingContext2D,
+  texture: HTMLImageElement | HTMLCanvasElement,
+  rgb: [number, number, number],
+  W: number,
+  H: number,
+  tintAlpha = 0.42,
+  regions?: TexRegion[],
+): void {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-atop';
+  if (regions && regions.length > 0) {
+    for (const rg of regions) {
+      ctx.save();
+      ctx.setTransform(rg.m.a, rg.m.b, rg.m.c, rg.m.d, rg.m.e, rg.m.f);
+      ctx.beginPath();
+      ctx.rect(rg.r[0], rg.r[1], rg.r[2], rg.r[3]);
+      ctx.clip();
+      drawMirroredTexture(ctx, texture, W, H, 256);
+      // barvni pran: tekstura ohrani material, barva ga poveže z izbiro
+      ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${tintAlpha})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+  } else {
+    drawMirroredTexture(ctx, texture, W, H, 256);
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${tintAlpha})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.restore();
+}
+
+/**
  * Nariše vzorec v ravnino (teksturni canvas). `pxPerCm` povezuje
  * realne cm-parametre s piksli teksture. Tekstura predstavlja celoten
- * štirikotnik (širina = quadWidthCm).
+ * štirikotnik (širina = quadWidthCm). Kadar je podana materialna
+ * tekstura, se opačni deli vzorca prekrijejo z realnim materialom.
  */
 export function buildPatternCanvas(
   pattern: VizPattern,
@@ -241,6 +315,7 @@ export function buildPatternCanvas(
   params: VizParams,
   texW: number,
   texH: number,
+  texture?: HTMLImageElement | HTMLCanvasElement,
 ): HTMLCanvasElement {
   const tex = document.createElement('canvas');
   tex.width = Math.max(2, Math.round(texW));
@@ -254,6 +329,13 @@ export function buildPatternCanvas(
   const baseFill = (f = 1) => {
     ctx.fillStyle = shade(rgb, f);
     ctx.fillRect(0, 0, W, H);
+  };
+
+  // Regije elementov za teksturo (palice, deke, ploščice …)
+  const texRegions: TexRegion[] = [];
+  const mark = (x: number, y: number, w: number, h: number) => {
+    const m = ctx.getTransform();
+    texRegions.push({ m: { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f }, r: [x, y, w, h] });
   };
 
   switch (pattern) {
@@ -286,6 +368,7 @@ export function buildPatternCanvas(
         g.addColorStop(1, shade(rgb, 0.62));
         ctx.fillStyle = g;
         ctx.fillRect(x, 0, w, H);
+        mark(x, 0, w, H);
       }
       break;
     }
@@ -300,6 +383,7 @@ export function buildPatternCanvas(
         g.addColorStop(1, shade(rgb, 0.66));
         ctx.fillStyle = g;
         ctx.fillRect(0, y, W, h);
+        mark(0, y, W, h);
       }
       break;
     }
@@ -321,6 +405,7 @@ export function buildPatternCanvas(
         g.addColorStop(1, shade(rgb, 0.60));
         ctx.fillStyle = g;
         ctx.fillRect(x, -(W + H), w, 2 * (W + H));
+        mark(x, -(W + H), w, 2 * (W + H));
       }
       ctx.restore();
       break;
@@ -344,6 +429,7 @@ export function buildPatternCanvas(
           g.addColorStop(1, shade(rgb, 0.58 * lighten));
           ctx.fillStyle = g;
           ctx.fillRect(x, -(W + H), w, 2 * (W + H));
+          if (dir === 1) mark(x, -(W + H), w, 2 * (W + H)); // tekstura samo na zgornji smeri
         }
         ctx.restore();
       };
@@ -375,6 +461,7 @@ export function buildPatternCanvas(
         g.addColorStop(1, shade(rgb, 0.68));
         ctx.fillStyle = g;
         ctx.fillRect(x, bodyTop, w, H - bodyTop);
+        mark(x, 0, w, H); // vrh + telo (tekstura zadelo samo piketo)
       }
       // dva vodoravna nosilca (tatice)
       const railH = Math.max(2, 3 * pxPerCm);
@@ -388,8 +475,8 @@ export function buildPatternCanvas(
       const cell = Math.max(2, params.spacingCm * pxPerCm);
       const wire = Math.max(1, params.elementCm * pxPerCm);
       ctx.fillStyle = shade(rgb, 0.95);
-      for (let x = 0; x <= W; x += cell) ctx.fillRect(Math.round(x - wire / 2), 0, wire, H);
-      for (let y = 0; y <= H; y += cell) ctx.fillRect(0, Math.round(y - wire / 2), W, wire);
+      for (let x = 0; x <= W; x += cell) { ctx.fillRect(Math.round(x - wire / 2), 0, wire, H); mark(Math.round(x - wire / 2), 0, wire, H); }
+      for (let y = 0; y <= H; y += cell) { ctx.fillRect(0, Math.round(y - wire / 2), W, wire); mark(0, Math.round(y - wire / 2), W, wire); }
       // svetlejši presek za plastiko
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       for (let x = 0; x <= W; x += cell) ctx.fillRect(Math.round(x - wire / 2), 0, Math.max(1, wire * 0.35), H);
@@ -438,6 +525,7 @@ export function buildPatternCanvas(
         g.addColorStop(1, shade(rgb, tone * 0.82));
         ctx.fillStyle = g;
         ctx.fillRect(0, y, W, plank);
+        mark(0, y, W, plank);
         // stružnice
         ctx.fillStyle = 'rgba(0,0,0,0.10)';
         const lines = 3;
@@ -467,6 +555,7 @@ export function buildPatternCanvas(
           const tone = 0.94 + seedT(idx + 1) * 0.10; // subtilen tonalni varing ploščic
           ctx.fillStyle = shade(rgb, tone);
           ctx.fillRect(x, y, tile, tile);
+          mark(x, y, tile, tile);
           // rahel svetel rob (bevel)
           ctx.fillStyle = 'rgba(255,255,255,0.08)';
           ctx.fillRect(x, y, tile, Math.max(1, tile * 0.04));
@@ -479,6 +568,7 @@ export function buildPatternCanvas(
       baseFill(1);
       break;
   }
+  if (texture) applyTextureFill(ctx, texture, rgb, W, H, 0.42, texRegions.length > 0 ? texRegions : undefined);
   return tex;
 }
 
@@ -633,6 +723,7 @@ export function drawPatternOnQuad(
   colorHex: string,
   params: VizParams,
   craft: CraftCategory,
+  texture?: HTMLImageElement | HTMLCanvasElement,
 ): void {
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
@@ -657,7 +748,7 @@ export function drawPatternOnQuad(
   // 1) Tekstura v ravnini (omejena ločljivost za hitrost)
   const texW = Math.min(720, Math.max(180, Math.round(avgWpx * 1.4)));
   const texH = Math.max(90, Math.round((texW * quadHCm) / Math.max(30, quadWCm)));
-  const tex = buildPatternCanvas(pattern, colorHex, { ...params, quadWidthCm: quadWCm }, texW, texH);
+  const tex = buildPatternCanvas(pattern, colorHex, { ...params, quadWidthCm: quadWCm }, texW, texH, texture);
 
   // 2) Homografija: enotski kvadrat → štirikotnik (px)
   const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
@@ -903,6 +994,8 @@ export interface VizLayer {
   colorId: string;
   /** Barva iz fotke (eyedropper) — preglasi paletni colorId. */
   customHex?: string;
+  /** Materialna tekstura (katalog viz-textures) — opačni deli vzorca. */
+  textureId?: string;
   params: VizParams;
 }
 
@@ -949,9 +1042,10 @@ export function drawLayersOnQuad(
 ): void {
   for (const l of layers) {
     const hex = resolveLayerColor(l).hex;
+    const texture = getTextureImage(l.textureId) ?? undefined;
     try {
       if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, hex);
-      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, hex, l.params, craft);
+      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, hex, l.params, craft, texture);
     } catch {
       /* posamezna plast ne sme ustaviti upodobitve */
     }
@@ -965,12 +1059,16 @@ export interface SheetVariant {
   colorId: string;
   /** Barva iz fotke (eyedropper) — če je nastavljena, preglosi colorId. */
   customHex?: string;
+  /** Materialna tekstura (katalog viz-textures). */
+  textureId?: string;
 }
 
 interface SheetOpts {
   title: string;
   subtitle: string;
   footer: string;
+  /** Razsežnostne črte (mere) na vsaki celici. */
+  showDimensions?: boolean;
 }
 
 /**
@@ -1048,16 +1146,26 @@ export function buildOptionsSheet(
     cell.height = cellH;
     const cctx = cell.getContext('2d')!;
     cctx.drawImage(img, 0, 0, cellW, cellH);
-    drawLayersOnQuad(
-      cctx,
-      img,
-      layers.map((l) =>
-        l.id === activeLayerId
-          ? { ...l, pattern: v.pattern, colorId: v.colorId, customHex: v.customHex }
-          : l,
-      ),
-      craft,
+    const cellLayers = layers.map((l) =>
+      l.id === activeLayerId
+        ? { ...l, pattern: v.pattern, colorId: v.colorId, customHex: v.customHex, textureId: v.textureId }
+        : l,
     );
+    drawLayersOnQuad(cctx, img, cellLayers, craft);
+
+    // Mere direktno na sliki (raziskava task14: Hover measurement PDF)
+    if (opts.showDimensions) {
+      for (const l of cellLayers) {
+        const d = quadDimsFromWidthCm(l.quad, cellW, cellH, l.params.quadWidthCm);
+        if (!d) continue;
+        const q = orderQuad(l.quad.map(([x, y]) => ({ x: (x / 100) * cellW, y: (y / 100) * cellH })));
+        try {
+          drawQuadDimensions(cctx, q, d);
+        } catch {
+          /* anotacija ne sme ustaviti lista */
+        }
+      }
+    }
 
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.18)';
@@ -1077,13 +1185,14 @@ export function buildOptionsSheet(
       ? { id: v.colorId, label: 'Iz fotke', hex: v.customHex, group: 'ral' }
       : VIZ_COLORS.find((c) => c.id === v.colorId) ?? VIZ_COLORS[0];
     const style = VIZ_STYLES.find((s) => s.id === v.pattern);
+    const texLabel = v.textureId ? getTextureById(v.textureId)?.label : null;
     ctx.fillStyle = color.hex;
     ctx.fillRect(x + 10, y + cellH - labelH + 2, 22, 22);
     ctx.strokeStyle = 'rgba(255,255,255,0.7)';
     ctx.strokeRect(x + 10.5, y + cellH - labelH + 2.5, 21, 21);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 16px system-ui, sans-serif';
-    ctx.fillText(`${idx + 1} · ${style?.label ?? v.pattern}`, x + 42, y + cellH - 16);
+    ctx.fillText(`${idx + 1} · ${style?.label ?? v.pattern}${texLabel ? ` · ${texLabel}` : ''}`, x + 42, y + cellH - 16);
     ctx.font = '13px system-ui, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.82)';
     ctx.fillText(color.label, x + 42, y + cellH - 33);

@@ -19,12 +19,17 @@ import { Label } from '@/components/ui/label';
 import {
   Palette, Upload, Download, Save, Crosshair, RefreshCw, Move,
   Fence, Grid3x3, Grid2x2, Columns3, Rows3, PanelTop, Rows2, Square, PaintBucket, Blinds, Grip,
-  Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler, Pipette, Calculator,
+  Layers, Plus, X, CopyPlus, FileImage, Trash2, Ruler, Pipette, Calculator, Wallpaper,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
 import type { CraftCategory, DetectedSurface } from '@/lib/camera-types';
 import type { CraftInputs } from '@/lib/types';
+import { drawQuadDimensions } from '@/lib/annotate';
+import { orderQuad } from '@/lib/homography';
+import {
+  VIZ_TEXTURES, getTextureById, preloadVizTextures, texturesForPattern,
+} from '@/lib/viz-textures';
 import {
   DEFAULT_VIZ_PARAMS, VIZ_COLORS, VIZ_GROUP_LABELS, VIZ_STYLES,
   buildOptionsSheet, colorGroupsForPattern, craftInputsFromQuad, defaultColorForPattern, defaultPatternForCraft,
@@ -91,6 +96,10 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   const [variants, setVariants] = useState<SheetVariant[]>([]);
   const [pickMode, setPickMode] = useState(false);
   const [customColors, setCustomColors] = useState<CustomColor[]>([]);
+  /** Mere (razsežnostne črte) direktno na sliki — Hover measurement PDF slog. */
+  const [showDims, setShowDims] = useState(true);
+  /** Tick po prednalaganju tekstur (sproži ponovno upodobitev). */
+  const [texTick, setTexTick] = useState(0);
 
   const activeIdx = Math.max(0, layers.findIndex((l) => l.id === activeId));
   const active = layers[activeIdx] ?? layers[0];
@@ -109,6 +118,22 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
       updateLayer({ colorId: defaultColorForPattern(active.pattern).id });
     }
   }, [active.pattern, active.colorId, active.customHex, updateLayer]);
+
+  // Tekstura velja samo za vzorce z opačnimi površinami
+  useEffect(() => {
+    if (active.textureId && texturesForPattern(active.pattern).length === 0) {
+      updateLayer({ textureId: undefined });
+    }
+  }, [active.pattern, active.textureId, updateLayer]);
+
+  // Prednalaganje teksturnih tile-ov (6 slik ≈ 380 KB skupaj)
+  useEffect(() => {
+    let alive = true;
+    void preloadVizTextures(VIZ_TEXTURES.map((t) => t.id)).then(() => {
+      if (alive) setTexTick((v) => v + 1);
+    });
+    return () => { alive = false; };
+  }, []);
 
   // Nalaganje slike
   useEffect(() => {
@@ -150,7 +175,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     );
   }, [layers, activeId, dims]);
 
-  // ── Upodobitev: fotka → vse plasti → pred/po ─────────────
+  // ── Upodobitev: fotka → vse plasti → mere → pred/po ─────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !imgEl) return;
@@ -160,6 +185,24 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     const h = Math.max(2, Math.round(imgEl.naturalHeight * scale));
     canvas.width = w;
     canvas.height = h;
+
+    // Mere (razsežnostne črte) za plasti: aktivna kalibrirana po
+    // referenci, ostale po ročni širini območja
+    const annotateDims = (target: HTMLCanvasElement) => {
+      if (!showDims) return;
+      const tctx = target.getContext('2d');
+      if (!tctx) return;
+      for (const l of renderLayers) {
+        const d = l.id === activeId && dims ? dims : quadDimsFromWidthCm(l.quad, target.width, target.height, l.params.quadWidthCm);
+        if (!d) continue;
+        const q = orderQuad(l.quad.map(([x, y]) => ({ x: (x / 100) * target.width, y: (y / 100) * target.height })));
+        try {
+          drawQuadDimensions(tctx, q, d);
+        } catch {
+          /* anotacija ne sme ustaviti upodobitve */
+        }
+      }
+    };
 
     // "Po" slika na pomožnem canvasu (za prenos/shranjevanje)
     const off = document.createElement('canvas');
@@ -178,6 +221,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     } catch {
       /* risanje ne sme ustaviti UI */
     }
+    annotateDims(off);
     afterRef.current = off;
 
     // Kompozit: pred (desno) / po (levo do lovilca)
@@ -192,7 +236,9 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.fillRect(clipW - 1, 0, 2, h);
-  }, [imgEl, renderLayers, beforeAfter, craft]);
+    // Mere tudi na živem predogledu (export gre na off canvas)
+    annotateDims(canvas);
+  }, [imgEl, renderLayers, beforeAfter, craft, showDims, dims, activeId, texTick]);
 
   // ── Vlečenje vogalov ─────────────────────────────────────
   const pctFromEvent = (e: React.PointerEvent): [number, number] => {
@@ -291,7 +337,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
 
   // ── Predstavni list opcij ────────────────────────────────
   const addVariant = () => {
-    const exists = variants.some((v) => v.pattern === active.pattern && v.colorId === active.colorId && v.customHex === active.customHex);
+    const exists = variants.some((v) => v.pattern === active.pattern && v.colorId === active.colorId && v.customHex === active.customHex && v.textureId === active.textureId);
     if (exists) {
       toast({ title: 'Ta kombinacija je že med opcijami', variant: 'destructive' });
       return;
@@ -300,7 +346,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
       toast({ title: `Največ ${MAX_VARIANTS} opcij`, description: 'Zbriši eno in poskusi znova.' });
       return;
     }
-    setVariants((vs) => [...vs, { pattern: active.pattern, colorId: active.colorId, customHex: active.customHex }]);
+    setVariants((vs) => [...vs, { pattern: active.pattern, colorId: active.colorId, customHex: active.customHex, textureId: active.textureId }]);
     toast({ title: 'Opcija shranjena ✓', description: 'Dodaj še druge in zgradi predstavni list.' });
   };
 
@@ -316,6 +362,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
         title: 'Izberite slog — opcije za vas',
         subtitle: `${VIZ_STYLES.find((s) => s.id === active.pattern)?.label ?? ''} · predlog v vašem prostoru`,
         footer: 'Skriptni predogled (brez AI) — barve so orientacijske; odmerek potrdimo na terenu.',
+        showDimensions: showDims,
       },
     );
     if (!sheet) return;
@@ -338,6 +385,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
         title: 'Izberite slog — opcije za vas',
         subtitle: `${VIZ_STYLES.find((s) => s.id === active.pattern)?.label ?? ''} · predlog v vašem prostoru`,
         footer: 'Skriptni predogled (brez AI) — barve so orientacijske; odmerek potrdimo na terenu.',
+        showDimensions: showDims,
       },
     );
     if (!sheet) return;
@@ -422,9 +470,10 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   const sliders = slidersForPattern(active.pattern);
   const surfaceOptions = surfaces.filter((s) => s.quad && s.quad.length === 4);
   const styleInfo = VIZ_STYLES.find((s) => s.id === active.pattern)!;
+  const texOptions = texturesForPattern(active.pattern);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] [&>*]:min-w-0">
       {/* ── Platno z predogledom ──────────────────────────── */}
       <div className="lg:col-span-3">
         <div
@@ -558,6 +607,17 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
           <Button size="sm" variant="outline" className="min-h-10" onClick={() => void saveToGallery()} disabled={saving} data-testid="viz-save">
             <Save className="mr-1.5 h-4 w-4" />
             {saving ? 'Shranjujem…' : 'Shrani v galerijo'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="min-h-10"
+            onClick={() => setShowDims((v) => !v)}
+            aria-pressed={showDims}
+            data-testid="viz-dims-toggle"
+          >
+            <Ruler className="mr-1.5 h-4 w-4" />
+            {showDims ? 'Mere vidne' : 'Mere skrite'}
           </Button>
           <Button size="sm" variant="ghost" className="min-h-10" onClick={() => fileRef.current?.click()}>
             <Upload className="mr-1.5 h-4 w-4" />
@@ -693,6 +753,50 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
           <p className="text-[11px] text-muted-foreground">{styleInfo.hint}</p>
         </div>
 
+        {/* Tekstura materiala (realni tile-i iz kataloga) */}
+        {texOptions.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Wallpaper className="mr-1 inline h-3.5 w-3.5" />
+                Tekstura materiala
+              </Label>
+              {active.textureId && (
+                <Badge variant="secondary" className="text-[10px]" data-testid="viz-tex-active">
+                  {getTextureById(active.textureId)?.label}
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5" data-testid="viz-textures">
+              <button
+                onClick={() => updateLayer({ textureId: undefined })}
+                title="Brez teksture — čista barva"
+                aria-pressed={!active.textureId}
+                aria-label="Brez teksture"
+                className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 text-muted-foreground transition-transform hover:scale-105 ${!active.textureId ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                data-testid="viz-tex-none"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              {texOptions.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => updateLayer({ textureId: t.id })}
+                  title={t.label}
+                  aria-label={`Tekstura ${t.label}`}
+                  aria-pressed={active.textureId === t.id}
+                  className={`h-10 w-10 rounded-lg border-2 bg-cover bg-center transition-transform hover:scale-105 ${active.textureId === t.id ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}
+                  style={{ backgroundImage: `url(${t.src})` }}
+                  data-testid={`viz-tex-${t.id}`}
+                />
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Realen material se zrcalno tlakuje po opačnih delih vzorca — reže ostanejo, barva pa teksturo poveže z izbiro.
+            </p>
+          </div>
+        )}
+
         {/* Barve */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -807,11 +911,12 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
                   ? { hex: v.customHex, label: 'Iz fotke' }
                   : VIZ_COLORS.find((cc) => cc.id === v.colorId);
                 const st = VIZ_STYLES.find((s) => s.id === v.pattern);
+                const tx = v.textureId ? getTextureById(v.textureId) : null;
                 return (
                   <div key={i} className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-xs">
                     <span className="h-4 w-4 shrink-0 rounded-sm border border-border" style={{ backgroundColor: c?.hex }} />
                     <span className="min-w-0 flex-1 truncate">
-                      <strong>{i + 1}. {st?.label}</strong> · {c?.label}
+                      <strong>{i + 1}. {st?.label}{tx ? ` · ${tx.label}` : ''}</strong> · {c?.label}
                     </span>
                     <button
                       onClick={() => setVariants((vs) => vs.filter((_, j) => j !== i))}
