@@ -20,10 +20,10 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import {
   Ruler, Tags, RotateCcw, Check, X, Crosshair, Copy, Download,
-  Square, TriangleRight, Undo2, Maximize, Magnet, Layers3, Sparkles, Route,
+  Square, TriangleRight, Undo2, Maximize, Magnet, Layers3, Sparkles, Route, AlertTriangle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { DetectedObject, DetectedSurface, PhotoMeasure, MeasureKind } from '@/lib/camera-types';
+import type { DetectedObject, DetectedSurface, PhotoMeasure, MeasureKind, ScaleAgreement, ScaleSuggestion } from '@/lib/camera-types';
 import {
   angleAt, centroidPct, chainStats, downloadMeasuresCsv, formatCm, formatDeg, formatM2, formatSlope,
   lengthCm, measuresToText, polygonAreaM2, polygonSidesCm, type XY,
@@ -44,6 +44,10 @@ interface PhotoCanvasProps {
   referenceCm?: number;
   /** Okvir referenčnega objekta v % — omogoča enoklikovno umerjanje. */
   referenceBox?: [number, number, number, number] | null;
+  /** Predlogi merila z zanesljivostjo (Task 24) — nadomesti staro referenco. */
+  scaleSuggestions?: ScaleSuggestion[];
+  /** Soglasje meril med kandidati ('low' = opozorilo). */
+  scaleAgreement?: ScaleAgreement;
   measures: PhotoMeasure[];
   setMeasures: (m: PhotoMeasure[]) => void;
 }
@@ -67,7 +71,8 @@ const QUICK_REFS: Array<{ label: string; cm: number }> = [
 ];
 
 export function PhotoCanvas({
-  dataUrl, objects, surfaces, referenceLabel, referenceCm, referenceBox, measures, setMeasures,
+  dataUrl, objects, surfaces, referenceLabel, referenceCm, referenceBox,
+  scaleSuggestions, scaleAgreement, measures, setMeasures,
 }: PhotoCanvasProps) {
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>('boxes');
@@ -319,6 +324,33 @@ export function PhotoCanvas({
     confirmCalibration(referenceCm, seg);
   };
 
+  /** Umerjanje po izbranem predlogu merila (Task 24) — navpična stranica okvirja. */
+  const applySuggestion = (s: ScaleSuggestion) => {
+    const [x, y, w, h] = s.box;
+    const seg: Pt[] = [{ x: x + w / 2, y }, { x: x + w / 2, y: y + h }];
+    setCalibInput(String(s.assumedCm));
+    setPending(seg);
+    confirmCalibration(s.assumedCm, seg);
+    toast({
+      title: `Merilo po ${s.label} ✓`,
+      description: `Zanesljivost ${s.confidence} % · širina pri tem merilu ${s.impliedWidthCm} cm${s.widthPlausible ? '' : ' — POVERJENOST NIZKA, preveri merilo'}.`,
+    });
+  };
+
+  /** Ravnina po referenčnem okvirju: homografija z W iz širine okvirja, H iz predpostavke. */
+  const applyReferencePlane = (s: ScaleSuggestion) => {
+    const [x, y, w, h] = s.box;
+    setPlaneQuad([
+      { x, y },
+      { x: x + w, y },
+      { x: x + w, y: y + h },
+      { x, y: y + h },
+    ]);
+    setPlaneW(String(s.impliedWidthCm));
+    setPlaneH(String(s.assumedCm));
+    setPlaneDialog(true);
+  };
+
   const confirmPlane = () => {
     const w = Number(planeW.replace(',', '.'));
     const h = Number(planeH.replace(',', '.'));
@@ -377,6 +409,8 @@ export function PhotoCanvas({
   const chainMeasures = measures.filter((m) => m.kind === 'chain');
   const lengthMeasures = measures.filter((m) => m.kind === 'length' || m.kind === 'laser');
   const detectedSurfaces = (surfaces ?? []).filter((s) => s.quad && s.quad.length === 4);
+  const bestSuggestion = scaleSuggestions && scaleSuggestions.length > 0 ? scaleSuggestions[0] : null;
+  const otherSuggestions = scaleSuggestions ? scaleSuggestions.slice(1) : [];
 
   const modeHint: Record<Mode, string> = {
     boxes: 'Zaznani objekti in ravnine — preklopi v način merjenja za meritve.',
@@ -436,8 +470,8 @@ export function PhotoCanvas({
             </Badge>
           )
         ) : plane ? (
-          <Badge variant="outline" className="gap-1.5">
-            <Check className="h-3 w-3 text-green-600" />
+          <Badge variant="outline" className="max-w-full gap-1.5 whitespace-normal text-left">
+            <Check className="h-3 w-3 shrink-0 text-green-600" />
             Ravnina umerjena — meritve popravljene za perspektivo
           </Badge>
         ) : pxPerCm !== null && (mode === 'length' || mode === 'area' || mode === 'chain') ? (
@@ -676,7 +710,71 @@ export function PhotoCanvas({
             <Crosshair className="h-4 w-4 text-amber-600" />
             <p className="text-sm font-semibold">Umeri merilo — koliko cm je izbrana daljica?</p>
           </div>
-          {referenceLabel && (
+          {bestSuggestion ? (
+            <div className="rounded-lg border bg-card p-2.5 space-y-2" data-testid="scale-suggest">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                <span className="text-sm font-semibold">
+                  {bestSuggestion.label} ≈ {bestSuggestion.assumedCm} cm
+                </span>
+                <span
+                  data-testid="scale-confidence"
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    bestSuggestion.confidenceLabel === 'visoka'
+                      ? 'bg-green-100 text-green-800'
+                      : bestSuggestion.confidenceLabel === 'srednja'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  zanesljivost {bestSuggestion.confidence}/100 · {bestSuggestion.confidenceLabel}
+                </span>
+                <span
+                  data-testid="scale-width-check"
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    bestSuggestion.widthPlausible ? 'bg-secondary text-secondary-foreground' : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  širina ≈ {bestSuggestion.impliedWidthCm.toLocaleString('sl-SI')} cm{' '}
+                  {bestSuggestion.widthPlausible ? '✓' : '— nepričakovana'}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button size="sm" onClick={() => applySuggestion(bestSuggestion)} className="min-h-9" data-testid="scale-apply">
+                  <Sparkles className="mr-1 h-3.5 w-3.5" />
+                  Umeri samodejno po okvirju
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => applyReferencePlane(bestSuggestion)}
+                  className="min-h-9"
+                  data-testid="scale-plane"
+                  aria-label="Umeri ravnino po referenčnem okvirju (perspektivna korekcija)"
+                >
+                  <Layers3 className="mr-1 h-3.5 w-3.5" />
+                  Ravnina po referenci (perspektiva)
+                </Button>
+              </div>
+              {!bestSuggestion.widthPlausible && (
+                <p className="flex items-start gap-1.5 text-xs text-red-700">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Izmerjena širina ({bestSuggestion.impliedWidthCm} cm) ne ustreza tipičnim meram — predpostavka višine verjetno ne velja. Umeri ročno.
+                </p>
+              )}
+              {scaleAgreement === 'low' && scaleSuggestions && scaleSuggestions.length >= 2 && (
+                <p className="flex items-start gap-1.5 text-xs text-amber-700" data-testid="scale-agreement-warn">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  Predlogi se med seboj ne ujemajo (razlika &gt; 25 %) — merilo najprej preveri ročno.
+                </p>
+              )}
+              {scaleAgreement === 'high' && scaleSuggestions && scaleSuggestions.length >= 2 && (
+                <p className="text-xs text-green-700" data-testid="scale-agreement-ok">
+                  ✓ {scaleSuggestions.length} referenci se ujemajo (razlika ≤ 10 %) — merilo zanesljivo.
+                </p>
+              )}
+            </div>
+          ) : referenceLabel ? (
             <p className="text-xs text-muted-foreground">
               Predlog analize: <strong>{referenceLabel} ≈ {referenceCm} cm</strong>
               {referenceBox && (
@@ -690,6 +788,21 @@ export function PhotoCanvas({
                 </button>
               )}
             </p>
+          ) : null}
+          {otherSuggestions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Drugi predlogi:</span>
+              {otherSuggestions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => applySuggestion(s)}
+                  className="rounded-full border bg-card px-2.5 py-1 text-[11px] font-medium transition-colors hover:border-primary/50 hover:bg-accent min-h-[28px]"
+                  aria-label={`Umeri po ${s.label} (${s.assumedCm} cm, zanesljivost ${s.confidence})`}
+                >
+                  {s.label} · {s.assumedCm} cm · {s.confidence} %
+                </button>
+              ))}
+            </div>
           )}
           <div className="flex flex-wrap gap-1.5">
             {QUICK_REFS.map((r) => (

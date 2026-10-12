@@ -701,6 +701,8 @@ export function CameraView() {
                   referenceLabel={result.analysis.reference?.label}
                   referenceCm={result.analysis.reference?.assumedCm}
                   referenceBox={result.analysis.referenceBox}
+                  scaleSuggestions={result.analysis.scaleSuggestions}
+                  scaleAgreement={result.analysis.scaleAgreement}
                   measures={measures}
                   setMeasures={setMeasures}
                 />

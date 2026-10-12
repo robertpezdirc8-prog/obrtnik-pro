@@ -33,6 +33,34 @@ export interface ReferenceObject {
   explanation: string;
 }
 
+/**
+ * Predlog merila iz enega referenčnega objekta (Task 24).
+ * Zanesljivost je deterministična ocena 0–100; soglasje pa pove,
+ * kako se merila več kandidatov ujemajo.
+ */
+export interface ScaleSuggestion {
+  id: string;
+  kind: 'vrata' | 'okno';
+  label: string;
+  /** Okvir referenčnega objekta v % slike [x, y, w, h]. */
+  box: [number, number, number, number];
+  /** Predpostavljena višina objekta v cm (vrata 200, okno 120). */
+  assumedCm: number;
+  /** Merilo: naravnih pikslov slike na 1 cm (iz navpične stranice). */
+  pxPerCm: number;
+  /** Zanesljivost predloga 0–100. */
+  confidence: number;
+  /** Verdict zanesljivosti (visoka / srednja / nizka). */
+  confidenceLabel: 'visoka' | 'srednja' | 'nizka';
+  /** Širina okvirja pri tem merilu (cm) — prečni preverba. */
+  impliedWidthCm: number;
+  /** Ali prečni preverba pasti v pričakovani pas. */
+  widthPlausible: boolean;
+}
+
+/** Soglasje meril med kandidati (razpršenost). */
+export type ScaleAgreement = 'high' | 'medium' | 'low' | 'none';
+
 /** Ravnina, ki jo je skripta zaznala (stena, tla, terasa…) z oglišči v %. */
 export interface DetectedSurface {
   label: string;
@@ -51,6 +79,10 @@ export interface PhotoAnalysis {
   reference: ReferenceObject | null;
   /** Okvir referenčnega objekta v % (za enoklikovno umerjanje). */
   referenceBox: [number, number, number, number] | null;
+  /** Vsi predlogi merila (vrata + okna) z zanesljivostjo (Task 24). */
+  scaleSuggestions: ScaleSuggestion[];
+  /** Soglasje meril med kandidati (razpršenost / mediana). */
+  scaleAgreement: ScaleAgreement;
   /** Zaznane ravnine (stene, tla…) — uporabne za perspektivno kalibracijo. */
   surfaces: DetectedSurface[];
   /** Materiali, ki jih je skripta zaznala (steklo, aluminij, keramika…). */
@@ -92,6 +124,8 @@ export function normalizePhotoAnalysis(raw: unknown): PhotoAnalysis {
     objects: Array.isArray(a.objects) ? a.objects : [],
     reference: a.reference ?? null,
     referenceBox: a.referenceBox ?? null,
+    scaleSuggestions: Array.isArray(a.scaleSuggestions) ? a.scaleSuggestions : [],
+    scaleAgreement: a.scaleAgreement ?? 'none',
     surfaces: Array.isArray(a.surfaces) ? a.surfaces : [],
     materials: Array.isArray(a.materials) ? a.materials : [],
     hazards: Array.isArray(a.hazards) ? a.hazards : [],

@@ -194,11 +194,39 @@ export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPan
       {analysis.reference && (
         <div className="flex items-start gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
           <Ruler className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold">
               Merilo za umerjanje: {analysis.reference.label} ≈ {analysis.reference.assumedCm} cm
+              {analysis.scaleSuggestions.length > 0 && (() => {
+                const best = analysis.scaleSuggestions[0];
+                return (
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      best.confidenceLabel === 'visoka'
+                        ? 'bg-green-100 text-green-800'
+                        : best.confidenceLabel === 'srednja'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-red-100 text-red-800'
+                    }`}
+                    data-testid="analysis-scale-confidence"
+                  >
+                    zanesljivost {best.confidence}/100
+                  </span>
+                );
+              })()}
             </p>
             <p className="text-xs text-muted-foreground">{analysis.reference.explanation}</p>
+            {analysis.scaleSuggestions.length > 1 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Še {analysis.scaleSuggestions.length - 1} alternativ{' '}
+                {analysis.scaleAgreement === 'high'
+                  ? '(merila se ujemajo ✓)'
+                  : analysis.scaleAgreement === 'low'
+                    ? '(⚠ merila se NE ujemajo — preveri ročno)'
+                    : ''}{' '}
+                — v zavihku merjenja.
+              </p>
+            )}
           </div>
         </div>
       )}

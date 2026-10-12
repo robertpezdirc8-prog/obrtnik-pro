@@ -16,7 +16,7 @@
 //  8. Pravilna klasifikacija obrti (točkovni sistem) + ravnine,
 //     objekti, materiali, tveganja, ocena kakovosti in predpolnitve
 
-import type { CraftCategory, DetectedObject, DetectedSurface, PhotoAnalysis } from './camera-types';
+import type { CraftCategory, DetectedObject, DetectedSurface, PhotoAnalysis, ScaleAgreement, ScaleSuggestion } from './camera-types';
 import type { CraftInputs } from './types';
 import { detectPatternInQuad, type PatternSuggestion } from './pattern-detect';
 
@@ -65,7 +65,8 @@ interface GridInfo {
   single: boolean;
 }
 
-interface Features {
+/** Vmesne značilke slike (javne za kalibracijske skripte). */
+export interface Features {
   W: number;
   H: number;
   brightness: number;
@@ -97,6 +98,12 @@ interface Features {
   flatFrac: number;
   bestDoor: Blob | null;
   bestWindow: Blob | null;
+  /** Vsi vratu-podobni kandidati (urejeni po oceni) — za predloge merila. */
+  doorCands: Array<{ b: Blob; score: number }>;
+  /** Vsi oknu-podobni kandidati (urejeni po oceni). */
+  windowCands: Array<{ b: Blob; score: number }>;
+  /** Karta robov v delovni ločljivosti (za poliranje okvirov odprtin). */
+  edge: Uint8Array;
   outdoor: boolean;
 }
 
@@ -258,37 +265,59 @@ function connectedComponents(mask: Uint8Array, w: number, h: number, minArea: nu
  * Ocena "okvirjenosti": pravi okni/vrata/stekleno polje imajo izrazit
  * rob po (skoraj) vseh straneh obsegajočega okvirja; ravna stena ga ima
  * samo na eni strani. Označi vsak blob z framed = rob na ≥ 3 straneh.
+ * Maska stekla izključuje robne piksle, zato se CC erodira in pravi rob
+ * okvirja pade do 1 px ZUNAJ obsegajočega okvirja — preverjamo zato
+ * črte fixed−1 … fixed+1 in vzamemo najboljše pokritost.
  */
+/** Pokritost robov na eni črti (vodoravni/navpični presek bloba). */
+function edgeLineHit(
+  edge: Uint8Array, w: number, h: number,
+  horizontal: boolean, fixed: number, from: number, to: number,
+): { n: number; hit: number } {
+  let n = 0;
+  let hit = 0;
+  for (let t = from; t <= to; t++) {
+    const x = horizontal ? t : fixed;
+    const y = horizontal ? fixed : t;
+    if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) continue;
+    n++;
+    if (edge[y * w + x]) hit++;
+  }
+  return { n, hit };
+}
+
+/**
+ * Najboljša pokritost robov med črtami fixed−1 … fixed+1 (glej zgoraj).
+ */
+function edgeBestLineHit(
+  edge: Uint8Array, w: number, h: number,
+  horizontal: boolean, fixed: number, from: number, to: number,
+): { n: number; hit: number } {
+  let best = { n: 0, hit: 0 };
+  let bestRatio = 0;
+  for (const f of [fixed - 1, fixed, fixed + 1]) {
+    const c = edgeLineHit(edge, w, h, horizontal, f, from, to);
+    const ratio = c.n > 0 ? c.hit / c.n : 0;
+    if (c.n >= 4 && ratio > bestRatio) {
+      best = c;
+      bestRatio = ratio;
+    }
+  }
+  return best;
+}
+
 function annotateFramed(blobs: Blob[], edge: Uint8Array, w: number, h: number): void {
   for (const b of blobs) {
     const bw = b.x1 - b.x0 + 1;
     const bh = b.y1 - b.y0 + 1;
     if (bw < 6 || bh < 6) continue;
-    const sides = [0, 0, 0, 0]; // zgornja, desna, spodnja, leva
-    const sidesN = [0, 0, 0, 0];
-    for (let x = b.x0; x <= b.x1; x++) {
-      if (b.y0 > 0 && b.y0 < h - 1) {
-        sidesN[0]++;
-        if (edge[b.y0 * w + x]) sides[0]++;
-      }
-      if (b.y1 > 0 && b.y1 < h - 1) {
-        sidesN[2]++;
-        if (edge[b.y1 * w + x]) sides[2]++;
-      }
-    }
-    for (let y = b.y0; y <= b.y1; y++) {
-      if (b.x0 > 0 && b.x0 < w - 1) {
-        sidesN[3]++;
-        if (edge[y * w + b.x0]) sides[3]++;
-      }
-      if (b.x1 > 0 && b.x1 < w - 1) {
-        sidesN[1]++;
-        if (edge[y * w + b.x1]) sides[1]++;
-      }
-    }
+    const top = edgeBestLineHit(edge, w, h, true, b.y0, b.x0, b.x1);
+    const bottom = edgeBestLineHit(edge, w, h, true, b.y1, b.x0, b.x1);
+    const left = edgeBestLineHit(edge, w, h, false, b.x0, b.y0, b.y1);
+    const right = edgeBestLineHit(edge, w, h, false, b.x1, b.y0, b.y1);
     let framedSides = 0;
-    for (let s = 0; s < 4; s++) {
-      if (sidesN[s] >= 4 && sides[s] / sidesN[s] >= 0.4) framedSides++;
+    for (const s of [top, bottom, left, right]) {
+      if (s.n >= 4 && s.hit / s.n >= 0.4) framedSides++;
     }
     b.framed = framedSides >= 3;
   }
@@ -694,29 +723,31 @@ export function extractFeatures(img: RgbaImage): Features {
   // Vrata se morajo končati blizu tal slike (dno znotraj spodnjih 18 %)
   // — tako polje ograje ali okno ne more biti zamenjano za vrata.
   const openingBlobs = [...glassBlobs, ...framedDark];
-  let bestDoor: Blob | null = null;
-  let bestDoorScore = 0;
+  const doorCands: Array<{ b: Blob; score: number }> = [];
   for (const b of openingBlobs) {
     const bw = b.x1 - b.x0 + 1;
     const bh = b.y1 - b.y0 + 1;
     const aspect = bh / bw;
     if (aspect < 1.2 || aspect > 4.2) continue;
     if (bh < H * 0.25 || bw < W * 0.07) continue;
-    if (b.y1 < H * 0.45) continue;
     if (b.y1 < H * 0.82) continue;
     if (b.fill < 0.55) continue;
     const areaFrac = b.area / N;
+    if (areaFrac < 0.015) continue;
     // bližina standardnim vratom (razmerje ≈ 2), s spodnjim pragom —
     // tudi ozka/tall vrata morajo ostati kandidat
     const aspectCloseness = Math.max(0.25, 1 - Math.min(1, Math.abs(aspect - 2) / 1.8));
     const score = b.fill * aspectCloseness * clamp(areaFrac / 0.06, 0, 1);
-    if (score > bestDoorScore) {
-      bestDoorScore = score;
-      bestDoor = b;
-    }
+    doorCands.push({ b, score });
   }
-  let bestWindow: Blob | null = null;
-  let bestWindowScore = 0;
+  doorCands.sort((a, z) => z.score - a.score);
+  // dvojniki (iste odprtine v stekleni IN temni maski) — IoU > 0,6
+  const doorDedup: Array<{ b: Blob; score: number }> = [];
+  for (const c of doorCands) {
+    if (doorDedup.every((d) => blobIoU(d.b, c.b) < 0.6)) doorDedup.push(c);
+  }
+  const bestDoor = doorDedup[0]?.b ?? null;
+  const windowCands: Array<{ b: Blob; score: number }> = [];
   for (const b of glassBlobs) {
     const bw = b.x1 - b.x0 + 1;
     const bh = b.y1 - b.y0 + 1;
@@ -727,11 +758,10 @@ export function extractFeatures(img: RgbaImage): Features {
     if (b.fill < 0.5) continue;
     const aspectCloseness = 1 - Math.min(1, Math.abs(aspect - 1) / 0.9);
     const score = b.fill * aspectCloseness * clamp(areaFrac / 0.04, 0, 1);
-    if (score > bestWindowScore) {
-      bestWindowScore = score;
-      bestWindow = b;
-    }
+    windowCands.push({ b, score });
   }
+  windowCands.sort((a, z) => z.score - a.score);
+  const bestWindow = windowCands[0]?.b ?? null;
 
   const skyFrac = skyC / N;
   // Največji povezani nebni blob (odsevi neba v oknih so mali CC-ji —
@@ -773,12 +803,220 @@ export function extractFeatures(img: RgbaImage): Features {
     flatFrac,
     bestDoor,
     bestWindow,
+    doorCands: doorDedup,
+    windowCands,
+    edge,
     outdoor,
   };
 }
 
 function touchesAllBorders(b: Blob, w: number, h: number): boolean {
   return b.x0 <= 1 && b.x1 >= w - 2 && b.y0 <= 1 && b.y1 >= h - 2;
+}
+
+/** Prekrivanje dveh blolobov (IoU) — za odstranjevanje dvojnikov. */
+function blobIoU(a: Blob, b: Blob): number {
+  const ix0 = Math.max(a.x0, b.x0);
+  const iy0 = Math.max(a.y0, b.y0);
+  const ix1 = Math.min(a.x1, b.x1);
+  const iy1 = Math.min(a.y1, b.y1);
+  const iw = ix1 - ix0 + 1;
+  const ih = iy1 - iy0 + 1;
+  if (iw <= 0 || ih <= 0) return 0;
+  const inter = iw * ih;
+  return inter / (a.area + b.area - inter);
+}
+
+// ─── Predlogi merila iz referenčnih objektov (Task 24) ──────
+
+const DOOR_CM = 200;
+const WINDOW_CM = 120;
+
+/**
+ * Razširi erodirani okvir odprtine do pravega roba po karti robov.
+ * Barvne maske (steklo/tema) izključujejo robne piksle, zato je bbox
+ * CC-ja za 1–3 px manjši od prave odprtine na vsako stran — kar bi
+ * merilo zmotilo za ~10 %. Robni prstan je debel (Sobel + histereza),
+ * zato ne hodimo navzven do zadnje črte nad pragom, ampak vzamemo
+ * črto z največjo pokritostjo v oknu 1–4 px (središče prstana =
+ * prava meja). Če je najboljša pokritost < 0,35, strane ne premaknemo.
+ */
+function refineOpeningBox(b: Blob, edge: Uint8Array, w: number, h: number): { x0: number; y0: number; x1: number; y1: number } {
+  const lineCov = (horizontal: boolean, fixed: number, from: number, to: number): number => {
+    let n = 0;
+    let hit = 0;
+    for (let t = from; t <= to; t++) {
+      const x = horizontal ? t : fixed;
+      const y = horizontal ? fixed : t;
+      if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) continue;
+      n++;
+      if (edge[y * w + x]) hit++;
+    }
+    return n > 0 ? hit / n : 0;
+  };
+  // odmik prstana robov: tehtani centroid pokritosti pri 1–4 px navzven
+  // (argmax bi pri tankem prstanu ostal prekratek, pri debelom prelongiran)
+  const ringOffset = (horizontal: boolean, dir: 1 | -1, base: number, from: number, to: number): number => {
+    let sum = 0;
+    let wsum = 0;
+    for (let d = 1; d <= 4; d++) {
+      const cov = lineCov(horizontal, base + dir * d, from, to);
+      if (cov < 0.2) break; // prstan se je končal
+      sum += d * cov;
+      wsum += cov;
+    }
+    if (wsum === 0) return 0;
+    return Math.max(1, Math.round(sum / wsum));
+  };
+  let { x0, y0, x1, y1 } = b;
+  const dTop = ringOffset(true, -1, y0, x0, x1);
+  if (dTop > 0) y0 -= dTop;
+  const dBottom = ringOffset(true, 1, y1, x0, x1);
+  if (dBottom > 0) y1 += dBottom;
+  const dLeft = ringOffset(false, -1, x0, y0, y1);
+  if (dLeft > 0) x0 -= dLeft;
+  const dRight = ringOffset(false, 1, x1, y0, y1);
+  if (dRight > 0) x1 += dRight;
+  return { x0, y0, x1, y1 };
+}
+
+/**
+ * Zgradi VSE predloge merila iz zaznanih kandidatov (vrata + okna).
+ * Vsak predlog nosi deterministično oceno zanesljivosti 0–100:
+ * bližina razmerju stranic standardu, lega dna (vrata pri tleh),
+ * zapolnjenost okvirja, velikost v sliki in prečni preverba širine
+ * (DIN 18101 / EN 14351-1: vrata 70–110 cm, okno 60–180 cm).
+ * Merilo je v delovnih pikslih analize na 1 cm — za soglasje in
+ * ocene površin; UI ga preslika v naravne piksle prek okvirja v %.
+ */
+export function buildScaleSuggestions(f: Features): ScaleSuggestion[] {
+  const out: ScaleSuggestion[] = [];
+  const W = f.W;
+  const H = f.H;
+
+  f.doorCands.slice(0, 2).forEach((c, i) => {
+    const b = c.b;
+    const r = refineOpeningBox(b, f.edge, W, H);
+    const bwPx = r.x1 - r.x0 + 1;
+    const bhPx = r.y1 - r.y0 + 1;
+    const aspect = bhPx / bwPx;
+    const pxPerCm = bhPx / DOOR_CM;
+    const impliedWidthCm = Math.round(bwPx / pxPerCm);
+    const widthPlausible = impliedWidthCm >= 70 && impliedWidthCm <= 110;
+
+    let conf = 0;
+    // 1) razmerje stranic blizu 2,0 (do 35 t.)
+    conf += 35 * Math.max(0.15, 1 - Math.min(1, Math.abs(aspect - 2) / 1.8));
+    // 2) dno pri tleh (do 15 t.)
+    conf += b.y1 >= H * 0.95 ? 15 : b.y1 >= H * 0.88 ? 10 : 5;
+    // 3) zapolnjenost (do 15 t.)
+    conf += b.fill >= 0.8 ? 15 : b.fill >= 0.65 ? 10 : 5;
+    // 4) velikost v sliki (do 15 t.)
+    const areaFrac = b.area / (W * H);
+    conf += areaFrac >= 0.03 && areaFrac <= 0.3 ? 15 : areaFrac >= 0.015 && areaFrac <= 0.45 ? 8 : 3;
+    // 5) prečni preverba širine (do 20 t.)
+    conf += widthPlausible ? 20 : impliedWidthCm >= 55 && impliedWidthCm <= 140 ? 10 : 0;
+    // majhna/daleč vrata so manj zanesljiva
+    if (bhPx < H * 0.35) conf -= 10;
+
+    const confidence = Math.round(clamp(conf, 5, 95));
+    out.push({
+      id: `door-${i + 1}`,
+      kind: 'vrata',
+      label: i === 0 ? 'Vrata / vhodna odprtina' : `Vrata ${i + 1}`,
+      box: [
+        round1(clamp((r.x0 / W) * 100, 0, 100)),
+        round1(clamp((r.y0 / H) * 100, 0, 100)),
+        round1(clamp(((r.x1 - r.x0 + 1) / W) * 100, 0, 100)),
+        round1(clamp(((r.y1 - r.y0 + 1) / H) * 100, 0, 100)),
+      ],
+      assumedCm: DOOR_CM,
+      pxPerCm,
+      confidence,
+      confidenceLabel: confidence >= 75 ? 'visoka' : confidence >= 55 ? 'srednja' : 'nizka',
+      impliedWidthCm,
+      widthPlausible,
+    });
+  });
+
+  f.windowCands.slice(0, 3).forEach((c, i) => {
+    const b = c.b;
+    const r = refineOpeningBox(b, f.edge, W, H);
+    const bwPx = r.x1 - r.x0 + 1;
+    const bhPx = r.y1 - r.y0 + 1;
+    const aspect = bhPx / bwPx;
+    const pxPerCm = bhPx / WINDOW_CM;
+    const impliedWidthCm = Math.round(bwPx / pxPerCm);
+    const widthPlausible = impliedWidthCm >= 60 && impliedWidthCm <= 180;
+
+    let conf = 0;
+    // 1) razmerje stranic blizu 1,0 (do 30 t.)
+    conf += 30 * Math.max(0.1, 1 - Math.min(1, Math.abs(aspect - 1) / 0.9));
+    // 2) zapolnjenost (do 20 t.)
+    conf += b.fill >= 0.7 ? 20 : b.fill >= 0.55 ? 12 : 5;
+    // 3) velikost v sliki (do 20 t.)
+    const areaFrac = b.area / (W * H);
+    conf += areaFrac >= 0.02 && areaFrac <= 0.2 ? 20 : areaFrac >= 0.012 && areaFrac <= 0.35 ? 10 : 3;
+    // 4) prečni preverba širine (do 20 t.)
+    conf += widthPlausible ? 20 : impliedWidthCm >= 40 && impliedWidthCm <= 250 ? 10 : 0;
+    // 5) sorodniki: druga okna z podobnim merilom (do 10 t. na par, max 20)
+    const peers = f.windowCands.filter((o) => o !== c).filter((o) => {
+      const obh = o.b.y1 - o.b.y0 + 1;
+      const oScale = obh / WINDOW_CM;
+      return Math.abs(oScale - pxPerCm) / Math.max(1e-6, pxPerCm) <= 0.12;
+    }).length;
+    conf += Math.min(20, peers * 10);
+
+    const confidence = Math.round(clamp(conf, 5, 95));
+    out.push({
+      id: `window-${i + 1}`,
+      kind: 'okno',
+      label: i === 0 ? 'Okno' : `Okno ${i + 1}`,
+      box: [
+        round1(clamp((r.x0 / W) * 100, 0, 100)),
+        round1(clamp((r.y0 / H) * 100, 0, 100)),
+        round1(clamp(((r.x1 - r.x0 + 1) / W) * 100, 0, 100)),
+        round1(clamp(((r.y1 - r.y0 + 1) / H) * 100, 0, 100)),
+      ],
+      assumedCm: WINDOW_CM,
+      pxPerCm,
+      confidence,
+      confidenceLabel: confidence >= 75 ? 'visoka' : confidence >= 55 ? 'srednja' : 'nizka',
+      impliedWidthCm,
+      widthPlausible,
+    });
+  });
+
+  // najzanesljivejši predlog na vrh; vrata imajo prednost pred okni
+  // (višina vrat je standardizirana, okna pa se močno razlikujejo),
+  // razen če je okno bistveno zanesljivejše (+ 15 t.)
+  out.sort((a, z) => {
+    if (a.kind !== z.kind) {
+      const door = a.kind === 'vrata' ? a : z;
+      const win = a.kind === 'vrata' ? z : a;
+      if (win.confidence >= door.confidence + 15) return win.id === a.id ? -1 : 1;
+      return door.id === a.id ? -1 : 1;
+    }
+    return z.confidence - a.confidence;
+  });
+  return out.slice(0, 4);
+}
+
+/**
+ * Soglasje meril med kandidati (fotogrametrijska kontrola kakovosti):
+ * razpršenost (max−min)/mediana ≤ 10 % = visoko, ≤ 25 % = srednje,
+ * sicer nizko (opozorilo). Enojni kandidat = 'none'.
+ */
+export function fuseScaleAgreement(s: ScaleSuggestion[]): ScaleAgreement {
+  if (s.length < 2) return 'none';
+  const scales = s.map((x) => x.pxPerCm).sort((a, b) => a - b);
+  const mid = Math.floor(scales.length / 2);
+  const med = scales.length % 2 === 1 ? scales[mid] : (scales[mid - 1] + scales[mid]) / 2;
+  if (med <= 0) return 'none';
+  const spread = (scales[scales.length - 1] - scales[0]) / med;
+  if (spread <= 0.1) return 'high';
+  if (spread <= 0.25) return 'medium';
+  return 'low';
 }
 
 // ─── Pravilna klasifikacija obrti (točkovni sistem) ─────────
@@ -898,9 +1136,20 @@ export function classifyCraft(f: Features, structure: PatternSuggestion | null):
     if (f.woodFrac > 0.25 && f.metalFrac > 0.25 && f.skyLargestFrac < 0.06) scores['stopnice'] += 34;
   }
 
-  // Okna/vrata: zaznane odprtine (steklo IN temne)
-  if (windowCount >= 1) scores['okna-vrata'] += 18 + 7 * Math.min(windowCount, 4);
-  if (f.bestDoor) scores['okna-vrata'] += 12;
+  // Okna/vrata: zaznane odprtine (steklo IN temne). Pri nadstrešku nad
+  // vhodom (canopyEvidence — veliko stekla + diagonale + vrata pod njim)
+  // so "okna" v resnici stekleni paneli nadstreška — ne štej jih kot
+  // dokaz za okna/vrata.
+  const canopyEvidence = dgCount >= 6 && f.glassFrac > 0.3 && !!f.bestDoor;
+  // kopalnica z velikimi ploščicami/prho: veliko navpičnih fug + steklo
+  // — "okna" so steklo prhe/ogledala, polovična teža
+  const keramikaEvidence = vCount >= 8 && hCount <= 3 && f.glassFrac > 0.4 && f.woodFrac < 0.08;
+  if (windowCount >= 1 && !canopyEvidence) {
+    scores['okna-vrata'] += keramikaEvidence
+      ? 9 + 4 * Math.min(windowCount, 4)
+      : 18 + 7 * Math.min(windowCount, 4);
+  }
+  if (f.bestDoor) scores['okna-vrata'] += f.bestDoor.fill >= 0.7 ? 12 : 4;
   if (windowCount >= 2 && !f.outdoor && !f.bestDoor) scores['okna-vrata'] += 10;
   // Okenska stena: množica vertikalnih + horizontalnih okvirjev, svetla
   // površina (steklo/odsev), skoraj brez diagonal
@@ -917,10 +1166,11 @@ export function classifyCraft(f: Features, structure: PatternSuggestion | null):
   }
   if (f.outdoor && hCount >= 1 && vCount >= 3 && f.skyFrac > 0.12) scores['nadstreški'] += 14;
 
-  // Fasada: okna/odprtine + zunanjost, brez vrata v ospredju (to je
-  // nadstrešek). Na svetli fasadi so okna temne odprtine — countWindows
-  // jih zdaj šteje.
-  if (windowCount >= 1 && f.outdoor && !f.bestDoor && dgCount >= 2) {
+  // Fasada: okna/odprtine + zunanjost. Vrata na fasadi ne pokvarijo
+  // pravila (vhodna vrata so del fasade) — izključi samo primer
+  // nadstreška nad vhodom (canopyEvidence: steklo + diagonale + vrata).
+  // Na svetli fasadi so okna temne odprtine — countWindows jih šteje.
+  if (windowCount >= 1 && f.outdoor && !canopyEvidence && dgCount >= 2) {
     scores['fasada'] += 24 + 8 * Math.min(windowCount, 5);
   }
   if (f.flatFrac > 0.5) scores['fasada'] += 10;
@@ -998,30 +1248,24 @@ export function analyzePhotoImage(img: RgbaImage): PhotoAnalysis {
   const N = f.W * f.H;
   const windowCount = countWindows(f);
 
-  // ── Referenca za umerjanje ──
+  // ── Predlogi merila (Task 24): vrata + okna z zanesljivostjo ──
+  const scaleSuggestions = buildScaleSuggestions(f);
+  const scaleAgreement = fuseScaleAgreement(scaleSuggestions);
+  const bestSuggestion = scaleSuggestions[0] ?? null;
   let reference: PhotoAnalysis['reference'] = null;
   let referenceBox: PhotoAnalysis['referenceBox'] = null;
   let pxPerCm = 0;
-  if (f.bestDoor && f.bestDoor.area / N > 0.015) {
-    const bh = f.bestDoor.y1 - f.bestDoor.y0 + 1;
-    pxPerCm = bh / 200;
+  if (bestSuggestion) {
     reference = {
-      label: 'Vrata / vhodna odprtina',
-      assumedCm: 200,
+      label: bestSuggestion.kind === 'vrata' ? 'Vrata / vhodna odprtina' : 'Okno',
+      assumedCm: bestSuggestion.assumedCm,
       explanation:
-        'Skripta je zaznala visoko pravokotno odprtino z razmerjem stranic typičnim za vrata — standardna vrata so visoka ≈ 200 cm.',
+        bestSuggestion.kind === 'vrata'
+          ? 'Skripta je zaznala visoko pravokotno odprtino z razmerjem stranic typičnim za vrata — standardna vrata so visoka ≈ 200 cm.'
+          : 'Skripta je zaznala okensko odprtino z okvirjem — standardno okno meri ≈ 120 cm na višjo stranico.',
     };
-    referenceBox = blobToBox(f.bestDoor, f.W, f.H);
-  } else if (f.bestWindow && f.bestWindow.area / N > 0.012) {
-    const bh = f.bestWindow.y1 - f.bestWindow.y0 + 1;
-    pxPerCm = bh / 120;
-    reference = {
-      label: 'Okno',
-      assumedCm: 120,
-      explanation:
-        'Skripta je zaznala okensko odprtino z okvirjem — standardno okno meri ≈ 120 cm na višjo stranico.',
-    };
-    referenceBox = blobToBox(f.bestWindow, f.W, f.H);
+    referenceBox = bestSuggestion.box;
+    pxPerCm = bestSuggestion.pxPerCm;
   }
 
   const blobAreaM2 = (b: Blob): number | null => {
@@ -1418,6 +1662,8 @@ export function analyzePhotoImage(img: RgbaImage): PhotoAnalysis {
     objects,
     reference,
     referenceBox,
+    scaleSuggestions,
+    scaleAgreement,
     surfaces,
     materials,
     hazards,
