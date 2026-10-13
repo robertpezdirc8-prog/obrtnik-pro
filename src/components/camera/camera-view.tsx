@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -54,6 +54,7 @@ import { OpeningPanel } from './opening-panel';
 import { CanopyPanel, type CanopyPartial } from './canopy-panel';
 import { FasadaPanel } from './fasada-panel';
 import { VizPanel } from './viz-panel';
+import { FotoReplace } from './foto-replace';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
 import type { VizBarSuggest } from '@/lib/bar-count';
@@ -69,7 +70,7 @@ interface PhotoRecord {
   createdAt: string;
 }
 
-type CameraTab = 'analiza' | 'ar' | 'viz' | 'orodja';
+type CameraTab = 'analiza' | 'ar' | 'viz' | 'fotomontaza' | 'orodja';
 
 const ANALYSIS_STEPS = [
   'Prepoznavam sceno…',
@@ -95,6 +96,8 @@ export function CameraView() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  // Naravne dimenzije aktivne fotke (za Fotomontažo — izmerjene iz dataUrl, tudi za galerijo)
+  const [photoDims, setPhotoDims] = useState<{ w: number; h: number } | null>(null);
   const [measures, setMeasures] = useState<PhotoMeasure[]>([]);
   const [lastPhotoId, setLastPhotoId] = useState<string | null>(null);
   const [auxMeasures, setAuxMeasures] = useState<PhotoMeasure[]>([]);
@@ -130,6 +133,16 @@ export function CameraView() {
 
   // Nova fotografija → počisti predlog števca palic
   useEffect(() => { setBarSuggest(null); }, [photoUrl]);
+
+  // Naravne dimenzije fotke (Task 36-c: Fotomontaža) — enoten vir tudi za ponovno odprte fotke
+  useEffect(() => {
+    if (!photoUrl) { setPhotoDims(null); return; }
+    let alive = true;
+    loadImage(photoUrl)
+      .then((img) => { if (alive) setPhotoDims({ w: img.naturalWidth, h: img.naturalHeight }); })
+      .catch(() => { if (alive) setPhotoDims(null); });
+    return () => { alive = false; };
+  }, [photoUrl]);
 
   // Animacija korakov med analizo
   useEffect(() => {
@@ -213,7 +226,15 @@ export function CameraView() {
   };
 
   const addAuxMeasure = (kind: MeasureKind) => (label: string, cm: number) => {
-    setAuxMeasures((list) => [...list, { id: auxId(), label, kind, value: cm, points: [] }]);
+    // Status pogodbe (Task 36): laser/glas/WebXR = ročni vnos monterja
+    // (MANUAL, neodvisen od fotke); 'length' (BarCounter) računa iz
+    // domnevne reference analize → AUTO_SUGGESTED (nikoli potrjena mera).
+    const manual = kind === 'laser' || kind === 'voice' || kind === 'xr';
+    setAuxMeasures((list) => [...list, {
+      id: auxId(), label, kind, value: cm, points: [],
+      status: manual ? 'MANUAL' : 'AUTO_SUGGESTED',
+      method: kind === 'laser' ? 'laser' : manual ? 'manual-measure' : 'assumed-reference',
+    }]);
     toast({ title: 'Meritev dodana ✓', description: `${label}: ${formatCm(cm)}` });
   };
 
@@ -617,6 +638,7 @@ export function CameraView() {
     ['analiza', 'Zajem + analiza', <ScanSearch key="i" className="h-4 w-4" />],
     ['ar', 'AR merjenje', <Ruler key="i" className="h-4 w-4" />],
     ['viz', 'Vizualizer', <Palette key="i" className="h-4 w-4" />],
+    ['fotomontaza', 'Fotomontaža', <ImagePlus key="i" className="h-4 w-4" />],
     ['orodja', 'Pripomočki', <Wrench key="i" className="h-4 w-4" />],
   ];
 
@@ -663,6 +685,7 @@ export function CameraView() {
             key={id}
             role="tab"
             aria-selected={tab === id}
+            data-testid={id === 'fotomontaza' ? 'tab-fotomontaza' : undefined}
             onClick={() => setTab(id)}
             className={`flex flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-[40px] sm:flex-none ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
@@ -1119,6 +1142,18 @@ export function CameraView() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* ── Fotomontaža: zamenjava stare ograje brez AI (Task 36-c, issue #14) ── */}
+      {tab === 'fotomontaza' && (
+        <Card>
+          <CardContent className="p-4 sm:p-5">
+            <FotoReplace
+              photo={photoUrl && photoDims ? { dataUrl: photoUrl, w: photoDims.w, h: photoDims.h } : null}
+              craft={result?.analysis.craft ?? 'ograje'}
+            />
+          </CardContent>
+        </Card>
       )}
 
       {/* ── Merilni pripomočki ─────────────────────────────── */}

@@ -1,6 +1,9 @@
 // ─── Tipi za pametno kamero (samodejna skriptna analiza) ────
 
 import type { CraftId, CraftInputs } from './types';
+// Statusna pogodba meritev (Task 36) — samo tipi, brez cirkularnega uvoza
+// (measurement-status NE uvaža camera-types).
+import type { CalibrationMethod, MeasurementStatus } from './measurement-status';
 
 export const CRAFT_CATEGORIES = [
   'ograje',
@@ -156,6 +159,10 @@ export interface PhotoMeasure {
   segmentsDrop?: number[];
   /** naklon verige (chain) v stopinjah — orientacijsko, iz fotke/ravnine */
   slopeDeg?: number;
+  /** Status izvora meritve (Task 36) — opcijsko: starejši zapisi brez oznake ostanejo veljavni. */
+  status?: MeasurementStatus;
+  /** Način kalibracije oz. izvora vrednosti (Task 36) — opcijsko, kot status. */
+  method?: CalibrationMethod;
 }
 
 /** Predpolnitev iz kamere za kalkulator. */

@@ -6,6 +6,10 @@
 
 import type { PhotoMeasure } from './camera-types';
 import type { CraftInputs } from './types';
+// Statusna pogodba (Task 36): oznaka izvora v besedilnem/CSV izvozu.
+// measurement-status je samostojen modul (ne uvaža measure-geometry) —
+// smer uvoza je enosmerna, cirkularni uvoz ni možen.
+import { statusLabel } from './measurement-status';
 
 export interface XY {
   x: number;
@@ -219,39 +223,47 @@ const KIND_LABELS: Record<string, string> = {
   xr: 'AR 3D',
 };
 
+/** Oznaka statusa v oklepaju, samo če je meritev nosi status (npr. " (kalibrirano)"). */
+function statusSuffix(m: PhotoMeasure): string {
+  return m.status ? ` (${statusLabel(m.status).toLowerCase()})` : '';
+}
+
 export function measuresToText(measures: PhotoMeasure[]): string {
   if (measures.length === 0) return '';
   return measures
     .map((m) => {
-      if (m.kind === 'area') return `${m.label} (površina): ${m.value !== null ? formatM2(m.value) : '—'}`;
-      if (m.kind === 'angle') return `${m.label} (kot): ${m.value !== null ? formatDeg(m.value) : '—'}`;
+      if (m.kind === 'area') return `${m.label} (površina): ${m.value !== null ? formatM2(m.value) : '—'}${statusSuffix(m)}`;
+      if (m.kind === 'angle') return `${m.label} (kot): ${m.value !== null ? formatDeg(m.value) : '—'}${statusSuffix(m)}`;
       if (m.kind === 'chain') {
         const seg = m.sides?.length ? `${m.sides.length} odsekov · ` : '';
         const slope = m.slopeDeg !== undefined ? ` · naklon ${formatSlope(m.slopeDeg)}` : '';
-        return `${m.label} (veriga): ${m.value !== null ? formatCm(m.value) : '—'} · ${seg}skupaj${slope}`;
+        return `${m.label} (veriga): ${m.value !== null ? formatCm(m.value) : '—'} · ${seg}skupaj${slope}${statusSuffix(m)}`;
       }
-      return `${m.label}: ${m.value !== null ? formatCm(m.value) : '—'}`;
+      return `${m.label}: ${m.value !== null ? formatCm(m.value) : '—'}${statusSuffix(m)}`;
     })
     .join('\n');
 }
 
 export function measuresToCsv(measures: PhotoMeasure[]): string {
   const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
-  const rows: string[] = ['vrsta,oznaka,vrednost,enota,opomba'];
+  // Status je DODAN na konec obstoječih stolpcev (Task 36) — vrstice brez
+  // statusa (starejši zapisi) imajo prazno polje.
+  const rows: string[] = ['vrsta,oznaka,vrednost,enota,opomba,status'];
   for (const m of measures) {
     const kind = KIND_LABELS[m.kind] ?? m.kind;
+    const st = m.status ? statusLabel(m.status) : '';
     if (m.kind === 'area') {
-      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', 'm²', m.sides?.length ? `strani: ${m.sides.map((s) => formatCm(s)).join(' + ')}` : ''].join(','));
+      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', 'm²', m.sides?.length ? `strani: ${m.sides.map((s) => formatCm(s)).join(' + ')}` : '', st].join(','));
     } else if (m.kind === 'angle') {
-      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', '°', ''].join(','));
+      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', '°', '', st].join(','));
     } else if (m.kind === 'chain') {
       const note = [
         m.sides?.length ? `odseki: ${m.sides.map((s) => formatCm(s)).join(' + ')}` : '',
         m.slopeDeg !== undefined ? `naklon ${formatSlope(m.slopeDeg)}` : '',
       ].filter(Boolean).join(' · ');
-      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', 'cm', note].join(','));
+      rows.push([esc(kind), esc(m.label), m.value !== null ? String(m.value).replace('.', ',') : '', 'cm', note, st].join(','));
     } else {
-      rows.push([esc(kind), esc(m.label), m.value !== null ? String(Math.round(m.value * 10) / 10).replace('.', ',') : '', 'cm', ''].join(','));
+      rows.push([esc(kind), esc(m.label), m.value !== null ? String(Math.round(m.value * 10) / 10).replace('.', ',') : '', 'cm', '', st].join(','));
     }
   }
   return rows.join('\n');

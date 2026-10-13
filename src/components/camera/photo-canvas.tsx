@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { DetectedObject, DetectedSurface, PhotoMeasure, MeasureKind, ScaleAgreement, ScaleSuggestion } from '@/lib/camera-types';
+// Statusna pogodba meritev (Task 36) — samo tipi; UI oznake prihajajo v Task 36-c.
+import type { CalibrationMethod, MeasurementStatus } from '@/lib/measurement-status';
 import {
   angleAt, centroidPct, chainStats, downloadMeasuresCsv, formatCm, formatDeg, formatM2, formatSlope,
   lengthCm, measuresToText, polygonAreaM2, polygonSidesCm, type XY,
@@ -79,6 +81,10 @@ export function PhotoCanvas({
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
   const [pending, setPending] = useState<Pt[]>([]);
   const [pxPerCm, setPxPerCm] = useState<number | null>(null);
+  // Status pogodbe (Task 36): izvor aktivnega merila — 'known-length' =
+  // uporabnikova znana dolžina, 'assumed-reference' = domnevna referenca
+  // (čipi QUICK_REFS, predlogi skripte, referenca iz analize).
+  const [calibMethod, setCalibMethod] = useState<CalibrationMethod | null>(null);
   const [calibInput, setCalibInput] = useState<string>(referenceCm ? String(referenceCm) : '');
   const [calibOpen, setCalibOpen] = useState(false);
 
@@ -105,6 +111,20 @@ export function PhotoCanvas({
   }, [dataUrl]);
 
   const snap = (p: Pt): Pt => (magnet ? snapPoint(p, edge).point : p);
+
+  // ── Status pogodbe meritve (Task 36, samo oznake — UI pride v 36-c) ──
+  // Ravnina → CALIBRATED / plane-homography; globalno merilo po znani
+  // dolžini → CALIBRATED / known-length; domnevna referenca →
+  // AUTO_SUGGESTED / assumed-reference (predlog NIKOLI ni potrjena mera).
+  const measureProvenance = (): { status?: MeasurementStatus; method?: CalibrationMethod } => {
+    if (plane) return { status: 'CALIBRATED', method: 'plane-homography' };
+    if (pxPerCm !== null) {
+      return calibMethod === 'assumed-reference'
+        ? { status: 'AUTO_SUGGESTED', method: 'assumed-reference' }
+        : { status: 'CALIBRATED', method: 'known-length' };
+    }
+    return {};
+  };
 
   const hasScale = plane !== null || pxPerCm !== null;
   const needsScale = (mode === 'length' || mode === 'area' || mode === 'chain') && !hasScale;
@@ -207,6 +227,8 @@ export function PhotoCanvas({
         setMeasures([...measures, {
           id: nextId(), label: `Kot ${countKind('angle') + 1}`, kind: 'angle', value: deg,
           points: next.map((p) => [p.x, p.y] as [number, number]),
+          // Kot ne depende od merila, samo od perspektive — oznaka samo ob ravnini.
+          ...(plane ? { status: 'CALIBRATED', method: 'plane-homography' } as Pick<PhotoMeasure, 'status' | 'method'> : {}),
         }]);
         return;
       }
@@ -230,6 +252,7 @@ export function PhotoCanvas({
     setMeasures([...measures, {
       id: nextId(), label: `Površina ${countKind('area') + 1}`, kind: 'area', value: area,
       points: pts.map((p) => [p.x, p.y] as [number, number]), sides,
+      ...measureProvenance(),
     }]);
   };
 
@@ -239,6 +262,7 @@ export function PhotoCanvas({
     setMeasures([...measures, {
       id: nextId(), label: `Mer ${countKind('length') + 1}`, kind: 'length', value: cm,
       points: [pts[0], pts[1]].map((p) => [p.x, p.y] as [number, number]),
+      ...measureProvenance(),
     }]);
   };
 
@@ -267,6 +291,7 @@ export function PhotoCanvas({
       sides: segments,
       segmentsDrop: drops,
       slopeDeg: slope ?? 0,
+      ...measureProvenance(),
     }]);
     toast({
       title: `Veriga: skupaj ${formatCm(total)}${slope !== null ? ` · naklon ${formatSlope(slope)}` : ''}`,
@@ -278,7 +303,7 @@ export function PhotoCanvas({
 
   const undoPending = () => setPending(pending.slice(0, -1));
 
-  const confirmCalibration = (cmOverride?: number, ptsOverride?: Pt[]) => {
+  const confirmCalibration = (cmOverride?: number, ptsOverride?: Pt[], assumed?: boolean) => {
     const cm = cmOverride ?? Number(calibInput.replace(',', '.'));
     const P = ptsOverride ?? pending;
     if (!Number.isFinite(cm) || cm <= 0 || P.length < 2 || !imgSize) return;
@@ -288,6 +313,12 @@ export function PhotoCanvas({
       ((P[1].y - P[0].y) / 100) * imgSize.h,
     ) / cm;
     setPxPerCm(scale);
+    // Status pogodbe (Task 36): vnesena znana dolžina → CALIBRATED;
+    // domnevna referenca (čip/predlog/analiza) → AUTO_SUGGESTED.
+    const prov: { status: MeasurementStatus; method: CalibrationMethod } = assumed
+      ? { status: 'AUTO_SUGGESTED', method: 'assumed-reference' }
+      : { status: 'CALIBRATED', method: 'known-length' };
+    setCalibMethod(prov.method);
 
     const isAreaFlow = ptsOverride === undefined && mode === 'area' && P.length >= 3;
     if (isAreaFlow) {
@@ -297,6 +328,7 @@ export function PhotoCanvas({
         setMeasures([...measures, {
           id: nextId(), label: `Površina ${countKind('area') + 1}`, kind: 'area', value: area,
           points: P.map((p) => [p.x, p.y] as [number, number]), sides,
+          status: prov.status, method: prov.method,
         }]);
       }
       setPending([]);
@@ -309,6 +341,7 @@ export function PhotoCanvas({
         id: nextId(), label: 'Merilo (umerjanje)', kind: 'length',
         value: Math.round(cm * 10) / 10,
         points: [P[0], P[1]].map((p) => [p.x, p.y] as [number, number]),
+        status: prov.status, method: prov.method,
       };
       setMeasures([...measures, m]);
       setPending([]);
@@ -323,7 +356,8 @@ export function PhotoCanvas({
     const cx = x + w / 2;
     const seg: Pt[] = [{ x: cx, y }, { x: cx, y: y + h }];
     setPending(seg);
-    confirmCalibration(referenceCm, seg);
+    // Referenca iz analize je domnevna (assumedCm) → AUTO_SUGGESTED.
+    confirmCalibration(referenceCm, seg, true);
   };
 
   /** Umerjanje po izbranem predlogu merila (Task 24) — navpična stranica okvirja. */
@@ -332,7 +366,8 @@ export function PhotoCanvas({
     const seg: Pt[] = [{ x: x + w / 2, y }, { x: x + w / 2, y: y + h }];
     setCalibInput(String(s.assumedCm));
     setPending(seg);
-    confirmCalibration(s.assumedCm, seg);
+    // Predlog merila skripte je domnevna referenca → AUTO_SUGGESTED (Task 36).
+    confirmCalibration(s.assumedCm, seg, true);
     toast({
       title: `Merilo po ${s.label} ✓`,
       description: `Zanesljivost ${s.confidence} % · širina pri tem merilu ${s.impliedWidthCm} cm${s.widthPlausible ? '' : ' — POVERJENOST NIZKA, preveri merilo'}.`,
@@ -372,6 +407,7 @@ export function PhotoCanvas({
       id: nextId(), label: `Ravnina ${w}×${h} cm`, kind: 'area', value: areaM2,
       points: planeQuad.map((p) => [p.x, p.y] as [number, number]),
       sides: [w, h],
+      status: 'CALIBRATED', method: 'plane-homography',
     }]);
     setPlaneQuad(null);
     setPlaneDialog(false);
@@ -388,6 +424,7 @@ export function PhotoCanvas({
 
   const resetScale = () => {
     setPxPerCm(null);
+    setCalibMethod(null);
     setPlane(null);
     setMeasures([]);
     setPending([]);
@@ -810,7 +847,7 @@ export function PhotoCanvas({
             {QUICK_REFS.map((r) => (
               <button
                 key={r.cm}
-                onClick={() => { setCalibInput(String(r.cm)); confirmCalibration(r.cm); }}
+                onClick={() => { setCalibInput(String(r.cm)); confirmCalibration(r.cm, undefined, true); }}
                 className="rounded-full border bg-card px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary/50 hover:bg-accent min-h-[32px]"
                 aria-label={`Umeri na ${r.label}`}
               >
