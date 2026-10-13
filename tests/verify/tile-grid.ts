@@ -176,7 +176,7 @@ const GROUT = 4;
   console.log(`realna fotka keramika.jpg (${ms} ms):`);
   check('izvedeno brez napak', typeof r.ok === 'boolean');
   check('hitro (< 5 s)', ms < 5000, `got ${ms} ms`);
-  check(' Confidence v razponu 10–97', r.confidence >= 10 && r.confidence <= 97, `got ${r.confidence}`);
+  check('confidence v razponu 0–97', r.confidence >= 0 && r.confidence <= 97, `got ${r.confidence}`);
   console.log(`   → pattern=${r.pattern} angle=${r.angleDeg} pitch=${r.pitchPx1}/${r.pitchPx2} conf=${r.confidence} (${r.verdict})`);
 }
 

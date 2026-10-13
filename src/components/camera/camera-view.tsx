@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -52,6 +52,7 @@ import { TilePanel } from './tile-panel';
 import { DeckPanel } from './deck-panel';
 import { OpeningPanel } from './opening-panel';
 import { CanopyPanel, type CanopyPartial } from './canopy-panel';
+import { FasadaPanel } from './fasada-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
@@ -325,6 +326,17 @@ export function CameraView() {
       craft: 'nadstreški',
       inputs,
       photoTitle: 'Nadstrešek — samodejna meritev s fotke',
+    });
+    setView('kalkulatorji');
+  };
+
+  // Fasada → kalkulator fasade (meritvena skripta, 0 AI)
+  const openCalcFasada = (inputs: { facadePerimeter?: number; facadeHeight?: number; openingsM2?: number }) => {
+    setActiveCraft('fasada');
+    setCameraPrefill({
+      craft: 'fasada',
+      inputs,
+      photoTitle: 'Fasada — meritvena skripta s fotke',
     });
     setView('kalkulatorji');
   };
@@ -977,6 +989,34 @@ export function CameraView() {
                 partial={canopyPartial}
                 onPartial={setCanopyPartial}
                 onSendToCalculator={openCalcCanopy}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Fasada — meritvena skripta: linije obloge + stena − odprtine (0 AI) */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Square className="h-4 w-4 text-primary" />
+                  Fasada — obloga, stena in odprtine
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Iz fotke zazna linije obloge (smer letv), izmeri steno po 4 oglisčih in odšteje
+                  odprtine (okna/vrata) — neto m² gre v kalkulator fasade.
+                </p>
+              </div>
+              <FasadaPanel
+                key={photoUrl ?? 'none'}
+                dataUrl={photoUrl}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                suggestions={result.analysis.scaleSuggestions}
+                agreement={result.analysis.scaleAgreement}
+                onSendToCalculator={openCalcFasada}
               />
             </CardContent>
           </Card>
