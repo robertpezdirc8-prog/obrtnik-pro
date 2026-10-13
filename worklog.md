@@ -732,3 +732,22 @@ Stage Summary:
 - BONUS: popravljen latentni bug referenčne kalibracije v 5 panelih (referenceBox [x,y,w,h] napačno bran kot [x0,y0,x1,y1]) — referenčno merilo (vrata/okno) zdaj DEJANSKO deluje v stopnicah, terasi, keramiki, pultu in nadstrešku (prej je tiho padalo na null za vse objekte v spodnji polovici fotke).
 - Ključni artefakti: src/lib/canopy-analysis.ts (detectCanopyLine, measureFromPoints, suggestPosts, measureCanopy, formatCanopyText), src/components/camera/canopy-panel.tsx (CanopyPartial), measure-geometry.ts (refBoxHeightPx), camera-view.tsx (openCalcCanopy + canopyPartial), tests/verify/canopy-analysis.ts (52/52), tests/make-task30-photo.ts, research/task30/findings.md.
 - Push: glej naslednji commit (main).
+
+---
+Task ID: 31
+Agent: main (Z.ai Code)
+Task: Zamenjava AI-generiranih slik s PRAVIMI fotografijami (uporabnik: "slike morajo bit realisticne prave ne generirane ... nemores animirano ograjo postavit na sliko hise balkona"). Vseh 13 javnih slik (7 kartic obrti + 6 tekstur vizualizerja) zamenjanih s pravimi fotkami — 0 generiranih. Nato "nadaljuj" → Task 22.
+
+Work Log:
+- Ugotovljeno stanje: public/crafts/*.jpg (800×457, 7 kartic) + public/textures/*.jpg (512×512, 6 vzorcev v viz-panelu) so bili AI-generirani → uporabnik je zahteval prave fotografije ("bolj da ni nic kot da so animirane").
+- z-ai image-search CLI ves čas 429 (skupna kvota, kot Task 25–30) → nadomestni viri: Wikimedia Commons API (search + kategorije; bun fetch blokiran 403, curl dela) + kurirani Unsplash/Pexels CDN ID-ji. 4 kroga iskanja, ~90 kandidatov, vsi VIZUALNO preverjeni prek kontaktnih listov (sharp montaža + Read).
+- Izbirani zmagovalci (vsi prave fotografije): ograje = montažerja vijaka alu ograjo na strehi (realna vgradnja!); stopnice = lesene stopnice s kovinsko ograjo; keramika = moderna kopalnica s stekleno kabino in les-dekor tlemi; wpc-terasa = veranda hiše s sivomodrimi deskami; okna-vrata = moderna vila z velikimi okni; nadstreški = steklen porte-cochère nad vhodom (Category:Verandas); fasada = lesena latnja obloga (Baumwipfelpfad). Teksture: wpc-tikovina = rjave deske z režami (Pexels 326311); wpc-siva = IZREZ tal iz fotke verande (ročni crop, ker 'attention' ujel morje!); hrast = temne deske; keramika-les = vzorčaste lesene deske; keramika-kamen = sive granitne ploščice (Poly Haven scan prek Commons); fasada-omet = bel omet.
+- Obdelava: sharp resize/crop (kartice 800×457 'attention', teksture 512×512), mozjpeg q82 — ISTA imena datotek → 0 sprememb kode. Stare AI slike arhivirane lokalno (niso commitane).
+- E2E agent-browser: dashboard kartice prikazujejo prave fotke ✓; vse 13 URL-jev 200 image/jpeg ✓; kamera tok s sintetično teraso → Vizualizer → čipi TEKSTURA MATERIALA prikazujejo prave sličice → "WPC siva" izbrana → canvas riše realne linije desk ✓, konzola brez napak. (Radix sliderjev ne da nastaviti evalom — fuge/deske ostanejo na privzetih vrednostih, obnašanje uporabniško nastavljivo, ni del te spremembe.)
+- Lekcije: (1) Commons bun-fetch 403 (TLS fingerprint) → curl; (2) sharp 'attention' crop lahko izbere napačno regijo (morje namesto desk!) — teksture vedno ročno preveri; (3) Commons search je šibek za moderne materiale — kategorije (Category:Verandas, Category:Porches) + Poly Haven scans dajejo boljše zadetke; (4) tekstura se v drawMirroredTexture riše kot CELA slika v 256×256 ploščico → pravi kvadratni izrez.
+- Regresija: eslint čist, dev.log brez napak, galerija počiščena (test fotka izbrisana), tests/tmp-imgsearch + tests/task29-deck.jpg odstranjeni.
+
+Stage Summary:
+- Vsi vizualni vložki aplikacije so zdaj PRAVE fotografije: 7 kartic obrti (dashboard + kalkulatorji) in 6 materialnih tekstur vizualizerja (vzorci na fotki). Nič AI-generiranih slik. Koda nespremenjena (isti fajl imeni).
+- Artefakti: public/crafts/*.jpg (7), public/textures/*.jpg (6), tests/e2e-realimg-dashboard.png, tests/e2e-realimg-viz2.png (dokumentacija).
+- Push: glej naslednji commit (main).
