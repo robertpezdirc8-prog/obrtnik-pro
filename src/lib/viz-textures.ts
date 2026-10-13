@@ -11,15 +11,21 @@ export interface VizTexture {
   label: string;
   /** Pot do statičnega tile-a (public/). */
   src: string;
+  /**
+   * Realna stranica tile-a v cm (koliko površine materiala tile
+   * predstavlja) — tekstura se tlakuje v realnem merilu, da je žirni
+   * detajl enako velik kot na pravem materialu, neodvisno od zooma.
+   */
+  realCm: number;
 }
 
 export const VIZ_TEXTURES: VizTexture[] = [
-  { id: 'wpc-tikovina', label: 'WPC tikovina', src: '/textures/wpc-tikovina.jpg' },
-  { id: 'wpc-siva', label: 'WPC siva', src: '/textures/wpc-siva.jpg' },
-  { id: 'hrast', label: 'Hrast (les)', src: '/textures/hrast.jpg' },
-  { id: 'keramika-les', label: 'Keramika les-dekor', src: '/textures/keramika-les.jpg' },
-  { id: 'keramika-kamen', label: 'Keramika kamen', src: '/textures/keramika-kamen.jpg' },
-  { id: 'fasada-omet', label: 'Fasada omet', src: '/textures/fasada-omet.jpg' },
+  { id: 'wpc-tikovina', label: 'WPC tikovina', src: '/textures/wpc-tikovina.jpg', realCm: 45 },
+  { id: 'wpc-siva', label: 'WPC siva', src: '/textures/wpc-siva.jpg', realCm: 45 },
+  { id: 'hrast', label: 'Hrast (les)', src: '/textures/hrast.jpg', realCm: 45 },
+  { id: 'keramika-les', label: 'Keramika les-dekor', src: '/textures/keramika-les.jpg', realCm: 60 },
+  { id: 'keramika-kamen', label: 'Keramika kamen', src: '/textures/keramika-kamen.jpg', realCm: 60 },
+  { id: 'fasada-omet', label: 'Fasada omet', src: '/textures/fasada-omet.jpg', realCm: 50 },
 ];
 
 /** Predloga tekstur po vzorcu (UI ureja izbiro). */

@@ -312,30 +312,55 @@ function luminance(rgb: [number, number, number]): number {
 // ─── Ravninska tekstura vzorca ───────────────────────────────
 
 /**
- * Zrcalno tlakovanje teksture po canvasu (mirror tiling) — vsak
+ * Zrcalno tlakovanje teksture po pravokotniku (mirror tiling) — vsak
  * drugi tile je zrcaljen, zato so šivi med tili nevidni tudi na
- * ne-popolnoma seamless sliki (deterministična tehnika).
+ * ne-popolnoma seamless sliki (deterministična tehnika). Tlače se
+ * TOČNO podan pravokotnik (regija elementa ali cel canvas) — lamele
+ * pod 45° tako dobijo teksturo po vsej dolžini, ne samo v osnovnem
+ * [0,W]×[0,H] oknu lokalnega prostora.
  */
 function drawMirroredTexture(
   ctx: CanvasRenderingContext2D,
   tex: HTMLImageElement | HTMLCanvasElement,
-  W: number,
-  H: number,
-  tilePx = 256,
+  rect: [number, number, number, number],
+  tilePx: number,
 ): void {
-  const tw = tilePx;
-  const th = tilePx;
-  for (let y = 0; y < H; y += th) {
-    for (let x = 0; x < W; x += tw) {
-      const flipX = (x / tw) % 2 === 1;
-      const flipY = (y / th) % 2 === 1;
+  const [rx, ry, rw, rh] = rect;
+  const tw = Math.max(8, tilePx);
+  const th = tw;
+  const i0 = Math.floor(rx / tw);
+  const i1 = Math.ceil((rx + rw) / tw);
+  const j0 = Math.floor(ry / th);
+  const j1 = Math.ceil((ry + rh) / th);
+  for (let j = j0; j < j1; j++) {
+    for (let i = i0; i < i1; i++) {
+      const flipX = ((i % 2) + 2) % 2 === 1;
+      const flipY = ((j % 2) + 2) % 2 === 1;
       ctx.save();
-      ctx.translate(x + tw / 2, y + th / 2);
+      ctx.translate(i * tw + tw / 2, j * th + th / 2);
       ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
       ctx.drawImage(tex, -tw / 2, -th / 2, tw, th);
       ctx.restore();
     }
   }
+}
+
+/**
+ * Zavrti vir teksture za 90° (žira naj teče VZDOLŽ elementa: tile-i
+ * imajo navpično žiro, vodoravne deke/lamele pa jo potrebujejo
+ * vodoravno). Vrne nov canvas (vir je nedotaknjen).
+ */
+function rotatedTexture90(tex: HTMLImageElement | HTMLCanvasElement): HTMLCanvasElement {
+  const w = 'naturalWidth' in tex ? tex.naturalWidth : tex.width;
+  const h = 'naturalHeight' in tex ? tex.naturalHeight : tex.height;
+  const cv = document.createElement('canvas');
+  cv.width = h;
+  cv.height = w;
+  const c = cv.getContext('2d')!;
+  c.translate(h / 2, w / 2);
+  c.rotate(Math.PI / 2);
+  c.drawImage(tex, -w / 2, -h / 2, w, h);
+  return cv;
 }
 
 /** Regija elementa vzorca (palica/deka/ploščica) za teksturo: matrika + pravokotnik. */
@@ -345,10 +370,43 @@ interface TexRegion {
 }
 
 /**
+ * Obrnjena afina preslikava: meje canvasa (0,0,W,H) v LOKALNEM prostoru
+ * regije. Za zasukane lamele (45°) tako tlakujemo samo vidni del letve,
+ * ne celotnega lokalnega pravokotnika (2·(W+H) visokega) — hitrost.
+ */
+function localCanvasBounds(
+  m: { a: number; b: number; c: number; d: number; e: number; f: number },
+  W: number,
+  H: number,
+): [number, number, number, number] {
+  const det = m.a * m.d - m.b * m.c;
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-9) return [0, 0, W, H];
+  const ia = m.d / det;
+  const ib = -m.b / det;
+  const ic = -m.c / det;
+  const id = m.a / det;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of [[0, 0], [W, 0], [0, H], [W, H]] as [number, number][]) {
+    const dx = x - m.e;
+    const dy = y - m.f;
+    const lx = ia * dx + ic * dy;
+    const ly = ib * dx + id * dy;
+    if (lx < x0) x0 = lx;
+    if (lx > x1) x1 = lx;
+    if (ly < y0) y0 = ly;
+    if (ly > y1) y1 = ly;
+  }
+  return [x0, y0, x1 - x0, y1 - y0];
+}
+
+/**
  * Tekstura materiala na elemente vzorca. BREZ regij: 'source-atop'
  * po celem canvasu (polne površine — panel). Z regijami: tekstura
  * samo v pravokotnikih elementov (palice, lamele, deke, ploščice) —
  * črno ozadje med elementi (sence) ostane nedotaknjeno.
+ * `tilePx` = velikost tile-a v pikslih ravnine vzorca (realno merilo
+ * materiala — žira je enako velika kot na pravih deskah); `rotate90`
+ * zavrne vir, da žira teče vzdolž vodoravnih elementov.
  */
 function applyTextureFill(
   ctx: CanvasRenderingContext2D,
@@ -358,7 +416,10 @@ function applyTextureFill(
   H: number,
   tintAlpha = 0.42,
   regions?: TexRegion[],
+  tilePx = 256,
+  rotate90 = false,
 ): void {
+  const src = rotate90 ? rotatedTexture90(texture) : texture;
   ctx.save();
   ctx.globalCompositeOperation = 'source-atop';
   if (regions && regions.length > 0) {
@@ -368,14 +429,22 @@ function applyTextureFill(
       ctx.beginPath();
       ctx.rect(rg.r[0], rg.r[1], rg.r[2], rg.r[3]);
       ctx.clip();
-      drawMirroredTexture(ctx, texture, W, H, 256);
-      // barvni pran: tekstura ohrani material, barva ga poveže z izbiro
-      ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${tintAlpha})`;
-      ctx.fillRect(0, 0, W, H);
+      // tlakuj samo presek regije z vidnim delom canvasa (lokalno)
+      const lb = localCanvasBounds(rg.m, W, H);
+      const tx0 = Math.max(rg.r[0], lb[0]);
+      const ty0 = Math.max(rg.r[1], lb[1]);
+      const tx1 = Math.min(rg.r[0] + rg.r[2], lb[0] + lb[2]);
+      const ty1 = Math.min(rg.r[1] + rg.r[3], lb[1] + lb[3]);
+      if (tx1 > tx0 && ty1 > ty0) {
+        drawMirroredTexture(ctx, src, [tx0, ty0, tx1 - tx0, ty1 - ty0], tilePx);
+        // barvni pran: tekstura ohrani material, barva ga poveže z izbiro
+        ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${tintAlpha})`;
+        ctx.fillRect(tx0, ty0, tx1 - tx0, ty1 - ty0);
+      }
       ctx.restore();
     }
   } else {
-    drawMirroredTexture(ctx, texture, W, H, 256);
+    drawMirroredTexture(ctx, src, [0, 0, W, H], tilePx);
     ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${tintAlpha})`;
     ctx.fillRect(0, 0, W, H);
   }
@@ -430,7 +499,9 @@ function neutralShadingCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
  * Nariše vzorec v ravnino (teksturni canvas). `pxPerCm` povezuje
  * realne cm-parametre s piksli teksture. Tekstura predstavlja celoten
  * štirikotnik (širina = quadWidthCm). Kadar je podana materialna
- * tekstura, se opačni deli vzorca prekrijejo z realnim materialom.
+ * tekstura, se opačni deli vzorca prekrijejo z realnim materialom —
+ * v realnem merilu (`texOpts.tilePx`) in z žiro vzdolž elementov
+ * (`texOpts.rotate90`).
  */
 export function buildPatternCanvas(
   pattern: VizPattern,
@@ -439,6 +510,7 @@ export function buildPatternCanvas(
   texW: number,
   texH: number,
   texture?: HTMLImageElement | HTMLCanvasElement,
+  texOpts?: { tilePx?: number; rotate90?: boolean },
 ): HTMLCanvasElement {
   const tex = document.createElement('canvas');
   tex.width = Math.max(2, Math.round(texW));
@@ -720,7 +792,11 @@ export function buildPatternCanvas(
     // senčenje obnovimo z NEVTRALNO svetlobno karto (multiply: samo
     // ztemni, žiro ohrani). Brez tega so teksturirane palice flat.
     const light = neutralShadingCanvas(tex);
-    applyTextureFill(ctx, texture, rgb, W, H, 0.42, texRegions.length > 0 ? texRegions : undefined);
+    // žira vzdolž elementa: tile-i imajo NAVPIČNO žiro → vodoravne
+    // deke/lamele potrebujejo zasuk za 90° (navpične palice ne)
+    const rotate90 = texOpts?.rotate90
+      ?? (pattern === 'terasa' || (pattern === 'horizontalne' && !params.oblogaVert));
+    applyTextureFill(ctx, texture, rgb, W, H, 0.42, texRegions.length > 0 ? texRegions : undefined, texOpts?.tilePx ?? 256, rotate90);
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(light, 0, 0);
@@ -798,9 +874,13 @@ function defaultQuadWidthCm(craft: CraftCategory): number {
 }
 
 /**
- * Senčenje vzorca po pikslih: vzorec × normalizirana svetlost izvorne
- * fotke (lum/meanLum, omejeno 0,45–1,7). Vzorec ostane prekrit (opaken),
- * dobi pa sence in odboje scene — tehnika barvnih vizualizerjev.
+ * Senčenje vzorca po pikslih: vzorec × normalizirana AMBIENTNA svetlost
+ * izvorne fotke. Svetlobna karta je NIZKOPREPUSTNO filtrirana (downscale
+ * 1/8 + bilinear upscale): ohrani velika merila scene (sonce, sence
+ * dreves, temnejša tla), odstrani pa strukturo STAREGA objekta (palice,
+ * reže) — novi ograji/deki ne „duha“ stara skozi opažne elemente
+ * (prej je faktor lum/meanLum z razponom 0,45–1,7 pomenil ±50 %
+ * prosojni ghost stare ograje = „generiran“ videz).
  * Maska = inverzna homografija štirikotnika.
  */
 function shadePatternPixels(
@@ -818,6 +898,16 @@ function shadePatternPixels(
   tmp.height = H;
   const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
   tctx.drawImage(img, 0, 0, W, H);
+  // nizkoprepustni filter: downscale + bilinear upscale (determinističen)
+  const small = document.createElement('canvas');
+  small.width = Math.max(8, Math.round(W / 8));
+  small.height = Math.max(6, Math.round(H / 8));
+  const sctx = small.getContext('2d')!;
+  sctx.imageSmoothingEnabled = true;
+  sctx.drawImage(tmp, 0, 0, small.width, small.height);
+  tctx.imageSmoothingEnabled = true;
+  tctx.clearRect(0, 0, W, H);
+  tctx.drawImage(small, 0, 0, W, H);
   const photo = tctx.getImageData(0, 0, W, H).data;
 
   const imageData = ctx.getImageData(0, 0, W, H);
@@ -856,7 +946,7 @@ function shadePatternPixels(
       const p = applyH(Hm, x + 0.5, y + 0.5);
       if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) continue;
       const i = (y * W + x) * 4;
-      const factor = Math.max(0.45, Math.min(1.7, lumAt(i) / Math.max(6, meanLum)));
+      const factor = Math.max(0.72, Math.min(1.4, lumAt(i) / Math.max(6, meanLum)));
       const f = 1 - strength + strength * factor;
       data[i] = Math.max(0, Math.min(255, Math.round(data[i] * f)));
       data[i + 1] = Math.max(0, Math.min(255, Math.round(data[i + 1] * f)));
@@ -871,6 +961,8 @@ function shadePatternPixels(
  *  1. tekstura v ravnini → 2. homografija → 3. mreža trikotnikov →
  *  4. piksčno senčenje s svetlostjo fotke → 5. kontaktna sence.
  * `refCmPerPx` (opcijsko) kalibrira gostoto vzorca na realne cm.
+ * `textureCm` (opcijsko) = realna stranica teksturnega tile-a v cm →
+ * material se tlakuje v realnem merilu (žira enaka pravemu materialu).
  */
 export function drawPatternOnQuad(
   ctx: CanvasRenderingContext2D,
@@ -881,6 +973,7 @@ export function drawPatternOnQuad(
   params: VizParams,
   craft: CraftCategory,
   texture?: HTMLImageElement | HTMLCanvasElement,
+  textureCm?: number,
 ): void {
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
@@ -905,7 +998,9 @@ export function drawPatternOnQuad(
   // 1) Tekstura v ravnini (omejena ločljivost za hitrost)
   const texW = Math.min(720, Math.max(180, Math.round(avgWpx * 1.4)));
   const texH = Math.max(90, Math.round((texW * quadHCm) / Math.max(30, quadWCm)));
-  const tex = buildPatternCanvas(pattern, colorHex, { ...params, quadWidthCm: quadWCm }, texW, texH, texture);
+  // realno merilo teksture: tile = textureCm cm na ravnini vzorca
+  const tilePx = Math.max(16, Math.min(1024, Math.round((textureCm ?? 45) * (texW / Math.max(30, quadWCm)))));
+  const tex = buildPatternCanvas(pattern, colorHex, { ...params, quadWidthCm: quadWCm }, texW, texH, texture, { tilePx });
 
   // 2) Homografija: enotski kvadrat → štirikotnik (px)
   const unit = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
@@ -1378,11 +1473,12 @@ export function drawLayersOnQuad(
   for (const l of layers) {
     const hex = resolveLayerColor(l).hex;
     const texture = getTextureImage(l.textureId) ?? undefined;
+    const textureCm = getTextureById(l.textureId)?.realCm;
     try {
       if (l.pattern === 'barva' && l.smartRecolor) {
         recolorQuadPixelsMasked(ctx, img, l.quad, hex, l.smartRecolor);
       } else if (l.pattern === 'barva') recolorQuadPixels(ctx, l.quad, hex);
-      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, hex, l.params, craft, texture);
+      else drawPatternOnQuad(ctx, img, l.quad, l.pattern, hex, l.params, craft, texture, textureCm);
     } catch {
       /* posamezna plast ne sme ustaviti upodobitve */
     }
