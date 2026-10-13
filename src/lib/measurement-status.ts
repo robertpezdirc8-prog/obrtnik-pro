@@ -53,8 +53,10 @@ export interface MeasurementProvenance {
   points: { x: number; y: number }[];
   /** Referenca, po kateri je bilo merilo umerjeno (assumed = domnevna). */
   reference: { valueCm: number; label: string; assumed: boolean } | null;
-  /** Geometrijska transformacija, s katero je bila vrednost izračunana. */
-  transform: 'global-px-per-cm' | 'plane-homography' | 'multi-view-triangulation' | 'none';
+  /** Geometrijska transformacija, s katero je bila vrednost izračunana.
+   *  'multi-view-sfm' (Faza 5): inkrementalni SfM iz več kot 2 fotk
+   *  (multiview-sfm.ts) — metoda ostane 'multi-view' (združljivost). */
+  transform: 'global-px-per-cm' | 'plane-homography' | 'multi-view-triangulation' | 'multi-view-sfm' | 'none';
   /** ISO čas — podan od zunaj (funkcija ga NE generira sama, da je test determinističen). */
   createdAt: string;
   note: string | null;
@@ -144,13 +146,18 @@ export interface ProvenanceInput {
   sourcePhotoId?: string | null;
   points?: { x: number; y: number }[];
   reference?: { valueCm: number; label: string; assumed: boolean } | null;
-  transform?: 'global-px-per-cm' | 'plane-homography' | 'multi-view-triangulation' | 'none';
+  transform?: 'global-px-per-cm' | 'plane-homography' | 'multi-view-triangulation' | 'multi-view-sfm' | 'none';
   createdAt: string;
   note?: string | null;
 }
 
 const METHODS: readonly CalibrationMethod[] = [
   'assumed-reference', 'known-length', 'manual-measure', 'laser', 'plane-homography', 'multi-view',
+];
+
+/** Znane geometrijske transformacije (Faza 5: + 'multi-view-sfm'). */
+const TRANSFORMS: readonly string[] = [
+  'global-px-per-cm', 'plane-homography', 'multi-view-triangulation', 'multi-view-sfm', 'none',
 ];
 
 /** Privzeta transformacija glede na metodo (nič tihega — izhaja iz metode). */
@@ -194,6 +201,10 @@ export function makeProvenance(input: ProvenanceInput): MeasurementProvenance {
   if (unit !== 'cm' && unit !== 'm2' && unit !== 'deg') {
     throw new Error(`Nevalidna enota: "${String(unit)}" (dovoljeno: cm, m2, deg).`);
   }
+  // Pogodba: transformacija mora biti znana (tudi 'multi-view-sfm', Faza 5).
+  if (input.transform !== undefined && !TRANSFORMS.includes(input.transform)) {
+    throw new Error(`Nevalidna transformacija: "${String(input.transform)}" (dovoljene: ${TRANSFORMS.join(', ')}).`);
+  }
   if (typeof input.createdAt !== 'string' || input.createdAt.trim() === '' || Number.isNaN(Date.parse(input.createdAt))) {
     throw new Error('Nevalidna meritev: createdAt mora biti veljaven ISO časovni žig.');
   }
@@ -233,7 +244,7 @@ export function makeProvenance(input: ProvenanceInput): MeasurementProvenance {
 export interface ScaleValidation {
   ok: boolean;
   code: 'OK' | 'NO_CALIBRATION' | 'ASSUMED_SCALE' | 'DEGENERATE_REFERENCE' | 'PLANE_REQUIRED'
-    | 'MULTIVIEW_DEGENERATE' | 'RESIDUAL_HIGH';
+    | 'MULTIVIEW_DEGENERATE' | 'RESIDUAL_HIGH' | 'SFM_REPROJECTION_HIGH';
   status: MeasurementStatus | null;
   message: string;
   nextStep: string;
@@ -427,6 +438,84 @@ export function validateMultiView(input: {
   };
 }
 
+// ─── Validacija geometrije iz več fotk (Faza 5: SfM) ───────
+
+/**
+ * Validacija rezultata inkrementalnega SfM (multiview-sfm.runSfm): enaka
+ * pogodbena oblika kot validateMultiView. CALIBRATED samo, kadar je fokus
+ * znan (EXIF), obstaja merilo (znana referenčna dolžina), reprojekcijska
+ * napaka je ≤ 3 px in je vsaka registrirana fotka dovolj podprta s 3D
+ * točkami; preset/selfcal fokus → AUTO_SUGGESTED; vsak primanjkljaj je
+ * eksplicitna koda s slovensko razlago. NIKOLI ne prerazredi šibke
+ * geometrije v mero. Aditivno (Faza 5) — ne spreminja obstoječih funkcij.
+ */
+export function validateSfm(input: {
+  registeredCount: number;
+  totalImages: number;
+  minPerImageInliers: number;
+  reprojRmsPx: number;
+  focalSource: 'known' | 'preset' | 'selfcal';
+  hasScale: boolean;
+  warnings: string[];
+  minInliers?: number;
+  maxResidualPx?: number;
+}): ScaleValidation {
+  const min = input.minInliers ?? MIN_MULTIVIEW_INLIERS;
+  const max = input.maxResidualPx ?? MAX_MULTIVIEW_RESIDUAL_PX;
+  if (!Number.isFinite(input.registeredCount) || input.registeredCount < 2) {
+    return {
+      ok: false,
+      code: 'MULTIVIEW_DEGENERATE',
+      status: null,
+      message: `NEZADOSTNI PODATKI: registriranih je samo ${input.registeredCount} fotk (potrebnih ≥ 2) — 3D rekonstrukcija ni izvedljiva. Posnemi fotke z večjim prekrivanjem.`,
+      nextStep: 'Posnemi fotke z večjim prekrivanjem',
+    };
+  }
+  if (input.minPerImageInliers < min) {
+    return {
+      ok: false,
+      code: 'MULTIVIEW_DEGENERATE',
+      status: null,
+      message: `NEZADOSTNI PODATKI: najslabše podprta registrirana fotka ima samo ${input.minPerImageInliers} 3D točk (potrebnih ≥ ${min}) — geometrija ni zanesljiva. Posnemi fotke z večjim prekrivanjem, da se isti objekt vidi na več posnetkih.`,
+      nextStep: 'Posnemi fotke z večjim prekrivanjem',
+    };
+  }
+  if (input.reprojRmsPx > max) {
+    return {
+      ok: false,
+      code: 'SFM_REPROJECTION_HIGH',
+      status: null,
+      message: `NEZADOSTNI PODATKI: reprojekcijska napaka rekonstrukcije je prevelika (${input.reprojRmsPx.toFixed(1).replace('.', ',')} px > ${max} px) — 3D točke se ne vrnejo na svoje položaje na fotkah. Geometrija ni zanesljiva.`,
+      nextStep: 'Ponovi posnetek (ostro, fiksni zoom, več prekrivanja)',
+    };
+  }
+  if (!input.hasScale) {
+    return {
+      ok: false,
+      code: 'NO_CALIBRATION',
+      status: null,
+      message: `MERITEV NI NA VOLJO v cm: SfM je registriral ${input.registeredCount}/${input.totalImages} fotk, a manjka znana referenčna dolžina — izračunana so samo razmerja med 3D točkami.`,
+      nextStep: 'Označi znani odsek (npr. vrata 80 cm) na eni od registriranih fotk',
+    };
+  }
+  if (input.focalSource === 'preset' || input.focalSource === 'selfcal') {
+    return {
+      ok: true,
+      code: 'ASSUMED_SCALE',
+      status: 'AUTO_SUGGESTED',
+      message: `SfM iz ${input.registeredCount} fotk z ocenjenim fokusom (${input.focalSource === 'preset' ? 'preset' : 'samokalibracija'}) in merilom iz znane reference — mera je orientacijska, za proizvodno uporabi EXIF fokus ali laserski merilnik.`,
+      nextStep: 'Preveri mero s trakom/laserjem',
+    };
+  }
+  return {
+    ok: true,
+    code: 'OK',
+    status: 'CALIBRATED',
+    message: `Izmerjeno z inkrementalnim SfM iz ${input.registeredCount} fotk (znani fokus + znana referenčna dolžina, RMS ${input.reprojRmsPx.toFixed(1).replace('.', ',')} px${input.warnings.length > 0 ? `, ${input.warnings.length} opozoril` : ''}).`,
+    nextStep: 'Po potrebi preveri z neodvisno metodo (VERIFIED)',
+  };
+}
+
 // ─── Downgrade ob spremembi kalibracije ────────────────────────
 
 /**
@@ -466,5 +555,7 @@ export function explainWarning(code: ScaleValidation['code']): string {
       return 'Triangulacija iz dveh fotk ni uspela: RANSAC je našel preveč malo zanesljivih povezav (inlierjev) med fotkama, zato 3D geometrija ni določljiva — brez stabilnega para fotk NI mogoče izračunati nobene globine in vsaka številka bi bila izmišljena. Najpogostejši vzroki: premalo prekrivanja med fotkama, premajhen kot med posnetkoma (fotki skoraj iz istega mesta), mehka fotka ali ponavljajoči se vzorec (rešetke, letve), ki se ujema na napačnih mestih. Ponovno izmeri: posnemi par fotk z večjim prekrivanjem (vsaj 60 % skupnega pogleda) in večjim kotom med posnetkoma, tako da so iste točke ostro vidne na obeh fotkah.';
     case 'RESIDUAL_HIGH':
       return 'Povezave med fotkama so preveč raztresene: točke ne ležijo na svojih epipolarnih črtah (srednja residuala presega dovoljenih 3 px), kar pomeni, da se geometrija med fotkama ne sklada. Takšna geometrija da naključne 3D točke — mera iz nje NI zanesljiva in je ne izračunaj. Najpogostejši vzroki: napačno označene povezave (klik na napačno točko), objekt se je premaknil med posnetkoma, mehka/razmazana fotka ali zoom/ostrenje se je spremenilo med posnetkoma. Ponovno izmeri: ponovi označbo povezav ali posnemi nove fotke (ostro, brez premikanja objekta, fiksni zoom).';
+    case 'SFM_REPROJECTION_HIGH':
+      return 'Rekonstrukcija iz več fotk se ne sklada sama s seboj: 3D točke se pri projekciji nazaj na fotke ne vrnejo na svoje položaje (reprojekcijska napaka presega dovoljenih 3 px), zato so izračunane dolžine nezanesljive in jih NE uporabi. Najpogostejši vzroki: mehke/razmazane fotke, spremenjen zoom med posnetki, premalo prekrivanja med fotkami ali ponavljajoča se tekstura (rešetke, letve), ki ujemanja povezuje na napačnih mestih. Ponovno izmeri: posnemi fotke znova — ostro, s fiksnim zoomom, z večjim prekrivanjem (isti objekt na vsaj 3 fotkah) in z izrazito neperiodično teksturo.';
   }
 }

@@ -86,8 +86,12 @@ function allFinite(v: ArrayLike<number>): boolean {
  * (determinističen fiksni vrstni red rotacij; vhod se notranje skalira z
  * maksimalno absolutno vrednostjo, da so protiščila neodvisna od skale).
  * Vrne lastne vrednosti + lastne vektorje kot STOLPCE (neurejene).
+ *
+ * Izvoženo (aditivno, v1.1.0) za ponovno uporabo v multiview-sfm.ts
+ * (DLT rešitev poze 12×12 in Gauss–Newton normalne enačbe) — ista
+ * implementacija, brez vzporednega jedra.
  */
-function jacobiEigen(mIn: number[][]): { values: number[]; vectors: number[][] } {
+export function jacobiEigen(mIn: number[][]): { values: number[]; vectors: number[][] } {
   const n = mIn.length;
   let maxAbs = 0;
   for (let i = 0; i < n; i++) {
