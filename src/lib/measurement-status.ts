@@ -25,13 +25,18 @@ export type MeasurementStatus =
   | 'VERIFIED'       // preverjeno z neodvisno referenco (druga metoda / laserski merilnik)
   | 'CONFIRMED';     // potrjeno s postopkom za proizvodno mero
 
-/** Način kalibracije merila oz. izvora vrednosti. */
+/**
+ * Način kalibracije merila oz. izvora vrednosti.
+ * 'multi-view' (Faza 3): triangulacija iz dveh fotk — merilo iz znane
+ * referenčne dolžine v 3D, fokus pa iz EXIF/preset/ocenjen iz geometrije.
+ */
 export type CalibrationMethod =
   | 'assumed-reference'   // domnevna referenca (npr. vrata ≈ 200 cm) — NIKOLI potrjena mera
   | 'known-length'        // uporabnik vnesel znano dolžino reference
   | 'manual-measure'      // ročna izmera (trak, laser)
   | 'laser'               // zunanji laserski merilnik
-  | 'plane-homography';   // 4-točkovna ravninska kalibracija (homography.ts)
+  | 'plane-homography'    // 4-točkovna ravninska kalibracija (homography.ts)
+  | 'multi-view';         // triangulacija iz dveh fotk (multiview-core.ts)
 
 /** Enota izmerjene vrednosti. */
 export type MeasureUnit = 'cm' | 'm2' | 'deg';
@@ -49,7 +54,7 @@ export interface MeasurementProvenance {
   /** Referenca, po kateri je bilo merilo umerjeno (assumed = domnevna). */
   reference: { valueCm: number; label: string; assumed: boolean } | null;
   /** Geometrijska transformacija, s katero je bila vrednost izračunana. */
-  transform: 'global-px-per-cm' | 'plane-homography' | 'none';
+  transform: 'global-px-per-cm' | 'plane-homography' | 'multi-view-triangulation' | 'none';
   /** ISO čas — podan od zunaj (funkcija ga NE generira sama, da je test determinističen). */
   createdAt: string;
   note: string | null;
@@ -139,18 +144,19 @@ export interface ProvenanceInput {
   sourcePhotoId?: string | null;
   points?: { x: number; y: number }[];
   reference?: { valueCm: number; label: string; assumed: boolean } | null;
-  transform?: 'global-px-per-cm' | 'plane-homography' | 'none';
+  transform?: 'global-px-per-cm' | 'plane-homography' | 'multi-view-triangulation' | 'none';
   createdAt: string;
   note?: string | null;
 }
 
 const METHODS: readonly CalibrationMethod[] = [
-  'assumed-reference', 'known-length', 'manual-measure', 'laser', 'plane-homography',
+  'assumed-reference', 'known-length', 'manual-measure', 'laser', 'plane-homography', 'multi-view',
 ];
 
 /** Privzeta transformacija glede na metodo (nič tihega — izhaja iz metode). */
 function defaultTransform(method: CalibrationMethod): MeasurementProvenance['transform'] {
   if (method === 'plane-homography') return 'plane-homography';
+  if (method === 'multi-view') return 'multi-view-triangulation';
   if (method === 'known-length' || method === 'assumed-reference') return 'global-px-per-cm';
   return 'none';
 }
@@ -226,7 +232,8 @@ export function makeProvenance(input: ProvenanceInput): MeasurementProvenance {
 
 export interface ScaleValidation {
   ok: boolean;
-  code: 'OK' | 'NO_CALIBRATION' | 'ASSUMED_SCALE' | 'DEGENERATE_REFERENCE' | 'PLANE_REQUIRED';
+  code: 'OK' | 'NO_CALIBRATION' | 'ASSUMED_SCALE' | 'DEGENERATE_REFERENCE' | 'PLANE_REQUIRED'
+    | 'MULTIVIEW_DEGENERATE' | 'RESIDUAL_HIGH';
   status: MeasurementStatus | null;
   message: string;
   nextStep: string;
@@ -236,6 +243,11 @@ export interface ScaleValidation {
 export const DEFAULT_MIN_PX_PER_CM = 0.05;
 /** Zgornja meja zanesljivega merila (1 px na 2 µm — praktično napačna označba). */
 export const MAX_PX_PER_CM = 5000;
+
+/** Najmanj zanesljivih RANSAC povezav (inlierjev) med dvema fotkama za triangulacijo (Faza 3). */
+export const MIN_MULTIVIEW_INLIERS = 12;
+/** Največja dovoljena srednja Sampsonova residuala (px) čez vse pare za zanesljivo geometrijo. */
+export const MAX_MULTIVIEW_RESIDUAL_PX = 3;
 
 /**
  * Validacija merila glede na metodo izvora. Nikoli NE vrne privzetega
@@ -352,6 +364,69 @@ export function validateScale(input: {
   }
 }
 
+// ─── Validacija geometrije iz dveh fotk (Faza 3: multi-view) ───
+
+/**
+ * Validacija rezultata merjenja iz para fotk (multiview-core.measureFromPair):
+ * zanesljivost geometrije (inlierji, residuala), nato merilo (referenca) in
+ * na koncu izvor fokusa. Nikoli NE prerazredi šibke geometrije v mero —
+ * vsak primanjkljaj je eksplicitna koda z naslednjim korakom.
+ */
+export function validateMultiView(input: {
+  inlierCount: number;
+  meanResidualPx: number;
+  focalMode: 'known' | 'preset' | 'selfcal';
+  referenceKnown: boolean;
+  minInliers?: number;
+  maxResidualPx?: number;
+}): ScaleValidation {
+  const min = input.minInliers ?? MIN_MULTIVIEW_INLIERS;
+  const max = input.maxResidualPx ?? MAX_MULTIVIEW_RESIDUAL_PX;
+  if (input.inlierCount < min) {
+    return {
+      ok: false,
+      code: 'MULTIVIEW_DEGENERATE',
+      status: null,
+      message: `NEZADOSTNI PODATKI: premalo zanesljivih povezav med fotkama (< ${min}). Ponovi posnetek z večjim prekrivanjem in večjim kotom.`,
+      nextStep: 'Posnemi par fotk z večjim prekrivanjem',
+    };
+  }
+  if (input.meanResidualPx > max) {
+    return {
+      ok: false,
+      code: 'RESIDUAL_HIGH',
+      status: null,
+      message: `NEZADOSTNI PODATKI: povezave med fotkama so preveč raztresene (srednja residuala ${input.meanResidualPx.toFixed(1).replace('.', ',')} px > ${max}). Geometrija ni zanesljiva.`,
+      nextStep: 'Ponovi označbo povezav ali posnemi nove fotke',
+    };
+  }
+  if (!input.referenceKnown) {
+    return {
+      ok: false,
+      code: 'NO_CALIBRATION',
+      status: null,
+      message: 'MERITEV NI NA VOLJO v cm: manjka znana referenčna dolžina med označenima točkama — izračunana so samo razmerja.',
+      nextStep: 'Označi znani odsek (npr. vrata 80 cm)',
+    };
+  }
+  if (input.focalMode === 'preset' || input.focalMode === 'selfcal') {
+    return {
+      ok: true,
+      code: 'ASSUMED_SCALE',
+      status: 'AUTO_SUGGESTED',
+      message: 'Fokus kamere je ocenjen (preset/iz fotk), merilo pa iz znane reference — mera je orientacijska, za proizvodno uporabi EXIF fokus ali laserski merilnik.',
+      nextStep: 'Preveri mero s trakom/laserjem',
+    };
+  }
+  return {
+    ok: true,
+    code: 'OK',
+    status: 'CALIBRATED',
+    message: 'Izmerjeno s triangulacijo iz dveh fotk (znani fokus + znana referenčna dolžina).',
+    nextStep: 'Po potrebi preveri z neodvisno metodo (VERIFIED)',
+  };
+}
+
 // ─── Downgrade ob spremembi kalibracije ────────────────────────
 
 /**
@@ -387,5 +462,9 @@ export function explainWarning(code: ScaleValidation['code']): string {
       return 'Referenčni objekt je na fotografiji preveč majhen (manj kot ~20 pikslov) ali je izračunano merilo nenavadno veliko — vsaka napaka označbe se pomnoži v mero, zato je rezultat nezanesljiv. Ponovno izmeri: umerjanje ponovi z večjim znanim objektom (npr. vrata 200 cm namesto kartice) in preveri, da točki ležita na robovih objekta.';
     case 'PLANE_REQUIRED':
       return 'Za to meritev je obvezna ravninska kalibracija (homografija po 4 ogliščih): enotno merilo ne zadošča, ker merjenja potekajo po različnih smereh poševnega posnetka. Ponovno izmeri: klikni 4 oglišča znane ravnine in vnesi realno širino ter višino.';
+    case 'MULTIVIEW_DEGENERATE':
+      return 'Triangulacija iz dveh fotk ni uspela: RANSAC je našel preveč malo zanesljivih povezav (inlierjev) med fotkama, zato 3D geometrija ni določljiva — brez stabilnega para fotk NI mogoče izračunati nobene globine in vsaka številka bi bila izmišljena. Najpogostejši vzroki: premalo prekrivanja med fotkama, premajhen kot med posnetkoma (fotki skoraj iz istega mesta), mehka fotka ali ponavljajoči se vzorec (rešetke, letve), ki se ujema na napačnih mestih. Ponovno izmeri: posnemi par fotk z večjim prekrivanjem (vsaj 60 % skupnega pogleda) in večjim kotom med posnetkoma, tako da so iste točke ostro vidne na obeh fotkah.';
+    case 'RESIDUAL_HIGH':
+      return 'Povezave med fotkama so preveč raztresene: točke ne ležijo na svojih epipolarnih črtah (srednja residuala presega dovoljenih 3 px), kar pomeni, da se geometrija med fotkama ne sklada. Takšna geometrija da naključne 3D točke — mera iz nje NI zanesljiva in je ne izračunaj. Najpogostejši vzroki: napačno označene povezave (klik na napačno točko), objekt se je premaknil med posnetkoma, mehka/razmazana fotka ali zoom/ostrenje se je spremenilo med posnetkoma. Ponovno izmeri: ponovi označbo povezav ali posnemi nove fotke (ostro, brez premikanja objekta, fiksni zoom).';
   }
 }
