@@ -20,7 +20,7 @@
 
 import type { ImgData, XY } from './photo-replace-core';
 
-export const MULTIVIEW_SCRIPT_VERSION = '1.0.0';
+export const MULTIVIEW_SCRIPT_VERSION = '1.1.0';
 
 /** Vogalna točka (px + Shi-Tomasi score λ2). */
 export interface Corner { x: number; y: number; score: number }
@@ -1030,40 +1030,53 @@ function patchNCC(
 }
 
 /**
- * Iskanje korespondence v fotki B za točko iz A vzdolž epipolarne črte
- * l_B = F·[xA,yA,1]ᵀ: gosta preiskava pikslov B znotraj radiusPx od
- * (xA,yA), ki ležijo ≤ 1.5 px od črte; NCC patch (privzeto 9); vrstni red
- * y naraščajoče, x naraščajoče (izenčeni → prvi). Null, če nič ≥ minNcc.
+ * Poišče korespondenco točke iz A na epipolarni črti v B (NCC + prag).
+ * FAZA 4 POPRAVEK (v1.1.0): prej je bilo iskanje omejeno na škatlo
+ * (xA±radius, yA±radius) — pri resničnem premiku kamere (> radius) prava
+ * korespondenca ni bila dosegljiva in je bil vsak klik iskreno zavrnjen.
+ * Zdaj se sprehodi po EPIPOLARNI ČRTI (l = F·[xA,yA,1]ᵀ) čez celotno fotko B
+ * (±maxDisplacementPct % največje stranice od projekcije točke), s perpendicular
+ * odmikom ±1 px; radiusPx je debelina pasu okoli črte. Deterministično
+ * (neodvisno od vrstnega reda pregledovanja: izenačene NCC → manjši |t|).
  */
 export function matchPointOnEpipolar(
   grayA: Float64Array, wA: number, hA: number, xA: number, yA: number,
   grayB: Float64Array, wB: number, hB: number,
   F: number[],
-  opts?: { radiusPx?: number; patch?: number; minNcc?: number },
+  opts?: { radiusPx?: number; patch?: number; minNcc?: number; maxDisplacementPct?: number },
 ): { x: number; y: number; ncc: number } | null {
-  const radius = opts?.radiusPx ?? 24;
+  const radius = opts?.radiusPx ?? 24; // debelina pasu okoli črte (px)
   const patch = opts?.patch ?? 9;
   const minNcc = opts?.minNcc ?? 0.7;
   if (!allFinite(F) || F.length !== 9) return null;
   if (!Number.isFinite(xA) || !Number.isFinite(yA)) return null;
-  // črta l = F·[xA,yA,1]ᵀ
+  if (xA < 0 || yA < 0 || xA > wA - 1 || yA > hA - 1) return null;
+  // črta l = F·[xA,yA,1]ᵀ v sliki B
   const a = F[0] * xA + F[1] * yA + F[2];
   const b = F[3] * xA + F[4] * yA + F[5];
   const c = F[6] * xA + F[7] * yA + F[8];
   const nl = Math.hypot(a, b);
   if (!(nl > 1e-12)) return null; // degenerirana črta
-  const x0 = Math.max(0, Math.ceil(xA - radius));
-  const x1b = Math.min(wB - 1, Math.floor(xA + radius));
-  const y0 = Math.max(0, Math.ceil(yA - radius));
-  const y1b = Math.min(hB - 1, Math.floor(yA + radius));
-  const r2 = radius * radius;
+  // enotska smer črte: d = (b, -a)/|n|; normala: n = (a, b)/|n|
+  const dx = b / nl, dy = -a / nl;
+  // projekcija (xA, yA) na črto — izhodišče sprehoda
+  const t0 = -(a * xA + b * yA + c) / (a * a + b * b);
+  const px0 = xA + t0 * a, py0 = yA + t0 * b;
+  // največji dovoljeni odmik od točke A (skladen z maxDisplacementPct v matchFeatures)
+  const maxDim = Math.max(wA, hA, wB, hB);
+  const maxSpan = Math.max(radius + 1, ((opts?.maxDisplacementPct ?? 25) / 100) * maxDim);
   let best: { x: number; y: number; ncc: number } | null = null;
-  for (let y = y0; y <= y1b; y++) {
-    for (let x = x0; x <= x1b; x++) {
-      const dx = x - xA, dy = y - yA;
-      if (dx * dx + dy * dy > r2) continue;
+  // sprehod po črti ±maxSpan, korak 1 px; perpendicular ±1 px (debelina pasu)
+  const tMax = Math.ceil(maxSpan);
+  for (let t = -tMax; t <= tMax; t++) {
+    for (let off = -1; off <= 1; off++) {
+      const x = Math.round(px0 + t * dx + off * (a / nl));
+      const y = Math.round(py0 + t * dy + off * (b / nl));
+      if (x < 0 || y < 0 || x > wB - 1 || y > hB - 1) continue;
+      const ddx = x - xA, ddy = y - yA;
+      if (ddx * ddx + ddy * ddy > maxSpan * maxSpan) continue;
       const dist = Math.abs(a * x + b * y + c) / nl;
-      if (dist > 1.5) continue;
+      if (dist > radius) continue;
       const ncc = patchNCC(grayA, wA, hA, xA, yA, grayB, wB, hB, x, y, patch);
       if (ncc === null) continue;
       if (best === null || ncc > best.ncc) best = { x, y, ncc };

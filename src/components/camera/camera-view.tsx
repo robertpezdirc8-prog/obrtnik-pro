@@ -31,6 +31,7 @@ import { runCalculator } from '@/lib/pricing';
 import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
 import { formatEUR } from '@/lib/format';
 import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind, type CraftCategory } from '@/lib/camera-types';
+import { statusColor, statusLabel } from '@/lib/measurement-status';
 import type { CraftId, CraftInputs } from '@/lib/types';
 import type { ProcessedImage } from '@/lib/image-quality';
 import {
@@ -240,6 +241,13 @@ export function CameraView() {
   };
 
   const removeAuxMeasure = (id: string) => setAuxMeasures((list) => list.filter((m) => m.id !== id));
+
+  // Faza 4: meritve iz Večpogleda (3D triangulacija) → isti tok kot laser/glas.
+  // Status/metoda ostanejeta iz multiview-sheet (pogodba); samo id se regenerira.
+  const addMultiViewMeasures = (list: PhotoMeasure[]) => {
+    if (list.length === 0) return;
+    setAuxMeasures((prev) => [...prev, ...list.map((m) => ({ ...m, id: auxId() }))]);
+  };
 
   const allMeasures = [...measures, ...auxMeasures];
   const detectedHeightCm = result?.analysis.objects.find((o) => (o.estHeightCm ?? 0) >= 80)?.estHeightCm ?? null;
@@ -1159,7 +1167,7 @@ export function CameraView() {
       )}
 
       {/* ── Večpogled: klasična fotogrametrija iz dveh fotk (Task 37-b, Faza 3) ── */}
-      {tab === 'vecpogled' && <MultiView />}
+      {tab === 'vecpogled' && <MultiView onAddMeasures={addMultiViewMeasures} />}
 
       {/* ── Merilni pripomočki ─────────────────────────────── */}
       {tab === 'orodja' && (
@@ -1192,8 +1200,13 @@ export function CameraView() {
                     <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-1.5 text-sm">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0">
-                          {m.kind === 'laser' ? 'laser' : m.kind === 'voice' ? 'glas' : m.kind === 'xr' ? 'AR' : 'meritev'}
+                          {m.method === 'multi-view' ? 'večpogled' : m.kind === 'laser' ? 'laser' : m.kind === 'voice' ? 'glas' : m.kind === 'xr' ? 'AR' : 'meritev'}
                         </Badge>
+                        {m.method === 'multi-view' && m.status && (
+                          <Badge className={`shrink-0 text-[9px] px-1 py-0 ${statusColor(m.status).badge}`}>
+                            {statusLabel(m.status)}
+                          </Badge>
+                        )}
                         <span className="truncate font-medium">{m.label}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
