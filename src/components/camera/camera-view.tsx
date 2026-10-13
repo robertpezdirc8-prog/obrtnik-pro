@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -49,6 +49,7 @@ import { Measure3dPreview } from './preview-3d';
 import { PostLayoutPanel } from './post-layout-panel';
 import { StairPanel } from './stair-panel';
 import { TilePanel } from './tile-panel';
+import { OpeningPanel } from './opening-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
@@ -289,6 +290,17 @@ export function CameraView() {
       craft: 'keramika',
       inputs,
       photoTitle: 'Keramika — samodejna mreža ploščic s fotke',
+    });
+    setView('kalkulatorji');
+  };
+
+  // Popis odprtin → kalkulator okna/vrata (meritvena skripta, 0 AI)
+  const openCalcOpenings = (inputs: { windowCount?: number; windowSize?: number; doorCount?: number }) => {
+    setActiveCraft('okna-vrata');
+    setCameraPrefill({
+      craft: 'okna-vrata',
+      inputs,
+      photoTitle: 'Okna/vrata — samodejni popis odprtin s fotke',
     });
     setView('kalkulatorji');
   };
@@ -860,6 +872,29 @@ export function CameraView() {
                     : null
                 }
                 onSendToCalculator={openCalcTile}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Okna/vrata — samodejni popis odprtin iz fotke (meritvena skripta, 0 AI) */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <DoorOpen className="h-4 w-4 text-primary" />
+                  Okna in vrata — samodejni popis odprtin
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Iz fotke fasade sestavi popis odprtin (št., mere, m²) po kalibraciji z referenco —
+                  en klik pošlje število oken/vrat in povprečno velikost v kalkulator.
+                </p>
+              </div>
+              <OpeningPanel
+                key={photoUrl ?? 'none'}
+                dataUrl={photoUrl}
+                suggestions={result.analysis.scaleSuggestions}
+                agreement={result.analysis.scaleAgreement}
+                onSendToCalculator={openCalcOpenings}
               />
             </CardContent>
           </Card>
