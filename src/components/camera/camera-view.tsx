@@ -49,6 +49,7 @@ import { Measure3dPreview } from './preview-3d';
 import { PostLayoutPanel } from './post-layout-panel';
 import { StairPanel } from './stair-panel';
 import { TilePanel } from './tile-panel';
+import { DeckPanel } from './deck-panel';
 import { OpeningPanel } from './opening-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
@@ -290,6 +291,17 @@ export function CameraView() {
       craft: 'keramika',
       inputs,
       photoTitle: 'Keramika — samodejna mreža ploščic s fotke',
+    });
+    setView('kalkulatorji');
+  };
+
+  // WPC terasa → kalkulator terase (meritvena skripta, 0 AI)
+  const openCalcDeck = (inputs: { deckLength?: number; deckWidth?: number; joistSpacing?: number }) => {
+    setActiveCraft('wpc-terasa');
+    setCameraPrefill({
+      craft: 'wpc-terasa',
+      inputs,
+      photoTitle: 'WPC terasa — samodejna analiza desk s fotke',
     });
     setView('kalkulatorji');
   };
@@ -872,6 +884,32 @@ export function CameraView() {
                     : null
                 }
                 onSendToCalculator={openCalcTile}
+              />
+            </CardContent>
+          </Card>
+
+          {/* WPC terasa — samodejna analiza desk iz fotke (meritvena skripta, 0 AI) */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Layers className="h-4 w-4 text-primary" />
+                  WPC terasa — samodejna analiza desk
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Iz fotke zazna smer in širino desk ter režo; po kalibraciji (referenca ali znana
+                  deska) izmeri površino iz 4 oglišč in predlaga razmak nosilcev — prefill kalkulatorja.
+                </p>
+              </div>
+              <DeckPanel
+                key={photoUrl ?? 'none'}
+                dataUrl={photoUrl}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                onSendToCalculator={openCalcDeck}
               />
             </CardContent>
           </Card>
