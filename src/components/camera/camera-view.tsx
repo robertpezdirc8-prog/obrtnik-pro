@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -51,6 +51,7 @@ import { StairPanel } from './stair-panel';
 import { TilePanel } from './tile-panel';
 import { DeckPanel } from './deck-panel';
 import { OpeningPanel } from './opening-panel';
+import { CanopyPanel, type CanopyPartial } from './canopy-panel';
 import { VizPanel } from './viz-panel';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
@@ -316,6 +317,21 @@ export function CameraView() {
     });
     setView('kalkulatorji');
   };
+
+  // Nadstrešek → kalkulator nadstreškov (meritvena skripta, 0 AI)
+  const openCalcCanopy = (inputs: { canopyWidth?: number; canopyDepth?: number; canopyPosts?: number; canopyCover?: 'ploc' | 'polikar' | 'steklo' }) => {
+    setActiveCraft('nadstreški');
+    setCameraPrefill({
+      craft: 'nadstreški',
+      inputs,
+      photoTitle: 'Nadstrešek — samodejna meritev s fotke',
+    });
+    setView('kalkulatorji');
+  };
+
+  // Delna mera nadstreška (širina iz frontalne, globina+naklon iz stranske
+  // fotke) — živi tukaj, da preživi menjavo fotke (CanopyPanel se remonta).
+  const [canopyPartial, setCanopyPartial] = useState<CanopyPartial | null>(null);
 
   const copyAll = async () => {
     try {
@@ -933,6 +949,34 @@ export function CameraView() {
                 suggestions={result.analysis.scaleSuggestions}
                 agreement={result.analysis.scaleAgreement}
                 onSendToCalculator={openCalcOpenings}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Nadstrešek — samodejna meritev širine/globine/naklona (meritvena skripta, 0 AI) */}
+          <Card>
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold">
+                  <Umbrella className="h-4 w-4 text-primary" />
+                  Nadstrešek — samodejna meritev (fronta + stran)
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Frontalna fotka → širina po robu kritine; stranska → globina in naklon (kot brez
+                  kalibracije). Skripta predlaga št. stebrov — površina gre v kalkulator.
+                </p>
+              </div>
+              <CanopyPanel
+                key={photoUrl ?? 'none'}
+                dataUrl={photoUrl}
+                reference={
+                  result?.analysis.reference && result.analysis.referenceBox
+                    ? { box: result.analysis.referenceBox, assumedCm: result.analysis.reference.assumedCm }
+                    : null
+                }
+                partial={canopyPartial}
+                onPartial={setCanopyPartial}
+                onSendToCalculator={openCalcCanopy}
               />
             </CardContent>
           </Card>

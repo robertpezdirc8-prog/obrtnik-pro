@@ -16,6 +16,7 @@ import { Layers, RotateCcw, Ruler, Wand2, AlertTriangle, Copy, Check, MousePoint
 import { useToast } from '@/hooks/use-toast';
 import { analyzeDeck, deckQuadArea, type RgbaImage, type DeckResult } from '@/lib/deck-analysis';
 import type { XY } from '@/lib/measure-geometry';
+import { refBoxHeightPx } from '@/lib/measure-geometry';
 
 interface DeckPanelProps {
   dataUrl: string | null;
@@ -61,11 +62,11 @@ export function DeckPanel({ dataUrl, reference, onSendToCalculator }: DeckPanelP
     setQuadPts([]); setArea(null);
   };
 
-  /** pxPerCm iz referenčnega objekta, preklučeno na delovno ločljivost analize. */
+  /** pxPerCm iz referenčnega objekta, preklučeno na delovno ločljivost analize.
+   *  LEKCIJA Task 30: referenceBox = [x0, y0, ŠIRINA, VIŠINA] — box[3] je višina. */
   const refPxPerCm = useCallback((workScale: number): number | null => {
     if (!imgEl || !reference) return null;
-    const [bx0, by0, bx1, by1] = reference.box;
-    const boxH = ((by1 - by0) / 100) * imgEl.naturalHeight;
+    const boxH = refBoxHeightPx(reference.box, imgEl.naturalHeight);
     if (boxH < 8) return null;
     const v = (boxH * workScale) / Math.max(1, reference.assumedCm);
     return v > 0.05 && Number.isFinite(v) ? v : null;

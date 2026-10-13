@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Hash, RotateCcw, Wand2, Ruler, LayoutGrid, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { refBoxHeightPx } from '@/lib/measure-geometry';
 import {
   analyzeBarStrip, calibrateStrip, suggestVizParams,
   type BarDims, type PctPoint, type RgbaImage, type VizBarSuggest,
@@ -94,10 +95,10 @@ export function BarCounter({ dataUrl, reference, onMeasure, onSuggest }: BarCoun
   useEffect(() => { reset(); }, [dataUrl]);
 
   // Predlog realne dolžine iz referenčnega objekta (px→cm skala)
+  // LEKCIJA Task 30: referenceBox = [x0, y0, ŠIRINA, VIŠINA] — box[3] je višina.
   const refSuggestCm = useMemo(() => {
     if (!imgEl || !reference || !a || !b) return null;
-    const [bx0, by0, bx1, by1] = reference.box;
-    const boxH = ((by1 - by0) / 100) * imgEl.naturalHeight;
+    const boxH = refBoxHeightPx(reference.box, imgEl.naturalHeight);
     if (boxH < 8) return null;
     const pxPerCm = boxH / Math.max(1, reference.assumedCm);
     const segPx = distPct(a, b, imgEl.naturalWidth, imgEl.naturalHeight);

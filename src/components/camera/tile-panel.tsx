@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Grid3X3, RotateCcw, Ruler, Wand2, AlertTriangle, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { refBoxHeightPx } from '@/lib/measure-geometry';
 import { analyzeTileGrid, type RgbaImage, type TileGridResult, type TilePattern } from '@/lib/tile-grid';
 
 interface TilePanelProps {
@@ -63,11 +64,11 @@ export function TilePanel({ dataUrl, reference, onSendToCalculator }: TilePanelP
   const reset = () => { setResult(null); setPatternSel(null); };
   useEffect(() => { reset(); }, [dataUrl]);
 
-  /** pxPerCm iz referenčnega objekta, preklučeno na delovno ločljivost analize. */
+  /** pxPerCm iz referenčnega objekta, preklučeno na delovno ločljivost analize.
+   *  LEKCIJA Task 30: referenceBox = [x0, y0, ŠIRINA, VIŠINA] — box[3] je višina. */
   const refPxPerCm = useCallback((workScale: number): number | null => {
     if (!imgEl || !reference) return null;
-    const [bx0, by0, bx1, by1] = reference.box;
-    const boxH = ((by1 - by0) / 100) * imgEl.naturalHeight;
+    const boxH = refBoxHeightPx(reference.box, imgEl.naturalHeight);
     if (boxH < 8) return null;
     const v = (boxH * workScale) / Math.max(1, reference.assumedCm);
     return v > 0.05 && Number.isFinite(v) ? v : null;

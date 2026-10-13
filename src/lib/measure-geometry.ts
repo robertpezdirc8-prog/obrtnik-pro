@@ -34,6 +34,16 @@ export function pxDistance(a: PtLike, b: PtLike, size: ImgSize): number {
   return Math.hypot(B.x - A.x, B.y - A.y);
 }
 
+/**
+ * Višina referenčnega okvirja v naravnih pikslih slike.
+ * referenceBox format je [x0, y0, ŠIRINA, VIŠINA] v % (buildScaleSuggestions,
+ * cv-engine) — NI [x0,y0,x1,y1]. Ta helper je enoten vir resnice za vse panele
+ * (lekcija Task 30: 5 panelov je napačno računalo (box[3] − box[1])).
+ */
+export function refBoxHeightPx(box: [number, number, number, number], naturalHeight: number): number {
+  return (Math.max(0, box[3]) / 100) * naturalHeight;
+}
+
 /** Kot pri oglišču v (med daljicama v→a in v→c) v stopinjah (0–180). */
 export function angleAt(a: PtLike, v: PtLike, c: PtLike, size: ImgSize): number {
   const A = pctToPx(asXY(a), size);

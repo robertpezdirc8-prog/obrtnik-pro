@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Footprints, RotateCcw, Ruler, Wand2, AlertTriangle, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeStairProfile, type PctPoint, type RgbaImage, type StairMode, type StairProfileResult } from '@/lib/stair-profile';
-import { formatCm } from '@/lib/measure-geometry';
+import { formatCm, refBoxHeightPx } from '@/lib/measure-geometry';
 
 interface StairPanelProps {
   dataUrl: string | null;
@@ -94,11 +94,11 @@ export function StairPanel({ dataUrl, reference, onSendToCalculator }: StairPane
     setPts((prev) => (prev.length >= 2 ? [p] : [...prev, p]));
   };
 
-  /** pxPerCm iz referenčnega objekta (isti vir kot BarCounter). */
+  /** pxPerCm iz referenčnega objekta (isti vir kot BarCounter).
+   *  LEKCIJA Task 30: referenceBox = [x0, y0, ŠIRINA, VIŠINA] — box[3] je višina. */
   const refPxPerCm = (): number | null => {
     if (!imgEl || !reference) return null;
-    const [bx0, by0, bx1, by1] = reference.box;
-    const boxH = ((by1 - by0) / 100) * imgEl.naturalHeight;
+    const boxH = refBoxHeightPx(reference.box, imgEl.naturalHeight);
     if (boxH < 8) return null;
     const v = boxH / Math.max(1, reference.assumedCm);
     return v > 0.05 && Number.isFinite(v) ? v : null;
