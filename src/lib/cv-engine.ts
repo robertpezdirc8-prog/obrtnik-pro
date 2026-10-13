@@ -1175,6 +1175,16 @@ export function classifyCraft(f: Features, structure: PatternSuggestion | null):
   }
   if (f.flatFrac > 0.5) scores['fasada'] += 10;
   if (f.outdoor && f.edgeDensity < 0.05 && windowCount >= 1) scores['fasada'] += 10;
+  // Fasadna obloga: horizontalne lamele NA STENI z odprtino (vrata/okno).
+  // Odprtina je ključni razločevalnik proti terasi — deka nima vrat, stena
+  // z oblogo pa skoraj vedno pokaže vrata ali okno. Odločilna teža, ker
+  // sicer struktura 'horizontalne' privleče wpc-teraso (Task 33).
+  if (
+    structure?.pattern === 'horizontalne' && structStrong > 0 &&
+    (f.bestDoor || windowCount >= 1) && f.flatFrac >= 0.2 && !canopyEvidence
+  ) {
+    scores['fasada'] += 60 + 10 * structStrong;
+  }
 
   let best: CraftCategory = 'drugo';
   let bestScore = 0;

@@ -139,12 +139,12 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   // (custom barva iz fotke je vedno veljavna — ni vezana na palete)
   useEffect(() => {
     if (active.customHex) return;
-    const groups = colorGroupsForPattern(active.pattern);
+    const groups = colorGroupsForPattern(active.pattern, craft);
     const cur = VIZ_COLORS.find((c) => c.id === active.colorId);
     if (!cur || !groups.includes(cur.group)) {
       updateLayer({ colorId: defaultColorForPattern(active.pattern).id });
     }
-  }, [active.pattern, active.colorId, active.customHex, updateLayer]);
+  }, [active.pattern, active.colorId, active.customHex, craft, updateLayer]);
 
   // Tekstura velja samo za vzorce z opačnimi površinami
   useEffect(() => {
@@ -797,7 +797,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     );
   }
 
-  const groups = colorGroupsForPattern(active.pattern);
+  const groups = colorGroupsForPattern(active.pattern, craft);
   const colors = VIZ_COLORS.filter((c) => groups.includes(c.group));
   const sliders = slidersForPattern(active.pattern);
   const surfaceOptions = surfaces.filter((s) => s.quad && s.quad.length === 4);
@@ -1386,6 +1386,34 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
                 „Celotno območje“ pobarva vse znotraj štirikotnika. Za realistično menjavo barve obstoječe ograje (reže ostanejo) izberi „Samo material“.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Smer obloge (samo horizontalne lamele) — fasadna obloga */}
+        {active.pattern === 'horizontalne' && (
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium">Smer obloge</Label>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Smer obloge">
+              {([
+                { v: false, label: 'Vodoravno' },
+                { v: true, label: 'Navpično' },
+              ] as const).map((o) => (
+                <button
+                  key={o.label}
+                  type="button"
+                  data-testid={`viz-obloga-${o.v ? 'vert' : 'horiz'}`}
+                  aria-pressed={!!active.params.oblogaVert === o.v}
+                  onClick={() => updateLayer({ params: { ...active.params, oblogaVert: o.v } })}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors min-h-[32px] ${
+                    !!active.params.oblogaVert === o.v
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-card hover:bg-accent'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

@@ -44,7 +44,7 @@ export interface VizStyleInfo {
 export const VIZ_STYLES: VizStyleInfo[] = [
   { id: 'vertikalne', label: 'Vertikalne palice', hint: 'Klasična alu/inox ograja z navpičnimi palicami', crafts: ['ograje', 'stopnice', 'okna-vrata'] },
   { id: 'panel', label: 'Polna plošča', hint: 'Zaprt panel — zasebnost (alete/perforirana pločevina)', crafts: ['ograje', 'fasada', 'okna-vrata'] },
-  { id: 'horizontalne', label: 'Horizontalne lamele', hint: 'Vodoravne lamele — sodobna estetika', crafts: ['ograje', 'wpc-terasa', 'fasada'] },
+  { id: 'horizontalne', label: 'Horizontalne lamele', hint: 'Vodoravne ali navpične lamele — fasadna obloga ali ograja', crafts: ['ograje', 'wpc-terasa', 'fasada'] },
   { id: 'lamele45', label: 'Lamelni zaslon 45°', hint: 'Nagnjene lamele — zaslon za zasebnost in senčenje', crafts: ['ograje', 'fasada', 'okna-vrata'] },
   { id: 'vozlik', label: 'Vozlik (križna mreža)', hint: 'Diagonalno križana mreža — klasična vozlik ograja ali nadstrešek', crafts: ['ograje', 'nadstreški', 'fasada'] },
   { id: 'piketna', label: 'Piketna ograja', hint: 'Klasična piketna ograja z ostrimi vrhovi', crafts: ['ograje'] },
@@ -105,13 +105,20 @@ export const VIZ_GROUP_LABELS: Record<VizColorGroup, string> = {
   fasada: 'Fasada',
 };
 
-/** Katere palete ponudimo za dani vzorec. */
-export function colorGroupsForPattern(p: VizPattern): VizColorGroup[] {
+/** Katere palete ponudimo za dani vzorec (izbirno glede na dejavnost). */
+export function colorGroupsForPattern(p: VizPattern, craft?: CraftCategory): VizColorGroup[] {
   switch (p) {
     case 'terasa': return ['wpc'];
     case 'ploscice': return ['keramika'];
     case 'barva': return ['ral', 'fasada', 'wpc', 'keramika'];
     case 'steklo': return ['ral'];
+    // Fasadna obloga: kovina (RAL) ali WPC dekorji — kalkulator ponuja
+    // WPC (52 €/m²), les in pločevino, vizualizer naj obe možnosti pokaže.
+    case 'horizontalne':
+    case 'lamele45':
+    case 'panel':
+    case 'vozlik':
+      return craft === 'fasada' ? ['ral', 'wpc'] : ['ral'];
     default: return ['ral'];
   }
 }
@@ -151,6 +158,8 @@ export interface VizParams {
   glassAlpha: number;
   /** realna širina štirikotnika v cm (določa gostoto vzorca) */
   quadWidthCm: number;
+  /** fasadna obloga: navpična smer lamel (privzeto vodoravno) */
+  oblogaVert?: boolean;
 }
 
 export const DEFAULT_VIZ_PARAMS: VizParams = {
@@ -160,6 +169,7 @@ export const DEFAULT_VIZ_PARAMS: VizParams = {
   jointCm: 0.3,
   glassAlpha: 0.35,
   quadWidthCm: 600,
+  oblogaVert: false,
 };
 
 /** Kazalci za drsnike po vzorcu: [min, max, korak, oznaka]. */
@@ -327,6 +337,13 @@ export function buildPatternCanvas(
   const H = tex.height;
 
   const baseFill = (f = 1) => {
+    // f <= 0 = PROZORNO ozadje (reže med palicami/lamelami — skozi njih
+    // se vidi scena na fotki). Prej je `shade(rgb, 0)` napolnil z ČRNO
+    // (opakno!) — vse reže so bile črne → "animiran" videz vizualizerja.
+    if (f <= 0) {
+      ctx.clearRect(0, 0, W, H);
+      return;
+    }
     ctx.fillStyle = shade(rgb, f);
     ctx.fillRect(0, 0, W, H);
   };
@@ -373,6 +390,23 @@ export function buildPatternCanvas(
       break;
     }
     case 'horizontalne': {
+      // Fasadna obloga: vodoravne (privzeto) ALI navpične lamele
+      // (params.oblogaVert) — enako senčenje, zasukano za 90°.
+      if (params.oblogaVert) {
+        baseFill(0);
+        const gapV = Math.max(1.5, params.spacingCm * pxPerCm);
+        const wV = Math.max(1, params.elementCm * pxPerCm);
+        for (let x = 0; x < W; x += gapV + wV) {
+          const g = ctx.createLinearGradient(x, 0, x + wV, 0);
+          g.addColorStop(0, shade(rgb, 1.08));
+          g.addColorStop(0.55, shade(rgb, 0.92));
+          g.addColorStop(1, shade(rgb, 0.66));
+          ctx.fillStyle = g;
+          ctx.fillRect(x, 0, wV, H);
+          mark(x, 0, wV, H);
+        }
+        break;
+      }
       baseFill(0);
       const gap = Math.max(1.5, params.spacingCm * pxPerCm);
       const h = Math.max(1, params.elementCm * pxPerCm);
