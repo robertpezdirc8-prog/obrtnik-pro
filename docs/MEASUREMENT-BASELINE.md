@@ -79,14 +79,14 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 | Manjka | Vpliv | Potreben korak |
 |---|---|---|
 | Original ROKSAL fotografije/teksture (#6) | alu-palice-18 in mreza-3d-125 profili NE upodobljeni; izvoz z oznako original blokiran | pripeljati preverjene posnetke iz ROKSAL kataloga → `roksal-assets.ts` z `origin: 'roksal-original'` |
-| Fotogrametrija iz več fotografij (Faza 3) | SfM/COLMAP veriga NI implementirana — večpogledni 3D NI na voljo | ločen prototip (BSD-3 licenca, offline worker); v osnovnem toku ostane ročna izmera |
+| Fotogrametrija iz več fotografij (Faza 3) | **PROTOTIP IMPLEMENTIRAN (determinističen, 2 fotki)**: `src/lib/multiview-core.ts` (Shi-Tomasi + NCC + Lowe ratio, 8-točkovni + RANSAC + Gauss–Newton, Hartley/Kruppa samokalibracija fokusa, DLT triangulacija, merilo po znani referenčni dolžini) + UI zavihek „Večpogled“; 91/91 testov z znano resnico (exact ±1,5 %, šum ±0,7 px ±6 %); E2E na resničnem paru (197/198 inlierjev, residuala 0,3 px, reprojekcija 0,11 px) | SfM/COLMAP z več kot 2 fotkami NI implementirana; samokalibracija fokusa pri majhni bazi iskreno zavrnjena (uporabi EXIF/preset → AUTO_SUGGESTED); v osnovnem toku ostane ročna izmera |
 | Neodvisni test natančnosti na realnem objektu (Faza 7) | številke o napaki (median/95. pct) NISO merjene — cilji iz #3 ostanejo cilji, ne obljube | referenčni nabor: fotke + fizične mere + toleranca; preizkus na objektu |
 | LiDAR/dubina senzorji | aplikacija jih NE prikazuje (pravilno) — fallback je fotka + referenca + ročne mere | samo, če naprava to dejansko podpira |
 | E2E klik oglisča prek agent-browser | zahteva scroll-into-view pred klikom (nuja avtomatizacije, ne UI napaka) | — |
 
 ## 5. Znan regresijski status (ob zapisu te osnove)
 
-- `measurement-status` 90/90 · `photo-replace` 83/83 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `scale-suggestions` ✓ · `scene-classify` ✓
+- `measurement-status` 90/90 · `multiview` 91/91 · `photo-replace` 83/83 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `scale-suggestions` ✓ · `scene-classify` ✓
 - `tsc --noEmit`: src čist (prej obstoječe napake samo v `examples/` + `skills/`, niso del aplikacije)
 - `eslint .`: čisto · dev.log: brez napak · E2E zlata pot fotomontaže: namizje 1280 + mobilni 390×844 (brez vodoravnega drsenja), konzola čista
 
@@ -97,3 +97,4 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 3. Sprememba reference/točk/perspektive pade CALIBRATED/VERIFIED/CONFIRMED na AUTO_SUGGESTED (`downgradeOnReferenceChange`).
 4. Manjkajoče gradivo prepreči upodobitev in izvoz z oznako original (`canRender=false` → `canExportResult` razlog).
 5. Originalna fotografija stranke je NIKOLI spremenjena — vse izdaje so nove različice z metapodatki.
+6. Večpogledna (2-fotčna) mera je vedno „pomožna meritev“: brez znane referenčne dolžine NI cm (samo razmerja), preset/selfcal fokus → največ AUTO_SUGGESTED, skoraj ravninska scena → opozorilo o nezanesljivi globini; izvoz nosi oznako „za proizvodnjo preveri s trakom/laserjem“.

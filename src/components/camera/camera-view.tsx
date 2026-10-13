@@ -55,6 +55,7 @@ import { CanopyPanel, type CanopyPartial } from './canopy-panel';
 import { FasadaPanel } from './fasada-panel';
 import { VizPanel } from './viz-panel';
 import { FotoReplace } from './foto-replace';
+import { MultiView } from './multiview';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
 import type { VizBarSuggest } from '@/lib/bar-count';
@@ -70,7 +71,7 @@ interface PhotoRecord {
   createdAt: string;
 }
 
-type CameraTab = 'analiza' | 'ar' | 'viz' | 'fotomontaza' | 'orodja';
+type CameraTab = 'analiza' | 'ar' | 'viz' | 'fotomontaza' | 'vecpogled' | 'orodja';
 
 const ANALYSIS_STEPS = [
   'Prepoznavam sceno…',
@@ -639,6 +640,7 @@ export function CameraView() {
     ['ar', 'AR merjenje', <Ruler key="i" className="h-4 w-4" />],
     ['viz', 'Vizualizer', <Palette key="i" className="h-4 w-4" />],
     ['fotomontaza', 'Fotomontaža', <ImagePlus key="i" className="h-4 w-4" />],
+    ['vecpogled', 'Večpogled', <Layers key="i" className="h-4 w-4" />],
     ['orodja', 'Pripomočki', <Wrench key="i" className="h-4 w-4" />],
   ];
 
@@ -685,7 +687,7 @@ export function CameraView() {
             key={id}
             role="tab"
             aria-selected={tab === id}
-            data-testid={id === 'fotomontaza' ? 'tab-fotomontaza' : undefined}
+            data-testid={id === 'fotomontaza' ? 'tab-fotomontaza' : id === 'vecpogled' ? 'tab-vecpogled' : undefined}
             onClick={() => setTab(id)}
             className={`flex flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-[40px] sm:flex-none ${tab === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           >
@@ -1155,6 +1157,9 @@ export function CameraView() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Večpogled: klasična fotogrametrija iz dveh fotk (Task 37-b, Faza 3) ── */}
+      {tab === 'vecpogled' && <MultiView />}
 
       {/* ── Merilni pripomočki ─────────────────────────────── */}
       {tab === 'orodja' && (
