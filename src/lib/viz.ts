@@ -16,7 +16,7 @@ import { applyH, orderQuad, solveHomography } from './homography';
 import { drawQuadDimensions } from './annotate';
 import type { CraftCategory } from './camera-types';
 import type { CraftInputs } from './types';
-import { getTextureImage, getTextureById } from './viz-textures';
+import { getTextureImage, getTextureById, texturesForPattern } from './viz-textures';
 
 // ─── Katalog vzorcev ─────────────────────────────────────────
 
@@ -141,6 +141,75 @@ export function defaultColorForPattern(p: VizPattern): VizColor {
   const groups = colorGroupsForPattern(p);
   const first = VIZ_COLORS.find((c) => c.group === groups[0]);
   return first ?? VIZ_COLORS[0];
+}
+
+/**
+ * Samodejna materialna tekstura za kombinacijo vzorec + barva.
+ * Pravilo realizma (0 AI): RAL = barvana kovina — gladka, flat je realen
+ * (brez teksture); WPC/les → žirana tekstura; keramika → kamen;
+ * fasada → omet. Barva iz fotke (neznana id) ohrani izvorni material.
+ * Tekstura se vrne SAMO, če je ponujena za dani vzorec.
+ */
+export function defaultTextureForPattern(
+  pattern: VizPattern,
+  colorId: string,
+  craft?: CraftCategory,
+): string | undefined {
+  if (pattern === 'barva' || pattern === 'steklo') return undefined;
+  const color = VIZ_COLORS.find((c) => c.id === colorId);
+  if (!color) return undefined; // barva iz fotke → brez katalogne teksture
+  let tex: string | undefined;
+  switch (color.group) {
+    case 'ral':
+      return undefined; // barvana kovina je gladka — flat je realen
+    case 'wpc':
+      // sivi/antracitni WPC = gladke plošče; topli toni = žirana tikovina
+      tex = colorId === 'wpc-siva' || colorId === 'wpc-antracit' ? 'wpc-siva' : 'wpc-tikovina';
+      break;
+    case 'keramika':
+      tex = 'keramika-kamen';
+      break;
+    case 'fasada':
+      tex = 'fasada-omet';
+      break;
+  }
+  const allowed = texturesForPattern(pattern).map((t) => t.id);
+  return tex && allowed.includes(tex) ? tex : undefined;
+}
+
+/**
+ * Realistični privzeti parametri na vzorec (cm na ravnini). Osnova se
+ * dopolni z razponi, značilnimi za vsak vzorec — npr. WPC deke 140 mm
+ * s fugo 4 mm, alu palice 18 mm z razmakom 11 cm. Brez tega ob preklopu
+ * vzorca ostanejo zastareli parametri (npr. deke 1,8 cm = degenerirane
+ * 2-px črte → „animiran“ videz).
+ */
+export function defaultParamsForPattern(p: VizPattern, base: VizParams = DEFAULT_VIZ_PARAMS): VizParams {
+  const ov: Partial<VizParams> = {};
+  switch (p) {
+    case 'vertikalne':
+    case 'piketna':
+      ov.spacingCm = 11; ov.elementCm = 1.8; break; // alu palice 18 mm, razmak 11 cm
+    case 'horizontalne':
+      ov.spacingCm = 2; ov.elementCm = 8; break;    // obloga: letve 8 cm, reža 2 cm
+    case 'lamele45':
+      ov.spacingCm = 4; ov.elementCm = 9; break;    // lamelni zaslon 90/45
+    case 'vozlik':
+      ov.spacingCm = 15; ov.elementCm = 3; break;
+    case 'mreza':
+      ov.spacingCm = 12.5; ov.elementCm = 0.5; break; // žica 5 mm, očesce 125 mm
+    case 'terasa':
+      ov.spacingCm = 0.4; ov.elementCm = 14; break; // WPC deka 140 mm + fuga 4 mm
+    case 'ploscice':
+      ov.tileCm = 60; ov.jointCm = 0.3; break;      // format 60×60, fuga 3 mm
+    case 'steklo':
+      ov.glassAlpha = 0.35; break;
+    case 'panel':
+      ov.spacingCm = 100; break;                     // stiki panelov vsak meter
+    default:
+      break;
+  }
+  return { ...base, ...ov };
 }
 
 // ─── Parametri vzorca (cm na ravnini) ────────────────────────
@@ -311,6 +380,50 @@ function applyTextureFill(
     ctx.fillRect(0, 0, W, H);
   }
   ctx.restore();
+}
+
+/**
+ * Iz vzorčnega canvasa (barvni gradienti pred teksturo) zgradi NEVTRALNO
+ * svetlobno karto: vsak piksel = sivi faktor relativno na svetlejše dele
+ * (96. percentil svetlosti opačnih pikslov = "odboj"). Rezultat namnožimo
+ * na teksturirane palice — valjasto senčenje ostane, odtenek teksture se
+ * NE premakne (barvni multiply bi palice obratno ztemnil).
+ * Prosojne reže ostanejo prosojne (fotka se vidi skozi).
+ */
+function neutralShadingCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const cv = document.createElement('canvas');
+  cv.width = src.width;
+  cv.height = src.height;
+  const c = cv.getContext('2d')!;
+  c.drawImage(src, 0, 0);
+  const im = c.getImageData(0, 0, cv.width, cv.height);
+  const d = im.data;
+  // histogram svetlosti opačnih pikslov → 96. percentil
+  const hist = new Uint32Array(256);
+  let opaque = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    const lum = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    hist[lum | 0]++;
+    opaque++;
+  }
+  if (opaque === 0) return cv;
+  const target = opaque * 0.96;
+  let acc = 0;
+  let lref = 255;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= target) { lref = Math.max(1, v); break; }
+  }
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const lum = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    const f = Math.max(0, Math.min(1, lum / lref));
+    const g = Math.round(255 * f);
+    d[i] = g; d[i + 1] = g; d[i + 2] = g;
+  }
+  c.putImageData(im, 0, 0);
+  return cv;
 }
 
 /**
@@ -602,7 +715,17 @@ export function buildPatternCanvas(
       baseFill(1);
       break;
   }
-  if (texture) applyTextureFill(ctx, texture, rgb, W, H, 0.42, texRegions.length > 0 ? texRegions : undefined);
+  if (texture) {
+    // Tekstura pokrije barvne gradiente z opakimi piksli — valjasto
+    // senčenje obnovimo z NEVTRALNO svetlobno karto (multiply: samo
+    // ztemni, žiro ohrani). Brez tega so teksturirane palice flat.
+    const light = neutralShadingCanvas(tex);
+    applyTextureFill(ctx, texture, rgb, W, H, 0.42, texRegions.length > 0 ? texRegions : undefined);
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(light, 0, 0);
+    ctx.restore();
+  }
   return tex;
 }
 
@@ -1230,16 +1353,18 @@ export function defaultQuadForLayer(index: number): [number, number][] {
   return LAYER_QUAD_PRESETS[i].map(([x, y]) => [x, y] as [number, number]);
 }
 
-/** Nova plast s privzetim vzorcem/barvo za dejavnost. */
+/** Nova plast s privzetim vzorcem/barvo/materialom/parametri za dejavnost. */
 export function makeLayer(id: string, index: number, craft: CraftCategory): VizLayer {
   const pattern = defaultPatternForCraft(craft);
+  const colorId = defaultColorForPattern(pattern).id;
   return {
     id,
     label: `Območje ${index + 1}`,
     quad: defaultQuadForLayer(index),
     pattern,
-    colorId: defaultColorForPattern(pattern).id,
-    params: { ...DEFAULT_VIZ_PARAMS },
+    colorId,
+    textureId: defaultTextureForPattern(pattern, colorId, craft),
+    params: defaultParamsForPattern(pattern),
   };
 }
 

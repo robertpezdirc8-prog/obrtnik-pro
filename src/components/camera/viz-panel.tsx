@@ -35,7 +35,7 @@ import {
 import {
   DEFAULT_VIZ_PARAMS, VIZ_COLORS, VIZ_GROUP_LABELS, VIZ_STYLES,
   buildOptionsSheet, colorGroupsForPattern, craftInputsFromQuad, defaultColorForPattern, defaultPatternForCraft,
-  defaultQuadForLayer, dominantColorInQuad, drawLayersOnQuad, estimateQuadDimsCm, isLightColor, makeLayer,
+  defaultQuadForLayer, defaultParamsForPattern, defaultTextureForPattern, dominantColorInQuad, drawLayersOnQuad, estimateQuadDimsCm, isLightColor, makeLayer,
   quadDimsFromWidthCm, resolveLayerColor, slidersForPattern,
   type QuadDimsCm, type SheetVariant, type VizLayer, type VizPattern, type VizParams,
 } from '@/lib/viz';
@@ -136,13 +136,16 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
   }, [activeId]);
 
   // Sprememba vzorca → če barva aktivne plasti ni več veljavna, zamenjaj
-  // (custom barva iz fotke je vedno veljavna — ni vezana na palete)
+  // (custom barva iz fotke je vedno veljavna — ni vezana na palete).
+  // Ob zamenjavi barve se samodejno nastavi tudi materialna tekstura
+  // (WPC/les/keramika/fasada — RAL ostane gladka barvana kovina).
   useEffect(() => {
     if (active.customHex) return;
     const groups = colorGroupsForPattern(active.pattern, craft);
     const cur = VIZ_COLORS.find((c) => c.id === active.colorId);
     if (!cur || !groups.includes(cur.group)) {
-      updateLayer({ colorId: defaultColorForPattern(active.pattern).id });
+      const colorId = defaultColorForPattern(active.pattern).id;
+      updateLayer({ colorId, textureId: defaultTextureForPattern(active.pattern, colorId, craft) });
     }
   }, [active.pattern, active.colorId, active.customHex, craft, updateLayer]);
 
@@ -1156,7 +1159,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
               variant="outline"
               className="min-h-9"
               onClick={() => {
-                let params: VizParams = { ...active.params };
+                let params: VizParams = defaultParamsForPattern(patSug.pattern, active.params);
                 if (patSug.pitchPx && patSug.direction && patSug.direction !== 'd45' && patSug.direction !== 'd135' && imgEl && quoteDims) {
                   const q = active.quad;
                   const topPx = Math.hypot((q[1][0] - q[0][0]) / 100 * imgEl.naturalWidth, (q[1][1] - q[0][1]) / 100 * imgEl.naturalHeight);
@@ -1192,7 +1195,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
             {VIZ_STYLES.map((s) => (
               <button
                 key={s.id}
-                onClick={() => updateLayer({ pattern: s.id })}
+                onClick={() => updateLayer({ pattern: s.id, params: defaultParamsForPattern(s.id, active.params) })}
                 title={s.hint}
                 aria-pressed={active.pattern === s.id}
                 className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors ${active.pattern === s.id ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-accent/50'}`}
@@ -1264,7 +1267,12 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
             {colors.map((c) => (
               <button
                 key={c.id}
-                onClick={() => updateLayer({ colorId: c.id, customHex: undefined })}
+                onClick={() => updateLayer({
+                  colorId: c.id,
+                  customHex: undefined,
+                  // samodejni material: tekstura sledi izbrani barvi (0 AI)
+                  textureId: defaultTextureForPattern(active.pattern, c.id, craft),
+                })}
                 title={c.label}
                 aria-label={c.label}
                 aria-pressed={active.colorId === c.id && !active.customHex}
@@ -1279,7 +1287,7 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
             {customColors.map((c, i) => (
               <button
                 key={c.id}
-                onClick={() => updateLayer({ colorId: c.id, customHex: c.hex })}
+                onClick={() => updateLayer({ colorId: c.id, customHex: c.hex, textureId: undefined })}
                 title={`Iz fotke · ${c.hex}`}
                 aria-label={`Barva iz fotke ${c.hex}`}
                 aria-pressed={active.customHex === c.hex}
