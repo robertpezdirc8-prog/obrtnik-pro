@@ -5,11 +5,21 @@
 // servisom FFE0/FFE1 oz. zasilno FFF0/FFF1) in samodejno posluša
 // izmerke; vedno na voljo tudi ročni vnos — vse gre v isti seznam
 // meritev kot fotomeritve (onAddMeasurement).
+// Protokoli za znane modele (Bosch GLM 120 C / GLM 50C·100C / PLR)
+// so v src/lib/laser-protocols.ts; razčlenjevalniki so preverjeni s
+// fiksaturami iz dokumentiranih zajemov (samopreizkus v UI).
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Bluetooth,
   BluetoothOff,
@@ -17,8 +27,22 @@ import {
   Info,
   Plus,
   Ruler,
+  ShieldCheck,
+  TriangleAlert,
 } from 'lucide-react';
 import { formatCm } from '@/lib/measure-geometry';
+import {
+  BOSCH_C0_MEASURE,
+  GLM120_ENABLE_INDICATIONS,
+  GLM120_INIT,
+  GLM120_MODE_DISTANCE,
+  GLM120_TRIGGER,
+  LASER_MODELS,
+  detectLaserModel,
+  parseLaserValue,
+  protocolSelfTest,
+  type LaserModelId,
+} from '@/lib/laser-protocols';
 
 export interface LaserPanelProps {
   /** Pokliče se ob vsakem izmerku (BLE notifikacija ali ročni vnos). */
@@ -37,6 +61,15 @@ interface BtCharacteristic {
     type: 'characteristicvaluechanged',
     listener: (event: Event) => void,
   ): void;
+  /** Best-effort pisanje sprožitvenih zaporedij (GLM 120 C). */
+  writeValue?(value: BufferSource): Promise<void>;
+  writeValueWithoutResponse?(value: BufferSource): Promise<void>;
+  properties?: {
+    write?: boolean;
+    writeWithoutResponse?: boolean;
+    notify?: boolean;
+    indicate?: boolean;
+  };
 }
 interface BtService {
   getCharacteristic(uuid: number | string): Promise<BtCharacteristic>;
@@ -82,28 +115,8 @@ const CM_MAX = 50_000;
 const inRange = (cm: number): boolean =>
   Number.isFinite(cm) && cm >= CM_MIN && cm <= CM_MAX;
 
-/**
- * Iz BLE notifikacije izlušči številko: najprej besedilo (ASCII,
- * "350", "3,50"), sicer surove bajte, ki mnogi moduli pošiljajo kot
- * mm v uint16/uint32 (little-endian) → /10 na cm. Razpon lovi klicatelj.
- */
-function parseLaserValue(dv: DataView): number | null {
-  try {
-    const text = new TextDecoder()
-      .decode(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength))
-      .trim();
-    const m = text.match(/\d+(?:[.,]\d+)?/);
-    if (m) {
-      const v = parseFloat(m[0].replace(',', '.'));
-      if (Number.isFinite(v)) return v;
-    }
-  } catch {
-    // brez berljivega besedila — poskusi surove bajte
-  }
-  if (dv.byteLength === 2) return dv.getUint16(0, true) / 10;
-  if (dv.byteLength === 4) return dv.getUint32(0, true) / 10;
-  return null;
-}
+/** Uint8Array iz številskega zaporedja (sprožitvena zaporedja protokolov). */
+const bytesOf = (...b: number[]): Uint8Array<ArrayBuffer> => new Uint8Array(b);
 
 export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
   // Detekcija zmožnosti (SSR-varna: navigator ne obstaja na strežniku)
@@ -120,27 +133,54 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
   const [manualCount, setManualCount] = useState(0); // lokalni števec izmerkov
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // ── Protokoli znanih modelov ──
+  const [modelId, setModelId] = useState<LaserModelId>('auto');
+  const [detectedModel, setDetectedModel] = useState<LaserModelId | null>(null);
+  // Samopreizkus razčlenjevalnikov (determinističen, 0 AI) — šele po
+  // mount-u, da strežniški in odjemalski prvi ris sta identična.
+  const [selfTest, setSelfTest] = useState<{ ok: number; all: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    const rows = protocolSelfTest();
+    setSelfTest({ ok: rows.filter((r) => r.ok).length, all: rows.length });
+  }, []);
+
+  // Učinkovit model: ročna izbira ima prednost, sicer prepoznana naprava,
+  // sicer samodejno (poskusi vse znane protokole po vrsti).
+  const effectiveModel: LaserModelId =
+    modelId !== 'auto' ? modelId : (detectedModel ?? 'auto');
+
   const deviceRef = useRef<BtDevice | null>(null);
   const charRef = useRef<BtCharacteristic | null>(null);
   const addRef = useRef(onAddMeasurement); // vedno najnovejši prop
+  const modelRef = useRef<LaserModelId>('auto'); // trenutni model za poslušalca
   const aliveRef = useRef(false); // zaščita pred setState po unmount
 
   useEffect(() => {
     addRef.current = onAddMeasurement;
   }, [onAddMeasurement]);
 
+  useEffect(() => {
+    modelRef.current = effectiveModel;
+  }, [effectiveModel]);
+
   // ── BLE: samodejni izmer iz notifikacije (stabilna identiteta) ──
   const handleNotify = useCallback((event: Event) => {
     if (!aliveRef.current) return;
     const dv = (event.target as { value?: DataView | null } | null)?.value;
     if (!dv) return;
-    const v = parseLaserValue(dv);
-    if (v === null) return;
-    const cm = Math.round(v * 10) / 10;
-    if (!inRange(cm)) return; // smiselni razpon 1–50.000 cm
-    setLastCm(cm);
-    setNote(null);
-    addRef.current('Laser', cm);
+    const res = parseLaserValue(dv, modelRef.current);
+    if (res === null) return; // neznan okvir — mirno ignoriramo
+    if (res.warning && res.cm === 0) {
+      // naprava je javila napako (npr. strojna napaka) — iskreno pokaži
+      setNote(res.warning);
+      return;
+    }
+    if (res.warning) setNote(res.warning);
+    else setNote(null);
+    setLastCm(res.cm); // razpon že preverjen v knjižnici (1–50.000 cm)
+    addRef.current('Laser', res.cm);
   }, []);
 
   // ── BLE: naprava se je sama odjavila ──
@@ -149,6 +189,7 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
     charRef.current = null;
     deviceRef.current = null;
     setDeviceName(null);
+    setDetectedModel(null);
     setInfo('Merilnik je bil odjavljen.');
   }, []);
 
@@ -186,6 +227,7 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
       // povezava že ne obstaja
     }
     setDeviceName(null);
+    setDetectedModel(null);
     setNote(null);
     setInfo('Merilnik je odjavljen.');
   }, [detachListeners]);
@@ -204,6 +246,32 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
       }
     };
   }, [detachListeners]);
+
+  // ── Best-effort pisanje sprožitvenega zaporedja (GLM 120 C) ──
+  const writeSequence = async (
+    char: BtCharacteristic,
+    seq: number[],
+  ): Promise<boolean> => {
+    const data = bytesOf(...seq);
+    try {
+      if (char.properties?.write && char.writeValue) {
+        await char.writeValue(data);
+        return true;
+      }
+      if (char.properties?.writeWithoutResponse && char.writeValueWithoutResponse) {
+        await char.writeValueWithoutResponse(data);
+        return true;
+      }
+      // lastnosti niso znane — poskusi writeValueWithoutResponse
+      if (char.writeValueWithoutResponse) {
+        await char.writeValueWithoutResponse(data);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
 
   // ── BLE: potek povezave ──
   const connectDevice = async (): Promise<void> => {
@@ -224,10 +292,14 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
       device.addEventListener('gattserverdisconnected', handleDisconnected);
       deviceRef.current = device;
       const server = await device.gatt.connect();
-      setDeviceName(device.name?.trim() || 'neznana naprava');
+      const name = device.name?.trim() || 'neznana naprava';
+      setDeviceName(name);
+      const detected = detectLaserModel(device.name);
+      setDetectedModel(detected === 'auto' ? null : detected);
 
       // Samodejni sprejem izmerkov: FFE0/FFE1, zasilno še FFF0/FFF1
       let autoReceive = false;
+      let flowMessage: string | null = null;
       for (const [serviceUuid, charUuid] of NOTIFY_CANDIDATES) {
         try {
           const service = await server.getPrimaryService(serviceUuid);
@@ -239,16 +311,44 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
           );
           charRef.current = characteristic;
           autoReceive = true;
+
+          // Bosch GLM 120 C: dokumentirano sprožitveno zaporedje
+          // (vir: laser-protocols.ts) — best-effort; če značka ne
+          // dovoljuje pisanja, uporabnik sproži na napravi.
+          const modelNow: LaserModelId | null =
+            modelId !== 'auto' ? modelId : detected === 'auto' ? null : detected;
+          if (modelNow === 'bosch-glm120') {
+            const w1 = await writeSequence(characteristic, GLM120_ENABLE_INDICATIONS);
+            const w2 = await writeSequence(characteristic, GLM120_INIT);
+            await writeSequence(characteristic, GLM120_MODE_DISTANCE);
+            await writeSequence(characteristic, GLM120_TRIGGER);
+            await writeSequence(characteristic, GLM120_TRIGGER);
+            flowMessage =
+              w1 || w2
+                ? 'GLM 120 C: poslano dokumentirano sprožitveno zaporedje — meritev sproži na napravi (dvakrat), sprejem je aktiven.'
+                : 'GLM 120 C: sprejem je aktiven — sproži meritev na napravi (dvakrat zaporedoma: priprava, nato izmer).';
+          } else if (modelNow === 'bosch-c0') {
+            const ok = await writeSequence(characteristic, BOSCH_C0_MEASURE);
+            flowMessage = ok
+              ? 'Bosch (C0 protokol): ukaz za meritev poslan — sprejem je aktiven.'
+              : 'Bosch (C0 protokol): sprejem je aktiven — sproži meritev na napravi.';
+          }
           break;
         } catch {
           // ta servis/značka ni na voljo — poskusi naslednjega
         }
       }
-      setInfo(
-        autoReceive
-          ? 'Samodejni sprejem izmerkov je aktiven — sproži meritev na napravi.'
-          : 'Povezava je vzpostavljena, ta model pa ne pošilja izmerkov prek znanega protokola — vpiši vrednost ročno spodaj.',
-      );
+      if (!autoReceive) {
+        flowMessage =
+          'Povezava je vzpostavljena, ta model pa ne pošilja izmerkov prek znanega protokola — vpiši vrednost ročno spodaj.';
+      } else if (flowMessage === null) {
+        flowMessage = 'Samodejni sprejem izmerkov je aktiven — sproži meritev na napravi.';
+      }
+      if (detected !== 'auto') {
+        const modelInfo = LASER_MODELS.find((m) => m.id === detected);
+        flowMessage = `${modelInfo ? `Prepoznan model: ${modelInfo.name}. ` : ''}${flowMessage}`;
+      }
+      setInfo(flowMessage);
     } catch (err) {
       detachListeners();
       try {
@@ -258,6 +358,7 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
       }
       deviceRef.current = null;
       setDeviceName(null);
+      setDetectedModel(null);
       if (err instanceof DOMException && err.name === 'NotFoundError') {
         setNote(
           'Iskanje naprave je preklicano — ne skrbi, izmer lahko vpišeš ročno spodaj.',
@@ -295,6 +396,11 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
     setManual('');
   };
 
+  const activeModelInfo = useMemo(
+    () => LASER_MODELS.find((m) => m.id === effectiveModel) ?? LASER_MODELS[0],
+    [effectiveModel],
+  );
+
   return (
     <div className="space-y-3 rounded-xl border p-4">
       {/* Glava */}
@@ -312,6 +418,71 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
             Povezano: {deviceName}
           </Badge>
         )}
+      </div>
+
+      {/* Samopreizkus protokolov (determinističen, 0 AI) */}
+      {mounted && selfTest && (
+        <p
+          className={`flex items-center gap-2 text-xs ${
+            selfTest.ok === selfTest.all
+              ? 'text-muted-foreground'
+              : 'text-amber-600'
+          }`}
+        >
+          {selfTest.ok === selfTest.all ? (
+            <ShieldCheck
+              className="h-3.5 w-3.5 shrink-0 text-green-600"
+              aria-hidden="true"
+            />
+          ) : (
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          )}
+          <span>
+            Protokoli znanih modelov: preverjenih{' '}
+            <strong>
+              {selfTest.ok}/{selfTest.all}
+            </strong>{' '}
+            fiksatur iz dokumentiranih zajemov
+          </span>
+        </p>
+      )}
+
+      {/* Izbira modela */}
+      <div className="space-y-1.5">
+        <label
+          htmlFor="laser-model"
+          className="text-sm font-medium"
+        >
+          Model merilnika
+        </label>
+        <Select
+          value={modelId}
+          onValueChange={(v) => setModelId(v as LaserModelId)}
+        >
+          <SelectTrigger
+            id="laser-model"
+            className="min-h-11 w-full"
+            aria-label="Model laserskega merilnika"
+          >
+            <SelectValue placeholder="Samodejno" />
+          </SelectTrigger>
+          <SelectContent>
+            {LASER_MODELS.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                {m.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {activeModelInfo.hint}
+          {modelId === 'auto' && detectedModel !== null && (
+            <>
+              {' '}
+              — prepoznano: <strong>{deviceName ?? 'naprava'}</strong>
+            </>
+          )}
+        </p>
       </div>
 
       {/* BLE povezava */}
@@ -430,11 +601,20 @@ export function LaserPanel({ onAddMeasurement }: LaserPanelProps) {
           {helpOpen ? 'Skrij pomoč' : 'Kako povežem merilnik?'}
         </button>
         {helpOpen && (
-          <p className="rounded-xl bg-secondary/50 p-3 text-sm text-muted-foreground">
-            Poveži Leica DISTO ali Bosch GLM prek Bluetootha. Če tvoj model ne
-            komunicira, izmeri z laserjem in vpiši vrednost tukaj — meritev gre
-            v isti seznam kot fotomeritve.
-          </p>
+          <div className="space-y-2 rounded-xl bg-secondary/50 p-3 text-sm text-muted-foreground">
+            <p>
+              Poveži Leica DISTO ali Bosch GLM prek Bluetootha. Za Bosch GLM
+              120 C aplikacija zna poslati dokumentirano sprožitveno
+              zaporedje; za GLM 50C/100C in PLR zna razbrati meritvene
+              odgovore (C0-protokol).
+            </p>
+            <p>
+              Če tvoj model ne komunicira, izmeri z laserjem in vpiši
+              vrednost tukaj — meritev gre v isti seznam kot fotomeritve.
+              Razčlenjevalniki znanih modelov so preverjeni proti
+              dokumentiranim zajemom (glej samopreizkus zgoraj).
+            </p>
+          </div>
         )}
       </div>
     </div>
