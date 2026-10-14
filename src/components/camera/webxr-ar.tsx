@@ -14,6 +14,12 @@ import type * as ThreeNs from 'three';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Box, Check, Info, Trash2, Undo2 } from 'lucide-react';
+import {
+  classifyDepth,
+  depthDiscrepancyM,
+  DEPTH_DISCREPANCY_WARN_M,
+  formatDepthM,
+} from '@/lib/ar-depth';
 import { formatCm } from '@/lib/measure-geometry';
 
 export interface WebXrArProps {
@@ -45,6 +51,10 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
   const [pendingSecond, setPendingSecond] = useState(false); // čaka se 2. točka
   const [surfaceVisible, setSurfaceVisible] = useState(false); // reticle viden?
   const [helpOpen, setHelpOpen] = useState(false);
+  // Globina (ARCore Depth API prek WebXR depth-sensing) — null = ni na voljo
+  const [depthM, setDepthM] = useState<number | null>(null);
+  const [hitDistM, setHitDistM] = useState<number | null>(null);
+  const [depthEnabled, setDepthEnabled] = useState(false); // seja poroča depth-sensing?
 
   // ── Refi (XR notranjosti + zaščita pred setState po unmount) ───
   const aliveRef = useRef(false);
@@ -63,6 +73,11 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
   const pendingDotRef = useRef<ThreeNs.Mesh | null>(null);
   const lineGroupsRef = useRef<ThreeNs.Object3D[][]>([]); // [točka A, daljica, točka B]
   const disposablesRef = useRef<Disposable[]>([]);
+  // Zadnje objavljene globinske vrednosti (epsilon varovalka — brez 60 fps setState)
+  const depthStateRef = useRef<{ depthM: number | null; hitDistM: number | null }>({
+    depthM: null,
+    hitDistM: null,
+  });
 
   // ── Čiščenje three virov (idempotentno, varno za klice večkrat) ──
   const handleSessionEnd = useCallback((): void => {
@@ -110,6 +125,10 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
       setLinesM([]);
       setSurfaceVisible(false);
       surfaceVisibleRef.current = false;
+      setDepthM(null);
+      setHitDistM(null);
+      setDepthEnabled(false);
+      depthStateRef.current = { depthM: null, hitDistM: null };
     }
   }, []);
 
@@ -225,12 +244,28 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
     try {
       session = await xr.requestSession('immersive-ar', {
         requiredFeatures: ['hit-test'],
-        optionalFeatures: ['dom-overlay', 'local-floor', 'anchors'],
+        // depth-sensing = ARCore Depth API prek WebXR — OPCIONALNO: brskalnik
+        // brez podpore ga mirno ignorira (spec: optional + neusklajena konfig.),
+        // hit-test merjenje ostane nespremenjeno (nič ne brisemo).
+        optionalFeatures: ['dom-overlay', 'local-floor', 'anchors', 'depth-sensing'],
+        // Spec zahteva depthSensing ključ, kadar je feature zahtevan — podamo
+        // vedno, da je zahteva veljavna, če jo naprava sprejme.
+        depthSensing: {
+          usagePreference: ['cpu-optimized'],
+          dataFormatPreference: ['luminance-alpha', 'float32'],
+        },
         domOverlay: { root: overlayRoot },
       });
       sessionRef.current = session;
       session.addEventListener('end', handleSessionEnd);
       setSessionActive(true); // prikaži canvas + DOM overlay
+      // Iskreno stanje: je depth-sensing res aktiven na tej napravi?
+      try {
+        const depthOn = session.depthUsage === 'cpu-optimized' && session.depthActive === true;
+        if (aliveRef.current) setDepthEnabled(depthOn);
+      } catch {
+        if (aliveRef.current) setDepthEnabled(false);
+      }
 
       // Dinamičen uvoz three — ŠELE zdaj, v odjemalcu
       const THREE = await import('three');
@@ -329,6 +364,41 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
       };
       session.addEventListener('select', onSelect);
 
+      // Globina v trenutnem kadru (ARCore Depth API) + razdalja do hit-test
+      // točke — oba podatka sta le iskren namig za monterja, ne popravljata
+      // meritev. Epsilon varovalka: setState samo ob spremembi > 1 cm.
+      const publishDepth = (frame: XRFrame, hitPose: XRPose | undefined): void => {
+        let depth: number | null = null;
+        try {
+          const viewerPose = frame.getViewerPose(refSpace);
+          const view = viewerPose?.views[0];
+          if (viewerPose && view) {
+            const di = frame.getDepthInformation(view);
+            if (di) depth = di.getDepthInMeters(0.5, 0.5); // sredina zaslona
+          }
+        } catch {
+          depth = null; // depth-sensing ni omogočen — mirno nadaljujemo brez
+        }
+        let hitDist: number | null = null;
+        if (hitPose) {
+          const t = hitPose.transform.position;
+          hitDist = Math.hypot(t.x, t.y, t.z);
+        }
+        const prev = depthStateRef.current;
+        const eps = 0.01; // 1 cm — pod tem ne osvežujemo UI
+        const changedD = (prev.depthM === null) !== (depth === null) ||
+          (depth !== null && prev.depthM !== null && Math.abs(depth - prev.depthM) > eps);
+        const changedH = (prev.hitDistM === null) !== (hitDist === null) ||
+          (hitDist !== null && prev.hitDistM !== null && Math.abs(hitDist - prev.hitDistM) > eps);
+        if (changedD || changedH) {
+          depthStateRef.current = { depthM: depth, hitDistM: hitDist };
+          if (aliveRef.current) {
+            setDepthM(depth);
+            setHitDistM(hitDist);
+          }
+        }
+      };
+
       // Zanka izrisovanja: hit-test → reticle + izris
       renderer.setAnimationLoop((_time, frame) => {
         const currentReticle = reticleRef.current;
@@ -347,6 +417,7 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
             surfaceVisibleRef.current = visible;
             setSurfaceVisible(visible);
           }
+          publishDepth(frame, hitPose);
         }
         renderer.render(scene, camera);
       });
@@ -383,6 +454,10 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
       ? 'Tapni končno točko daljice.'
       : 'Tapni začetno točko daljice.';
   const canUndoOrClear = pendingSecond || linesM.length > 0;
+  // Iskreni globinski namigi (ARCore Depth API) — čisto prikazni, ne popravljajo meritev
+  const depthGuidance = classifyDepth(depthM);
+  const discrepancy = depthDiscrepancyM(hitDistM, depthM);
+  const showDiscrepancy = discrepancy !== null && discrepancy > DEPTH_DISCREPANCY_WARN_M;
 
   return (
     <>
@@ -470,7 +545,10 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
               Premikaj telefon počasi po prostoru, dokler jantarni krog ne zazna
               površine. Tapni začetno in končno točko daljice — razdalja v pravih
               metrih se izračuna samodejno. Ob zaključku se meritve dodajo v seznam
-              meritev kamere, od koder jih lahko pošlješ v kalkulator.
+              meritev kamere, od koder jih lahko pošlješ v kalkulator. Če naprava
+              podpira ARCore Depth API, vidiš še živo globino do površine — najbolj
+              zanesljiva je v pasu 0,5–5 m. Brez Depth API merjenje deluje enako,
+              le globine ni.
             </p>
           )}
         </div>
@@ -512,6 +590,22 @@ export function WebXrAr({ onAddMeasure, disabled = false }: WebXrArProps): JSX.E
               </span>
             </div>
             <p className="mt-1 text-xs text-stone-300">{hint}</p>
+            {/* Globina (ARCore Depth API) — samo kadar naprava poroča depth */}
+            {depthEnabled && depthGuidance && (
+              <div className="mt-1.5 border-t border-white/20 pt-1.5">
+                <p
+                  className={`text-xs font-medium ${depthGuidance.tone === 'ok' ? 'text-green-300' : 'text-amber-300'}`}
+                  role="status"
+                >
+                  Globina {depthGuidance.label} · {depthGuidance.note}
+                </p>
+                {showDiscrepancy && discrepancy !== null && (
+                  <p className="mt-0.5 text-xs text-amber-300" role="alert">
+                    Preveri meritev — točka na zaslonu in globina se razlikujeta ({formatDepthM(discrepancy)}).
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
