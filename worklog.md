@@ -972,3 +972,25 @@ Stage Summary:
 - Ključni artefakti: src/lib/room-sketch.ts, tests/verify/room-sketch.ts (48/48), src/components/camera/room-sketch.tsx, camera-view.tsx (integracija), docs/MEASUREMENT-BASELINE.md (§2.2, §5).
 - Odločitev iz raziskave: razrezni optimizator/ostanki/merilni list/računi že obstajajo — podvojitev izognjena; namesto tega zgrajena edina velika manjkajoča konkurenčna funkcija.
 - Naslednje po prednosti: (1) Faza 7 — protokol »test natančnosti« (uporabniški nabor: fotka + znane mere + izmerjene → median/P95 napake, iskrena statistika); (2) SfM > 2 fotk (Faza 3 nadgradnja); (3) merilni list + skica prostora skupaj v enem PDF poročilu.
+
+---
+Task ID: 39
+Agent: main (Z.ai Code)
+Task: Nadaljevanje (uporabnik: »odlicno nadaljuj«) — naslednja prednostna postavka po baseline dokumentu: FAZA 7 — protokol »Test natančnosti« (orodje za neodvisen preizkus natančnosti merilnega sistema na realnem objektu).
+
+Work Log:
+- Preveril stanje: HEAD a0e50f4/e910fac (Task 38 skica prostora); baseline §4 izrecno: »številke o napaki NISO merjene — potreben referenčni nabor + preizkus na objektu«. Zgrajeno orodje, ki to omogoča (same izvedbe na objektu ne morem — to ostaja monterjeva naloga).
+- NOVO src/lib/accuracy-test.ts (0 AI, deterministično): AccuracyEntry {label, method (6 metod: foto-mera/skica-prostora/večpogled/AR/laser/ročno), trueCm, measuredCm, recordedAt}; entryError (abs cm + relativni % na resnico; resnica 0 → Inf + ne DA); aggregateStats — mediana, povprečje, P95 z linearno interpolacijo (percentile: idx=(n−1)·p), max, passRate; POGODBA: n < 5 → verdict 'nezadostno' (brez trditev — skladno z iskrenostno pogodbo baseline §6); sodbe: nezadostno / potrebna-izboljšava (mediana nad toleranco) / osnovno (mediana v, P95 nad) / zanesljivo (oboje pod) — vsaka s slovenskim namigom za monterja; statsToCsv (BOM, ; ločilo, decimalna vejica, ;→, v oznakah) + downloadAccuracyCsv.
+- NOVO tests/verify/accuracy-test.ts — 35/35 z ročno izračunano resnico: napaka (200→201 = 1 cm/0,5 %; resnica 0 → Inf), mediana/P95 interpolacija ([0,5..2,5] % → P95 2,4 %; 20 meritev 0–1,9 % → P95 1,805 %, mediana 0,95 %), vse 4 sodbe + prag 5 meritev, passRate (0,4; 0,83), CSV (BOM, glava, ; zamenjava, DA/NE, vejica), prazen nabor. Med razvojem: 3 testne napake moje aritmetike (|202−200|=2 ne 1) — popravljene pričakovanja, knjižnica pravilna.
+- NOVO src/components/camera/accuracy-test.tsx ('use client'): obrazec (oznaka, metoda Select, toleranca ± % privzeto 2, resnica, izmerjeno), hitri vnos »Iz zadnje meritve: {label} ({formatCm})« iz aux meritev (laser/glas/AR), zapiski v localStorage (ključ accuracy-test-entries, do 100) z asinhrono mejo ob nalaganju (pravilo react-hooks/set-state-in-effect — foto-replace vzorec ni več dovoljen), sodba barvno (stone/destructive/amber/green) + namig, statistika 5 kartic (n/mediana/P95/najslabša/v toleranci — formatNum sl-SI vejica), seznam zapisov (max-h-96 scroll, zeleno/rujeno po toleranci, brisanje), izvoz CSV + čiščenje z AlertDialog (pot preklica ohrani podatke), aria-labeli, min-h-11, topla tema.
+- Integracija: camera-view.tsx zavihek »Pripomočki« — nov Card z AccuracyTest (za Skico prostora).
+- E2E z agent-browser (dokazano deluje): 3 zapiski → »Premalo meritev (3/5)« ✓; +2 (zadnji 2,4 %) → »Mediana v toleranci, izstopajoči primeri« z namigom P95 2,2 % (ujema se z ročnim računom) ✓; reload → obstojnost (6 zapiskov, sodba ostane) ✓; laser izmer 183 → hitri vnos → 6. zapis ✓; dialog Počisti vse → Prekliči → 6 zapiskov ohranjenih ✓; namizje 1280 + mobilni 390×844 brez h-drsenja, konzola čista ✓; posnetki tests/e2e-accuracy-*.png.
+- Regresija: accuracy-test 35/35 + vse prejšnje suite = 755 testov zelena; tsc čist (src), eslint čist, dev.log brez napak.
+- Baseline doc: §2.2 nova vrstica »Protokol testa natančnosti (Faza 7 orodje)« z dokazi; §4 Faza 7 vrstica posodobljena (orodje obstaja — ostaja ≥ 5 parov na metodo z monterjem na objektu → zabeleži median/P95); §5 +accuracy-test 35/35.
+- Commit: 09071fe.
+
+Stage Summary:
+- Faza 7 ima zdaj ORODJE: kamera → Pripomočki → Test natančnosti — monter na objektu zapiše pare (trak = resnica, aplikacija = izmerjeno), aplikacija iskreno poroča (mediana/P95/sodba) in izvozi CSV. Nič ne trdi pod 5 meritvami.
+- Ključni artefakti: src/lib/accuracy-test.ts, tests/verify/accuracy-test.ts (35/35), src/components/camera/accuracy-test.tsx, camera-view.tsx (integracija), docs/MEASUREMENT-BASELINE.md (§2.2/§4/§5).
+- Odprto (za uporabnika/monterja): izvesti realni preizkus na objektu in zabeležiti številke v baseline — tega ne morem simulirati sam.
+- Naslednje po prednosti: (1) SfM > 2 fotk (Faza 3 nadgradnja — veriženje parov + globalna merila); (2) skica prostora + merilni list skupaj v enem PDF poročilu; (3) laser protokoli za znane modele (Leica DISTO/Bosch GLM specifika).
