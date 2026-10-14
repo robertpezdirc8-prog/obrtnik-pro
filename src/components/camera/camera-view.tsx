@@ -57,6 +57,7 @@ import { VizPanel } from './viz-panel';
 import { FotoReplace } from './foto-replace';
 import { MultiView } from './multiview';
 import { RoomSketch } from './room-sketch';
+import { AccuracyTest } from './accuracy-test';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
 import type { VizBarSuggest } from '@/lib/bar-count';
@@ -1193,6 +1194,13 @@ export function CameraView() {
                   setView('kalkulatorji');
                 }}
               />
+            </CardContent>
+          </Card>
+
+          {/* Test natančnosti — protokol Faza 7: znana dolžina vs. izmerjena → iskrena statistika napak */}
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <AccuracyTest auxMeasures={auxMeasures} />
             </CardContent>
           </Card>
 
