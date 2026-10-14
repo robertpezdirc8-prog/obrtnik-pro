@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
-  FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy,
+  Check, FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy,
   MessageCircle, FilePlus2, FileCheck2, Receipt,
 } from 'lucide-react';
 import { formatDate, formatEUR, formatNum, STATUS_LABELS } from '@/lib/format';
@@ -30,6 +30,12 @@ import {
   formatFollowUpRelative,
   suggestFollowUpIso,
 } from '@/lib/offer-pipeline';
+import {
+  dunningLevel,
+  formatDueRelative,
+  paymentStatus,
+  type PaymentInvoice,
+} from '@/lib/payment-tracking';
 import { openOfferPDF, openHandoverPrint, openInvoicePDF } from '@/lib/pdf';
 import { validUntil } from '@/lib/pdf';
 import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
@@ -415,12 +421,26 @@ export function OffersList() {
                             {changeOrders.length} {changeOrders.length === 1 ? 'dodatno delo' : 'dodatni deli'}
                           </Badge>
                         )}
-                        {(invoicesByOffer.get(offer.id) ?? []).map((inv) => (
-                          <Badge key={inv.id} variant="outline" className="border-sky-600/40 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300" data-testid={`invoice-badge-${inv.number}`}>
-                            <Receipt className="mr-1 h-3 w-3" />
-                            Račun {inv.number}
-                          </Badge>
-                        ))}
+                        {(invoicesByOffer.get(offer.id) ?? []).map((inv) => {
+                          const info = paymentStatus(inv as unknown as PaymentInvoice, new Date());
+                          return (
+                            <Badge
+                              key={inv.id}
+                              variant="outline"
+                              className={
+                                info.status === 'paid'
+                                  ? 'border-emerald-600/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : info.status === 'overdue'
+                                    ? 'border-red-500/50 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'
+                                    : 'border-sky-600/40 bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
+                              }
+                              data-testid={`invoice-badge-${inv.number}`}
+                            >
+                              <Receipt className="mr-1 h-3 w-3" />
+                              Račun {inv.number} · {formatDueRelative(info, new Date())}
+                            </Badge>
+                          );
+                        })}
                       </div>
                       <p className="text-sm truncate">{offer.customerName}</p>
                       <p className="text-xs text-muted-foreground">
@@ -770,28 +790,90 @@ export function OffersList() {
                 {(invoicesByOffer.get(invoiceOffer.id) ?? []).length > 0 && (
                   <div className="rounded-lg border bg-secondary/40 p-2.5 space-y-1.5" data-testid="invoice-list">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Izdani računi</p>
-                    {(invoicesByOffer.get(invoiceOffer.id) ?? []).map((inv) => (
-                      <div key={inv.id} className="flex items-center justify-between gap-2 text-sm">
-                        <div className="min-w-0">
-                          <span className="font-medium">{inv.number}</span>{' '}
-                          <span className="text-xs text-muted-foreground">{formatDate(inv.createdAt)}</span>
+                    {(invoicesByOffer.get(invoiceOffer.id) ?? []).map((inv) => {
+                      const info = paymentStatus(inv as unknown as PaymentInvoice, new Date());
+                      const dun = dunningLevel(inv as unknown as PaymentInvoice, new Date());
+                      return (
+                        <div key={inv.id} className="flex items-center justify-between gap-2 text-sm">
+                          <div className="min-w-0">
+                            <span className="font-medium">{inv.number}</span>{' '}
+                            <span className="text-xs text-muted-foreground">{formatDate(inv.createdAt)}</span>
+                            <p className="text-xs flex items-center gap-1">
+                              <span
+                                className={
+                                  info.status === 'paid'
+                                    ? 'text-emerald-700 dark:text-emerald-300 font-medium'
+                                    : info.status === 'overdue'
+                                      ? 'text-red-700 dark:text-red-300 font-medium'
+                                      : 'text-amber-700 dark:text-amber-300 font-medium'
+                                }
+                              >
+                                {dun.label !== 'Plačano' && dun.level > 0 ? `${dun.label} · ` : ''}
+                                {formatDueRelative(info, new Date())}
+                              </span>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-xs font-semibold">{formatEUR(inv.total)}</span>
+                            {info.status !== 'paid' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 min-h-7 px-2 text-xs border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300"
+                                aria-label={`Označi račun ${inv.number} kot plačan`}
+                                data-testid={`invoice-pay-${inv.number}`}
+                                onClick={async () => {
+                                  const res = await fetch(`/api/invoices/${inv.id}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ paidAt: new Date().toISOString() }),
+                                  });
+                                  if (res.ok) {
+                                    const data = await res.json();
+                                    setInvoices((prev) => prev.map((x) => (x.id === inv.id ? (data.invoice as InvoiceDTO) : x)));
+                                  }
+                                }}
+                              >
+                                <Check className="mr-1 h-3 w-3" />
+                                Plačano
+                              </Button>
+                            )}
+                            {info.status === 'paid' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 min-h-7 px-2 text-xs"
+                                aria-label={`Razveljavi plačilo računa ${inv.number}`}
+                                onClick={async () => {
+                                  const res = await fetch(`/api/invoices/${inv.id}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ paidAt: null }),
+                                  });
+                                  if (res.ok) {
+                                    const data = await res.json();
+                                    setInvoices((prev) => prev.map((x) => (x.id === inv.id ? (data.invoice as InvoiceDTO) : x)));
+                                  }
+                                }}
+                              >
+                                Razveljavi
+                              </Button>
+                            )}
+                            {settings && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label={`Odpri račun ${inv.number} za tiskanje`}
+                                onClick={() => openInvoicePDF(inv, invoiceOffer, settings)}
+                              >
+                                <FileDown className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-xs font-semibold">{formatEUR(inv.total)}</span>
-                          {settings && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              aria-label={`Odpri račun ${inv.number} za tiskanje`}
-                              onClick={() => openInvoicePDF(inv, invoiceOffer, settings)}
-                            >
-                              <FileDown className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 <Button

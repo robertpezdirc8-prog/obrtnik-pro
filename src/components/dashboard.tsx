@@ -4,10 +4,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, BellRing, Check, ClipboardList, Euro, FileCheck2, Hammer, ScanSearch, X } from 'lucide-react';
+import { ArrowRight, Banknote, BellRing, Check, ClipboardList, Euro, FileCheck2, Hammer, ScanSearch, X } from 'lucide-react';
 import { CRAFTS } from '@/lib/crafts-meta';
 import { useDraft, useView } from '@/lib/store';
 import { formatDate, formatEUR, STATUS_LABELS } from '@/lib/format';
+import {
+  actionableInvoices,
+  computeReceivables,
+  dunningLevel,
+  formatDueRelative,
+  suggestDueIso,
+  type PaymentInvoice,
+} from '@/lib/payment-tracking';
 import {
   computePipelineStats,
   dueFollowUps,
@@ -17,19 +25,24 @@ import {
   type PipelineOffer,
 } from '@/lib/offer-pipeline';
 import { CraftImage } from './craft-image';
-import type { OfferDTO } from '@/lib/types';
+import type { InvoiceDTO, OfferDTO } from '@/lib/types';
 
 export function Dashboard() {
   const setView = useView((s) => s.setView);
   const setActiveCraft = useView((s) => s.setActiveCraft);
   const draftCount = useDraft((s) => s.items.length);
   const [offers, setOffers] = useState<OfferDTO[] | null>(null);
+  const [invoices, setInvoices] = useState<InvoiceDTO[] | null>(null);
 
   const load = useCallback(() => {
     fetch('/api/offers')
       .then((r) => r.json())
       .then((d) => setOffers(d.offers ?? []))
       .catch(() => setOffers([]));
+    fetch('/api/invoices')
+      .then((r) => r.json())
+      .then((d) => setInvoices(d.invoices ?? []))
+      .catch(() => setInvoices([]));
   }, []);
 
   useEffect(() => {
@@ -40,6 +53,20 @@ export function Dashboard() {
   const accepted = (offers ?? []).filter((o) => o.status === 'accepted').length;
   const stats = offers ? computePipelineStats(offers) : null;
   const due = offers ? dueFollowUps(offers, new Date()).slice(0, 4) : [];
+
+  // Terjatve — InvoiceDTO je strukturno PaymentInvoice (žigi dodeljuje strežnik)
+  const receivables = invoices ? computeReceivables(invoices as unknown as PaymentInvoice[], new Date()) : null;
+  const payDue = invoices ? actionableInvoices(invoices as unknown as PaymentInvoice[], new Date()).slice(0, 4) : [];
+
+  /** Hitra akcija na računu (plačilo ali premik roka). */
+  const patchInvoice = async (id: string, body: Record<string, unknown>) => {
+    const res = await fetch(`/api/invoices/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) load();
+  };
 
   /** Hitra akcija na ponudbi iz opomnika (status ali premik opomnika). */
   const patchOffer = async (id: string, body: Record<string, unknown>) => {
@@ -212,6 +239,140 @@ export function Dashboard() {
                       </div>
                     </li>
                   ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Terjatve — odprto/zapadlo/ta mesec + opomniki plačil (Mahnwesen) */}
+      <section aria-label="Terjatve" className="rounded-2xl border bg-card">
+        <div className="flex flex-col gap-1 p-4 pb-3 sm:flex-row sm:items-center sm:justify-between sm:p-6 sm:pb-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Terjatve</h2>
+            <p className="text-sm text-muted-foreground">
+              Kaj je neplačano, kaj zapadlo in kdaj pošteno poslati opomnik.
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setView('ponudbe')}>
+            Računi v ponudbah <ArrowRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+
+        {invoices === null || receivables === null ? (
+          <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-2">
+            <Skeleton className="h-14 w-full rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-xl" />
+          </div>
+        ) : (
+          <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" data-testid="receivables-chips">
+                <FunnelChip
+                  label="Odprto"
+                  value={receivables.counts.unpaid}
+                  hint={formatEUR(receivables.outstandingTotal)}
+                />
+                <FunnelChip
+                  label="Zapadle"
+                  value={receivables.counts.overdue}
+                  hint={
+                    receivables.worstOverdueDays !== null
+                      ? `najdaljša ${receivables.worstOverdueDays} dni · ${formatEUR(receivables.overdueTotal)}`
+                      : 'nič zapadlega'
+                  }
+                  tone={receivables.counts.overdue > 0 ? 'bad' : undefined}
+                />
+                <FunnelChip
+                  label="Plačano ta mesec"
+                  hint={formatEUR(receivables.paidThisMonthTotal)}
+                  value={receivables.counts.paid}
+                  tone="good"
+                />
+              </div>
+              <div className="rounded-xl border bg-secondary/40 p-3 sm:min-w-44" data-testid="avg-payment">
+                <p className="text-xs text-muted-foreground mb-1">Povprečno plačilo</p>
+                {receivables.avgDaysToPay === null ? (
+                  <p
+                    className="text-sm font-medium text-muted-foreground"
+                    title={`Iskreno: manj kot ${3} plačanih računov je premalo za povprečje.`}
+                  >
+                    — <span className="text-xs">premalo podatkov</span>
+                  </p>
+                ) : (
+                  <p className="text-2xl font-bold text-primary leading-none">
+                    {receivables.avgDaysToPay.toLocaleString('sl-SI', { maximumFractionDigits: 1 })}
+                    <span className="ml-1 text-sm font-normal text-muted-foreground">dni</span>
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">od izdaje do plačila</p>
+              </div>
+            </div>
+
+            {/* Opomniki plačil (zapadle + rok se izteka) */}
+            <div>
+              <p className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                <Banknote className="h-4 w-4 text-amber-600" />
+                Za plačilo / opomnik
+              </p>
+              {payDue.length === 0 ? (
+                <p className="text-sm text-muted-foreground rounded-xl border border-dashed p-3">
+                  Nič zapadlega, rok se ne izteka — terjatve pod nadzorom.
+                </p>
+              ) : (
+                <ul className="space-y-2" data-testid="payment-due-list">
+                  {payDue.map(({ inv, info }) => {
+                    const dun = dunningLevel(inv, new Date());
+                    return (
+                      <li
+                        key={inv.id}
+                        className="flex flex-col gap-2 rounded-xl border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">
+                            {inv.customerName}
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">{inv.number}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                            <Badge
+                              variant="outline"
+                              className={
+                                dun.level === 0
+                                  ? 'border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300 px-1.5 py-0'
+                                  : dun.level === 1
+                                    ? 'border-amber-500/60 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200 px-1.5 py-0'
+                                    : 'border-red-500/50 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 px-1.5 py-0'
+                              }
+                            >
+                              {dun.label}
+                            </Badge>
+                            {formatDueRelative(info, new Date())} · {formatEUR(inv.total)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="min-h-9 h-9 border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300"
+                            data-testid={`pay-done-${inv.number}`}
+                            onClick={() => patchInvoice(inv.id, { paidAt: new Date().toISOString() })}
+                          >
+                            <Check className="mr-1 h-3.5 w-3.5" />
+                            Plačano
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="min-h-9 h-9 text-xs"
+                            onClick={() => patchInvoice(inv.id, { dueAt: suggestDueIso(new Date(), 7) })}
+                          >
+                            +7 dni rok
+                          </Button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

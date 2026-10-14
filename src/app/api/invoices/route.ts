@@ -7,6 +7,10 @@ import { ensureSeeded } from '@/lib/seed';
 // workflow je »estimate converts directly to invoice« — sprejeta
 // ponudba je komercialna osnova računa. Številčenje je
 // deterministično in strežniško: RAC-LETO-NNN.
+// Task 44: žigi plačil (dueAt/paidAt) dodeljuje STREŽNIK — klient
+// ne more izmisliti zgodovine plačil (isti vzorec kot pri ponudbah).
+
+import { DEFAULT_DUE_DAYS } from '@/lib/payment-tracking';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -28,6 +32,8 @@ export async function GET() {
         vatRate: i.vatRate,
         vatAmount: i.vatAmount,
         total: i.total,
+        dueAt: i.dueAt ? i.dueAt.toISOString() : null,
+        paidAt: i.paidAt ? i.paidAt.toISOString() : null,
         createdAt: i.createdAt.toISOString(),
       })),
     });
@@ -64,6 +70,10 @@ export async function POST(req: NextRequest) {
     });
     const number = `RAC-${year}-${String(count + 1).padStart(3, '0')}`;
 
+    // Privzeti rok: DEFAULT_DUE_DAYS od izdaje (dodeli strežnik).
+    const due = new Date();
+    due.setDate(due.getDate() + DEFAULT_DUE_DAYS);
+
     const invoice = await db.invoice.create({
       data: {
         number,
@@ -73,6 +83,7 @@ export async function POST(req: NextRequest) {
         vatRate: offer.vatRate,
         vatAmount: r2(offer.vatAmount),
         total: r2(offer.total),
+        dueAt: due,
       },
     });
 
@@ -87,6 +98,8 @@ export async function POST(req: NextRequest) {
         vatRate: invoice.vatRate,
         vatAmount: invoice.vatAmount,
         total: invoice.total,
+        dueAt: invoice.dueAt ? invoice.dueAt.toISOString() : null,
+        paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
         createdAt: invoice.createdAt.toISOString(),
       },
     });

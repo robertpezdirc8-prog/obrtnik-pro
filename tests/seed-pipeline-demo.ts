@@ -16,7 +16,7 @@ async function main() {
   const offers = await db.offer.findMany({ orderBy: { number: 'asc' } });
   const byCustomer = (name: string) => offers.find((o) => o.customerName.startsWith(name));
 
-  const plan: Array<[string, string, Date?, Date?, Date?]> = [
+  const plan: Array<[string, string, Date | null, Date | null, Date | null]> = [
     // [ime, status, sentAt, decidedAt, followUpAt]
     ['Marija', 'sent', ago(10), null, null],
     ['Jože', 'accepted', ago(9), ago(4), null],

@@ -73,6 +73,10 @@ export interface InvoiceDTO {
   vatRate: number;
   vatAmount: number;
   total: number;
+  /** Rok plačila (ISO) — null = privzeti 30 dni od izdaje. */
+  dueAt: string | null;
+  /** Kdaj plačano (ISO) — null = neplačan. */
+  paidAt: string | null;
   createdAt: string;
 }
 

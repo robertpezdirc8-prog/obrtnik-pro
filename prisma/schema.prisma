@@ -64,16 +64,20 @@ model Offer {
 // ─── Računi (iz sprejete ponudbe) ───────────────────────
 
 model Invoice {
-  id           String   @id @default(cuid())
-  number       String   @unique
+  id           String    @id @default(cuid())
+  number       String    @unique
   offerId      String
-  offer        Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  offer        Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade)
   customerName String
   subtotal     Float
   vatRate      Float
   vatAmount    Float
   total        Float
-  createdAt    DateTime @default(now())
+  /// Rok plačila — null pomeni privzeti rok 30 dni od izdaje (izračuna knjižnica).
+  dueAt        DateTime?
+  /// Kdaj je račun plačan — null = neplačan (izhodišče za terjatve + Mahnwesen).
+  paidAt       DateTime?
+  createdAt    DateTime  @default(now())
 }
 
 model OfferItem {
