@@ -178,8 +178,9 @@ function orderDesc(values: number[]): number[] {
  * Posamezni vektorji so skladni po konstrukciji: u_i = m·v_i / s_i, zato
  * razveljaven tudi pri ponovljenih singularnih vrednostih.
  * Vrne U (stolpci), s padajoče, V (stolpci); m = U·diag(s)·Vᵀ.
+ * (Izvoženo za Umeyamovo podobnostno transformacijo v multiview-chain.ts.)
  */
-function svd3(m: number[]): { U: [number, number, number][]; s: number[]; V: [number, number, number][] } | null {
+export function svd3(m: number[]): { U: [number, number, number][]; s: number[]; V: [number, number, number][] } | null {
   if (!allFinite(m)) return null;
   // G = mᵀ·m (simetrična)
   const G: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];

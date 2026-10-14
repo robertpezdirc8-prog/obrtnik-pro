@@ -1,7 +1,7 @@
 'use client';
 
-// ─── Večpogled — klasična fotogrametrija iz dveh fotk (Faza 3, Task 37-b) ──
-// Voden tok v 5 korakih nad PAROM fotografij:
+// ─── Večpogled — klasična fotogrametrija iz 2–3 fotk (Faza 3, Task 37-b/42) ──
+// Voden tok v 6 korakih:
 //  1. Dve fotki — nalaganje (delovni kopiji ≤ 1024 px, JPEG 0,85, EXIF-varno
 //     prek createImageBitmap 'from-image') + izbira načina fokusa kamere
 //     (selfcal / preset / known) z izrecno razlago pričakovanega statusa mere.
@@ -12,19 +12,23 @@
 //     + znana dolžina v cm → measureFromPair → statusna pogodba (validateMultiView).
 //  4. Meritve — dodatni kliki → 3D razdalje verige (sosednji pari) + vsa
 //     opozorila jedra (vključno s skoraj ravninsko sceno) + ponastavitev.
-//  5. Izvoz — JSON poročilo s provenance in trajnim žigom "pomožna meritev".
+//  5. Tretja fotka (OPCIJSKO, Task 42) — fotka C + povezave B–C → veriga parov
+//     (multiview-chain.ts): prenos merila prek skupnih točk (Umeyama 1991).
+//     mode 'full' = združen oblak v okviru kamere A → razdalje tudi ČEZ VOGAL
+//     (klik na A se lahko poveže s klikom na C); mode 'scale' = samo merilo.
+//  6. Izvoz — JSON poročilo s provenance in trajnim žigom "pomožna meritev".
 //
 // 0 AI / 0 omrežij / 0 novih odvisnosti — samo deterministična geometrija
-// (RANSAC vzorčenje prek lcg(42)). Iskrenost: vsak neuspeh je ekspliciten
-// (NEZADOSTNI PODATKI … / code + opozorila v slovenščini), nič skritih
-// privzetkov; izvoz je VEDNO označen kot pomožna meritev.
+// (RANSAC vzorčenje prek lcg(42)/lcg(4242)). Iskrenost: vsak neuspeh je
+// ekspliciten (NEZADOSTNI PODATKI … / code + opozorila v slovenščini), nič
+// skritih privzetkov; izvoz je VEDNO označen kot pomožna meritev.
 // localStorage ni uporabljen (to je merilno orodje, ne galerija različic).
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Download, Link2, RotateCcw, Upload } from 'lucide-react';
+import { Download, GitMerge, Link2, RotateCcw, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { fnv1aHash, type ImgData, type XY } from '@/lib/photo-replace-core';
 import {
@@ -41,6 +45,12 @@ import {
   type MVMatch,
   type PairMeasureResult,
 } from '@/lib/multiview-core';
+import {
+  measureFromChain,
+  type ChainCrossQuery,
+  type ChainMeasureResult,
+  type ChainQuery,
+} from '@/lib/multiview-chain';
 import {
   MAX_MULTIVIEW_RESIDUAL_PX,
   MIN_MULTIVIEW_INLIERS,
@@ -93,15 +103,36 @@ interface FindState {
   meanResidualPx: number;
   cornersA: Corner[];
   cornersB: Corner[];
+  descB: (Float64Array | null)[]; // za ponovno uporabo pri paru B–C (korak 5)
   grayA: Float64Array;
   grayB: Float64Array;
   sizeA: { width: number; height: number };
   sizeB: { width: number; height: number };
 }
 
+/**
+ * Stanje povezav par B–C (korak 5): samo ujemanja + kornerska/prostorska
+ * sredstva fotke C. Fundamentalna matrika se NE računa tu — to stori
+ * measureFromChain iz polnih pts tabel (deterministično, lcg(4242)).
+ */
+interface CFindState {
+  matches: MVMatch[]; // ai = kornerski indeks na B (isti prostor kot FindState.cornersB)
+  cornersC: Corner[];
+  grayC: Float64Array;
+  sizeC: { width: number; height: number };
+  ptsB2Base: XY[]; // bazni pari (fotka B)
+  ptsCBase: XY[];  // bazni pari (fotka C)
+}
+
 /** Kliknjena točka: položaj na fotki A + samodejna korespondenca na fotki B. */
 interface ClickedPoint {
   a: XY;
+  b: XY;
+}
+
+/** Kliknjena točka na fotki C + samodejna korespondenca na fotki B (korak 5). */
+interface CClickedPoint {
+  c: XY;
   b: XY;
 }
 
@@ -229,9 +260,9 @@ function MvStage({
   alt: string;
 }) {
   return (
-    <div className="flex justify-center">
+    <div className="flex min-w-0 justify-center">
       <div
-        className={`relative select-none overflow-hidden rounded-lg border bg-stone-100 ${clickable ? 'cursor-crosshair' : ''}`}
+        className={`relative min-w-0 select-none overflow-hidden rounded-lg border bg-stone-100 ${clickable ? 'cursor-crosshair' : ''}`}
         onClick={onClick}
         data-testid={testid}
       >
@@ -289,11 +320,22 @@ export function MultiView() {
   const [result, setResult] = useState<PairMeasureResult | null>(null);
   const [busyMeasure, setBusyMeasure] = useState(false);
 
+  // ── Korak 5: tretja fotka (veriga) ──
+  const [photoC, setPhotoC] = useState<MvPhoto | null>(null);
+  const [uploadingC, setUploadingC] = useState(false);
+  const fileCRef = useRef<HTMLInputElement>(null);
+  const [cFind, setCFind] = useState<CFindState | null>(null);
+  const [busyChain, setBusyChain] = useState(false);
+  const [chainResult, setChainResult] = useState<ChainMeasureResult | null>(null);
+  const [cExtraPts, setCExtraPts] = useState<CClickedPoint[]>([]);
+  const [chainError, setChainError] = useState<string | null>(null);
+
   // Zrcali seq za hitre zaporedne klike (dva klika v istem tiku ne smeta izgubiti točke).
   const refPtsRef = useRef<ClickedPoint[]>([]);
   const extraPtsRef = useRef<ClickedPoint[]>([]);
+  const cExtraPtsRef = useRef<CClickedPoint[]>([]);
 
-  const busy = busyFind || busyRef || busyMeasure;
+  const busy = busyFind || busyRef || busyMeasure || busyChain || uploadingC;
 
   const refCmVal = useMemo<number | null>(() => {
     const v = Number(refCm.replace(',', '.'));
@@ -344,10 +386,16 @@ export function MultiView() {
   const resetRefFlow = useCallback(() => {
     refPtsRef.current = [];
     extraPtsRef.current = [];
+    cExtraPtsRef.current = [];
     setRefPts([]);
     setExtraPts([]);
     setResult(null);
     setRefConfirmed(false);
+    // veriga (korak 5) je odvisna od vsega zgoraj — izčisto
+    setCFind(null);
+    setChainResult(null);
+    setCExtraPts([]);
+    setChainError(null);
   }, []);
 
   // ── Nalaganje fotk (korak 1) ──
@@ -434,6 +482,7 @@ export function MultiView() {
           meanResidualPx: fr.meanResidualPx,
           cornersA,
           cornersB,
+          descB,
           grayA,
           grayB,
           sizeA: { width: photoA.w, height: photoA.h },
@@ -552,6 +601,13 @@ export function MultiView() {
 
   const onMeasureClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canClickMeasure || !photoA) return;
+    if (cExtraPtsRef.current.length > 0) {
+      toast({
+        title: 'Veriga poteka A → C — novi kliki najprej na fotki C; za vračanje na A ponastavi meritve.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const p = clickToImagePx(e, photoA.w, photoA.h);
     const b = matchClick(p);
     if (!b) {
@@ -564,7 +620,8 @@ export function MultiView() {
     setBusyMeasure(true);
     setTimeout(() => {
       try {
-        setResult(computeMeasure(extras));
+        if (cFind && photoC) setChainResult(computeChain(cFind, extras, cExtraPtsRef.current));
+        else setResult(computeMeasure(extras));
       } finally {
         setBusyMeasure(false);
       }
@@ -574,44 +631,261 @@ export function MultiView() {
   const onResetMeasures = () => {
     if (busy) return;
     extraPtsRef.current = [];
+    cExtraPtsRef.current = [];
     setExtraPts([]);
+    setCExtraPts([]);
     setBusyMeasure(true);
     setTimeout(() => {
       try {
-        setResult(computeMeasure([])); // referenca ostane
+        if (cFind && photoC) setChainResult(computeChain(cFind, [], [])); // referenca ostane
+        else setResult(computeMeasure([])); // referenca ostane
       } finally {
         setBusyMeasure(false);
       }
     }, 30);
   };
 
-  // ── Korak 5: izvoz JSON poročila ──
-  const canExport = !!result && result.ok && !!photoA && !!photoB && refPts.length === 2 && refCmVal !== null;
+  // ── Korak 5: tretja fotka — veriga parov (prenos merila prek skupnih točk) ──
+
+  /** Skupne točke: isti kornerski indeks na fotki B v obeh parih (bazni inlierji A–B × baza B–C). */
+  const buildSharedTracks = useCallback(
+    (cf: CFindState, f: FindState): { abIdx: number; bcIdx: number }[] => {
+      const bIdxToAb = new Map<number, number>();
+      f.inliers.forEach((mi, k) => {
+        const bi = f.matches[mi]?.bi;
+        if (bi !== undefined && !bIdxToAb.has(bi)) bIdxToAb.set(bi, k);
+      });
+      const out: { abIdx: number; bcIdx: number }[] = [];
+      cf.matches.forEach((m, k) => {
+        const ab = bIdxToAb.get(m.ai);
+        if (ab !== undefined) out.push({ abIdx: ab, bcIdx: k });
+      });
+      return out;
+    },
+    [],
+  );
+
+  /** Polni verižni izračun (measureFromChain) — čista funkcija stanja. */
+  const computeChain = useCallback(
+    (cf: CFindState, aExtras: ClickedPoint[], cExtras: CClickedPoint[]): ChainMeasureResult | null => {
+      if (!photoA || !photoB || !photoC || !find || !basePairs || refPts.length !== 2 || refCmVal === null) return null;
+      const ptsA: XY[] = [...basePairs.a, refPts[0].a, refPts[1].a, ...aExtras.map((p) => p.a)];
+      const ptsB: XY[] = [...basePairs.b, refPts[0].b, refPts[1].b, ...aExtras.map((p) => p.b)];
+      const refAi = basePairs.a.length;
+      const abExtraStart = refAi + 2;
+      const ptsB2: XY[] = [...cf.ptsB2Base, ...cExtras.map((p) => p.b)];
+      const ptsC: XY[] = [...cf.ptsCBase, ...cExtras.map((p) => p.c)];
+      const bcExtraStart = cf.ptsB2Base.length;
+
+      const queries: ChainQuery[] = [];
+      // veriga na fotki A (sosednji pari M1–M2, M2–M3, …)
+      for (let k = 0; k + 1 < aExtras.length; k++) {
+        queries.push({ pair: 'ab', ai: abExtraStart + k, bi: abExtraStart + k + 1 });
+      }
+      // veriga na fotki C (sosednji pari C1–C2, C2–C3, …)
+      for (let k = 0; k + 1 < cExtras.length; k++) {
+        queries.push({ pair: 'bc', ai: bcExtraStart + k, bi: bcExtraStart + k + 1 });
+      }
+      // most čez vogal: zadnja točka A-verige → prva točka C-verige (samo mode 'full')
+      const crossQueries: ChainCrossQuery[] = [];
+      if (aExtras.length > 0 && cExtras.length > 0) {
+        crossQueries.push({ abIdx: abExtraStart + aExtras.length - 1, bcIdx: bcExtraStart });
+      }
+
+      const focalPx =
+        focalMode === 'known'
+          ? Number(focalPxInput.replace(',', '.'))
+          : focalMode === 'preset'
+            ? 0.72 * Math.max(photoA.w, photoB.w)
+            : null;
+      return measureFromChain({
+        wA: photoA.w, hA: photoA.h, wB: photoB.w, hB: photoB.h, wC: photoC.w, hC: photoC.h,
+        ptsA,
+        ptsB,
+        ptsB2,
+        ptsC,
+        rand: lcg(42),
+        focalMode,
+        focalPx,
+        reference: { ai: refAi, bi: refAi + 1, cm: refCmVal },
+        sharedTracks: buildSharedTracks(cf, find),
+        queries,
+        crossQueries,
+      });
+    },
+    [photoA, photoB, photoC, find, basePairs, refPts, refCmVal, focalMode, focalPxInput, buildSharedTracks],
+  );
+
+  const onChainFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingC(true);
+    try {
+      const p = await loadWorkPhoto(file);
+      setPhotoC(p);
+      setCFind(null);
+      setChainResult(null);
+      setChainError(null);
+      cExtraPtsRef.current = [];
+      setCExtraPts([]);
+      toast({
+        title: 'Fotka C naložena ✓',
+        description: `Delovna kopija ${p.w}×${p.h} px (≤ 1024 px, JPEG 0,85). Original ostane nespremenjen.`,
+      });
+    } catch {
+      toast({ title: 'Datoteke ni bilo mogoče prebrati kot sliko.', variant: 'destructive' });
+    } finally {
+      setUploadingC(false);
+    }
+  };
+
+  const canChainFind =
+    !!photoA && !!photoB && !!photoC && !!find && refConfirmed && !busy && !!result && result.ok;
+
+  const onChainFind = () => {
+    if (!canChainFind || !photoB || !photoC || !find) return;
+    setBusyChain(true);
+    setChainError(null);
+    setTimeout(() => {
+      try {
+        const grayC = toGrayscale(photoC.data);
+        const cornersC = findCorners(grayC, photoC.w, photoC.h);
+        const descC = buildDescriptors(grayC, photoC.w, photoC.h, cornersC);
+        const matchesBC = matchFeatures(
+          find.cornersB,
+          find.descB,
+          cornersC,
+          descC,
+          { width: photoB.w, height: photoB.h },
+          { width: photoC.w, height: photoC.h },
+          { maxDisplacementPct: 25 },
+        );
+        if (matchesBC.length < 8) {
+          setCFind(null);
+          setChainError(
+            `NEZADOSTNI PODATKI: premalo ujemajočih točk med fotkama B in C (${matchesBC.length}). Posnemi fotko C z večjim prekrivanjem fotke B in brez spreminjanja zooma.`,
+          );
+          return;
+        }
+        const cf: CFindState = {
+          matches: matchesBC,
+          cornersC,
+          grayC,
+          sizeC: { width: photoC.w, height: photoC.h },
+          ptsB2Base: matchesBC.map((m) => ({ x: find.cornersB[m.ai].x, y: find.cornersB[m.ai].y })),
+          ptsCBase: matchesBC.map((m) => ({ x: cornersC[m.bi].x, y: cornersC[m.bi].y })),
+        };
+        setCFind(cf);
+        setChainResult(computeChain(cf, extraPtsRef.current, []));
+      } finally {
+        setBusyChain(false);
+      }
+    }, 30);
+  };
+
+  /** Klik na fotki C → epipolarna povezava na B (l_B = F_BCᵀ·x_C) → veriga. */
+  const canClickMeasureC = refConfirmed && !!photoC && !!cFind && !!chainResult && chainResult.ok && !busy;
+
+  const onMeasureClickC = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canClickMeasureC || !photoC || !cFind || !chainResult || !chainResult.bc?.F || !find || !photoB) return;
+    const p = clickToImagePx(e, photoC.w, photoC.h);
+    const FT = chainResult.bc.F;
+    const ft = [FT[0], FT[3], FT[6], FT[1], FT[4], FT[7], FT[2], FT[5], FT[8]];
+    const b = matchPointOnEpipolar(
+      cFind.grayC,
+      cFind.sizeC.width,
+      cFind.sizeC.height,
+      p.x,
+      p.y,
+      find.grayB,
+      photoB.w,
+      photoB.h,
+      ft,
+      { radiusPx: EPIPOLAR_RADIUS_PX },
+    );
+    if (!b) {
+      toast({
+        title: 'Točke ni mogoče povezati s fotko B — klikni bližje jasni strukturi (oglji, spoji).',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const cExtras = [...cExtraPtsRef.current, { c: p, b: b as XY }];
+    cExtraPtsRef.current = cExtras;
+    setCExtraPts(cExtras);
+    setBusyMeasure(true);
+    setTimeout(() => {
+      try {
+        setChainResult(computeChain(cFind, extraPtsRef.current, cExtras));
+      } finally {
+        setBusyMeasure(false);
+      }
+    }, 30);
+  };
+  // ── Korak 6: izvoz JSON poročila ──
+  const activeOkResult = chainResult?.ok ? chainResult : result?.ok ? result : null;
+  const canExport = !!activeOkResult && !!photoA && !!photoB && refPts.length === 2 && refCmVal !== null;
 
   const onExport = () => {
-    if (!canExport || !result || !result.F || !photoA || !photoB || !mvStatus || mvStatus.status === null) return;
+    if (!canExport || !activeOkResult || !photoA || !photoB || !mvStatus || mvStatus.status === null) return;
+    const isChain = chainResult?.ok === true && activeOkResult === chainResult;
+    // geometrija osnovnega para: pri verigi iz njenega 'ab' dela, sicer iz rezultata para
+    const abGeom: PairMeasureResult = isChain && chainResult ? chainResult.ab : (activeOkResult as PairMeasureResult);
+    if (!abGeom.F) return;
     const now = new Date().toISOString();
-    const chain = result.distancesCm ?? [];
+    const chain = activeOkResult.distancesCm ?? [];
     const sum = Math.round(chain.reduce((s, d) => s + d.cm, 0) * 10) / 10;
     const refPct = {
       A: refPts.map((p) => [pctOf(p.a.x, photoA.w), pctOf(p.a.y, photoA.h)] as [number, number]),
       B: refPts.map((p) => [pctOf(p.b.x, photoB.w), pctOf(p.b.y, photoB.h)] as [number, number]),
     };
+    const chainBlock = isChain && chainResult
+      ? {
+          mode: chainResult.mode,
+          skupneTocke: chainResult.shared
+            ? {
+                podane: chainResult.shared.count,
+                uporabne: chainResult.shared.used,
+                ratioMedian: chainResult.shared.ratioMedian,
+                ratioSpreadPct: chainResult.shared.ratioSpreadPct,
+                umeyamaScale: chainResult.shared.umeyamaScale,
+                residualMaxCm: chainResult.shared.residualMaxCm,
+                d1Ratio: chainResult.shared.d1Ratio,
+              }
+            : null,
+          meriloCmPerUnitBC: chainResult.scaleCmPerUnitBC,
+          bc: chainResult.bc
+            ? {
+                inliers: chainResult.bc.inliers.length,
+                meanResidualPx: chainResult.bc.meanResidualPx,
+                focalPx: chainResult.bc.focalPx,
+              }
+            : null,
+        }
+      : null;
     const report = {
       scriptVersion: MULTIVIEW_SCRIPT_VERSION,
-      vrsta: 'VECPogled-TRIANGULACIJA',
+      vrsta: isChain ? 'VECPogled-VERIGA-3-FOTKE' : 'VECPogled-TRIANGULACIJA',
       oznaka: 'VIZUALIZACIJA / POMOŽNA MERITEV — za proizvodno mero preveri s trakom ali laserjem',
-      fotke: { wA: photoA.w, hA: photoA.h, wB: photoB.w, hB: photoB.h },
-      fokus: { mode: focalMode, focalPx: result.focalPx, selfCal: result.focalSelfCal },
+      fotke: isChain && photoC
+        ? { wA: photoA.w, hA: photoA.h, wB: photoB.w, hB: photoB.h, wC: photoC.w, hC: photoC.h }
+        : { wA: photoA.w, hA: photoA.h, wB: photoB.w, hB: photoB.h },
+      fokus: { mode: focalMode, focalPx: abGeom.focalPx, selfCal: abGeom.focalSelfCal },
       geometrija: {
-        inliers: result.inliers.length,
-        meanResidualPx: result.meanResidualPx,
-        FHash: fnv1aHash(new TextEncoder().encode(result.F.map((v) => v.toFixed(6)).join(','))),
+        inliers: abGeom.inliers.length,
+        meanResidualPx: abGeom.meanResidualPx,
+        FHash: fnv1aHash(new TextEncoder().encode(abGeom.F.map((v) => v.toFixed(6)).join(','))),
       },
+      veriga: chainBlock,
       status: mvStatus,
       reference: { cm: refCmVal, točki: refPct },
-      meritve: chain.map((d) => ({ i: d.i, j: d.j, cm: d.cm, status: mvStatus.status })),
-      warnings: result.warnings,
+      meritve: chain.map((d) => ({
+        pair: 'pair' in d ? d.pair : 'ab',
+        i: d.i,
+        j: d.j,
+        cm: d.cm,
+        status: mvStatus.status,
+      })),
+      warnings: activeOkResult.warnings,
       provenance: makeProvenance({
         method: 'multi-view',
         status: mvStatus.status ?? 'AUTO_SUGGESTED',
@@ -619,7 +893,7 @@ export function MultiView() {
         points: refPct.A.map(([x, y]) => ({ x, y })),
         reference: { valueCm: refCmVal, label: 'multi-view referenca', assumed: focalMode !== 'known' },
         createdAt: now,
-        note: 'Triangulacija iz dveh fotk',
+        note: isChain ? 'Triangulacija iz treh fotk (veriga, prenos merila prek skupnih točk)' : 'Triangulacija iz dveh fotk',
       }),
       createdAt: now,
     };
@@ -735,10 +1009,67 @@ export function MultiView() {
       );
     });
 
+  /** Točke baze B–C na fotki C (nevtralni kamniti krogi — preglednost). */
+  const matchCirclesC = (): React.ReactNode => {
+    if (!cFind) return null;
+    return cFind.matches.slice(0, MAX_DRAWN_POINTS).map((m, k) => {
+      const c = cFind.cornersC[m.bi];
+      return (
+        <circle
+          key={`mpc-${k}`}
+          cx={c.x}
+          cy={c.y}
+          r={6}
+          fill="rgba(120,113,108,0.5)"
+          stroke="#ffffff"
+          strokeWidth={1.25}
+          vectorEffect="non-scaling-stroke"
+        />
+      );
+    });
+  };
+
+  /** Označevalci merilnih točk na fotki C (C1, C2, …). */
+  const cExtraLabels = (): StageLabel[] => {
+    if (!photoC) return [];
+    return cExtraPts.map((pt, i) => ({
+      xPct: pctOf(pt.c.x, photoC.w),
+      yPct: pctOf(pt.c.y, photoC.h),
+      text: `C${i + 1}`,
+      tone: 'green' as const,
+    }));
+  };
+
+  /** Verižne črte na fotki C (sosednji pari C_k–C_k+1). */
+  const chainLinesC = (): React.ReactNode =>
+    cExtraPts.slice(0, -1).map((p, k) => {
+      const q = cExtraPts[k + 1];
+      return (
+        <line
+          key={`chc-${k}`}
+          x1={p.c.x}
+          y1={p.c.y}
+          x2={q.c.x}
+          y2={q.c.y}
+          stroke="rgba(68,64,60,0.75)"
+          strokeWidth={1.25}
+          strokeDasharray="4 3"
+          vectorEffect="non-scaling-stroke"
+        />
+      );
+    });
+
   // ── Skupni izračuni za prikaz meritev ──
-  const chain = result?.distancesCm ?? [];
-  const chainSum = chain.reduce((s, d) => s + d.cm, 0);
-  const errPxFor = (idx: number): number | null => result?.points3D?.find((p) => p.i === idx)?.errPx ?? null;
+  const chainActive = !!chainResult; // veriga (3 fotke) je aktivna takoj, ko je računana
+  const activeMeasures = chainActive
+    ? (chainResult?.distancesCm ?? []).map((d) => ({ pair: d.pair, i: d.i, j: d.j, cm: d.cm }))
+    : (result?.distancesCm ?? []).map((d) => ({ pair: 'ab' as const, i: d.i, j: d.j, cm: d.cm }));
+  const chainSum = activeMeasures.reduce((s, d) => s + d.cm, 0);
+  const errPxFor = (pair: 'ab' | 'bc', idx: number): number | null => {
+    if (chainActive) return chainResult?.points3D?.find((p) => p.pair === pair && p.i === idx)?.errPx ?? null;
+    return result?.points3D?.find((p) => p.i === idx)?.errPx ?? null;
+  };
+  const activeResult = chainActive ? chainResult : result;
 
   const statusBadge = (s: ScaleValidation | null) => {
     const st = s?.status ?? null;
@@ -771,7 +1102,7 @@ export function MultiView() {
               { side: 'a' as const, title: 'Fotka A — izhodiščni pogled', photo: photoA, fileRef: fileARef, tid: 'mv-upload-a' },
               { side: 'b' as const, title: 'Fotka B — drugi pogled', photo: photoB, fileRef: fileBRef, tid: 'mv-upload-b' },
             ]).map(({ side, title, photo, fileRef, tid }) => (
-              <div key={side} className="space-y-2 rounded-lg border border-dashed p-3">
+              <div key={side} className="min-w-0 space-y-2 rounded-lg border border-dashed p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-semibold">{title}</span>
                   {photo && (
@@ -1149,49 +1480,62 @@ export function MultiView() {
                   </span>
                 )}
 
-                {result && !result.ok && (
+                {activeResult && !activeResult.ok && (
                   <div className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2.5 text-xs text-destructive">
-                    <p className="font-semibold">Meritev ni bila izračunana: {result.code}</p>
-                    {result.warnings.map((w) => (
+                    <p className="font-semibold">Meritev ni bila izračunana: {activeResult.code}</p>
+                    {activeResult.warnings.map((w) => (
                       <p key={w}>{w}</p>
                     ))}
                   </div>
                 )}
 
-                {chain.length > 0 && (
+                {activeMeasures.length > 0 && (
                   <ul className="space-y-1" data-testid="mv-measures">
-                    {chain.map((d, idx) => {
-                      const e1 = errPxFor(d.i);
-                      const e2 = errPxFor(d.j);
-                      return (
-                        <li
-                          key={`${d.i}-${d.j}`}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-2 text-sm"
-                        >
-                          <span className="font-medium">
-                            M{idx + 1}–M{idx + 2}: {fmtN(d.cm)} cm
-                          </span>
-                          <span className="flex flex-wrap items-center gap-2">
-                            {(e1 !== null || e2 !== null) && (
-                              <span className="text-[10px] text-muted-foreground">
-                                napaka točk: {e1 !== null ? fmtN(e1, 2) : '—'} / {e2 !== null ? fmtN(e2, 2) : '—'} px
-                              </span>
-                            )}
-                            {statusBadge(mvStatus)}
-                          </span>
-                        </li>
-                      );
-                    })}
+                    {(() => {
+                      let abK = 0;
+                      let bcK = 0;
+                      return activeMeasures.map((d, idx) => {
+                        const label =
+                          d.pair === 'ab'
+                            ? `M${++abK}–M${abK + 1}`
+                            : d.pair === 'cross'
+                              ? `Most M${extraPts.length}–C1`
+                              : `C${++bcK}–C${bcK + 1}`;
+                        const e1 = errPxFor(d.pair === 'bc' ? 'bc' : 'ab', d.i);
+                        const e2 = errPxFor(d.pair === 'cross' ? 'bc' : d.pair === 'bc' ? 'bc' : 'ab', d.j);
+                        return (
+                          <li
+                            key={`${d.pair}-${d.i}-${d.j}-${idx}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-2 text-sm"
+                          >
+                            <span className="font-medium">
+                              {label}: {fmtN(d.cm)} cm
+                              {d.pair === 'cross' && (
+                                <span className="ml-2 text-[10px] font-normal text-muted-foreground">(čez vogal)</span>
+                              )}
+                            </span>
+                            <span className="flex flex-wrap items-center gap-2">
+                              {(e1 !== null || e2 !== null) && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  napaka točk: {e1 !== null ? fmtN(e1, 2) : '—'} / {e2 !== null ? fmtN(e2, 2) : '—'} px
+                                </span>
+                              )}
+                              {statusBadge(mvStatus)}
+                            </span>
+                          </li>
+                        );
+                      });
+                    })()}
                   </ul>
                 )}
-                {result && result.ok && chain.length === 0 && (
+                {activeResult && activeResult.ok && activeMeasures.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     {extraPts.length === 1
                       ? 'Dodaj še eno točko za prvo razdaljo.'
                       : 'Dodaj vsaj 2 točki na fotko A za prvo razdaljo.'}
                   </p>
                 )}
-                {chain.length > 1 && (
+                {activeMeasures.length > 1 && (
                   <p className="text-sm font-semibold" data-testid="mv-chain-sum">
                     Skupna vsota verige: {fmtN(chainSum)} cm
                   </p>
@@ -1201,7 +1545,7 @@ export function MultiView() {
                   <Button
                     variant="outline"
                     onClick={onResetMeasures}
-                    disabled={busy || extraPts.length === 0}
+                    disabled={busy || (extraPts.length === 0 && cExtraPts.length === 0)}
                     data-testid="mv-reset-measures"
                   >
                     <RotateCcw className="mr-2 h-4 w-4" />
@@ -1210,9 +1554,9 @@ export function MultiView() {
                   <span className="text-xs text-muted-foreground">Referenca ostane — ponastavijo se samo dodatne točke.</span>
                 </div>
 
-                {result && result.warnings.length > 0 && (
+                {activeResult && activeResult.warnings.length > 0 && (
                   <ul className="space-y-1" data-testid="mv-warnings">
-                    {result.warnings.map((w) => (
+                    {activeResult.warnings.map((w) => (
                       <li key={w} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
                         {w}
                       </li>
@@ -1231,11 +1575,191 @@ export function MultiView() {
         </div>
       </div>
 
-      {/* ── KORAK 5: izvoz ── */}
+      {/* ── KORAK 5: tretja fotka (veriga, opcijsko) ── */}
       <div className="rounded-xl border bg-card">
         <div className="p-4 sm:p-5 space-y-3">
           <h3 className="flex items-center gap-2 text-sm font-bold">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">5</span>
+            Tretja fotka — veriga čez vogal (opcijsko)
+            <Badge variant="secondary" className="text-[10px]">Task 42</Badge>
+          </h3>
+
+          {!refConfirmed || !result || !result.ok ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+              Najprej zaključi uspešno referenco (korak 3) — merilo v cm mora obstajati, preden se lahko prenese na
+              tretjo fotko.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Naloži fotko C, posneto iz tretjega zornega kota (prekrivanje s fotko B, FIKSNI zoom). Merilo se
+                prenesе prek skupnih točk (isti oglji vidni na vseh treh fotkah): ≥ 2 skupni točki = samo merilo,
+                ≥ 3 nekolinearne = polno združen 3D oblak → razdalje TUDI med točkami, ki jih noben par ne vidi skupaj
+                (čez vogal prostora).
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="min-w-0 space-y-2 rounded-lg border border-dashed p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold">Fotka C — tretji pogled</span>
+                    {photoC && (
+                      <Badge variant="secondary" className="text-[10px]">delovna kopija {photoC.w}×{photoC.h} px</Badge>
+                    )}
+                  </div>
+                  {photoC ? (
+                    <img src={photoC.url} alt="Fotka C — tretji pogled" draggable={false} className="mx-auto max-h-72 w-auto max-w-full rounded border object-contain" />
+                  ) : (
+                    <div className="flex min-h-24 flex-col items-center justify-center gap-2 text-center">
+                      <Upload className="h-6 w-6 text-muted-foreground" />
+                      <p className="text-xs text-muted-foreground">Ni naložene fotke C.</p>
+                    </div>
+                  )}
+                  <input
+                    ref={fileCRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      void onChainFile(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="min-h-11 w-full"
+                    onClick={() => fileCRef.current?.click()}
+                    disabled={busy}
+                    data-testid="mv-upload-c"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {uploadingC ? 'Obdelujem…' : photoC ? 'Zamenjaj fotko C' : 'Naloži fotko C'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="min-h-11 w-full"
+                    onClick={onChainFind}
+                    disabled={!canChainFind}
+                    data-testid="mv-chain-find"
+                  >
+                    <GitMerge className="mr-2 h-4 w-4" />
+                    {busyChain ? 'Verižim…' : cFind ? 'Ponovno poveži B–C in prenesi merilo' : 'Poveži B–C in prenesi merilo'}
+                  </Button>
+                  {!photoC && (
+                    <p className="text-xs text-muted-foreground">Najprej naloži fotko C.</p>
+                  )}
+                </div>
+
+                <aside className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="font-semibold">Kako veriga deluje</p>
+                  <p>Par B–C se trijangulira v svojem okviru; skupne točke (vidne v A, B in C) prenesejo merilo in — pri ≥ 3 nekolinearnih — rotacijo (Umeyama, najmanjša kvadratna napaka).</p>
+                  <p>Neskladje meril ali veliki ostanki → veriga je ISKRENO zavrnjena (nikoli tihe poravnave).</p>
+                </aside>
+              </div>
+
+              {chainError && (
+                <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-2.5 text-xs text-destructive" data-testid="mv-chain-error">
+                  {chainError}
+                </p>
+              )}
+
+              {chainResult && (
+                <div className="space-y-2 rounded-lg border bg-secondary/40 p-3" data-testid="mv-chain-status">
+                  {chainResult.ok ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {chainResult.mode === 'full' ? (
+                          <Badge className="border-green-300 bg-green-100 text-green-800 text-[10px]" data-testid="mv-chain-mode">
+                            združen oblak — prečne razdalje omogočene
+                          </Badge>
+                        ) : (
+                          <Badge className="border-amber-300 bg-amber-100 text-amber-800 text-[10px]" data-testid="mv-chain-mode">
+                            samo merilo — prečne razdalje izklopljene
+                          </Badge>
+                        )}
+                        <span className="text-sm">
+                          skupne točke: {chainResult.shared?.used ?? 0}
+                          {chainResult.shared && chainResult.shared.used !== chainResult.shared.count && (
+                            <span className="text-muted-foreground"> (od {chainResult.shared.count} podanih)</span>
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Merilo B–C: {chainResult.scaleCmPerUnitBC !== null ? `${fmtN(chainResult.scaleCmPerUnitBC, 4)} cm / enota 3D` : '—'}
+                        {chainResult.shared && chainResult.shared.umeyamaScale !== null && chainResult.shared.ratioMedian !== null && (
+                          <> · skladje ocen merila: {fmtN(Math.abs(chainResult.shared.umeyamaScale - chainResult.shared.ratioMedian) / (chainResult.shared.ratioMedian || 1) * 100, 1)} %</>
+                        )}
+                        {chainResult.shared?.residualMaxCm !== null && chainResult.shared?.residualMaxCm !== undefined && (
+                          <> · največji ostanek transformacije: {fmtN(chainResult.shared.residualMaxCm)} cm</>
+                        )}
+                        {chainResult.bc && (
+                          <> · par B–C: {chainResult.bc.inliers.length} inlierjev, residuala {chainResult.bc.meanResidualPx !== null ? fmtN(chainResult.bc.meanResidualPx, 1) : '—'} px</>
+                        )}
+                      </p>
+                      {chainResult.mode === 'scale' && (
+                        <p className="text-xs text-amber-900">
+                          Merilo je prenešeno, rotacija med okvirji pa ne (premalo/kolinearne skupne točke) — razdalje
+                          znotraj fotke C ostanejo omogočene, most A↔C pa ne.
+                        </p>
+                      )}
+                      {chainResult.mode === 'full' && (
+                        <p className="text-xs text-muted-foreground">
+                          Merilne točke zdaj dodaš tudi na fotki C (spodaj) — most med zadnjo točko M-verige in prvo
+                          točko C-verige se izračuna samodejno.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/5 p-2.5 text-xs text-destructive">
+                      <p className="font-semibold">Veriga ni izračunana: {chainResult.code}</p>
+                      {chainResult.warnings.map((w) => (
+                        <p key={w}>{w}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {cFind && photoC && photoB && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <MvStage
+                    photo={photoB}
+                    testid="mv-chain-stage-b"
+                    alt="Fotka B — bazne točke para B–C"
+                    labels={[]}
+                  />
+                  <MvStage
+                    photo={photoC}
+                    testid="mv-chain-stage-c"
+                    clickable={canClickMeasureC}
+                    onClick={onMeasureClickC}
+                    svg={
+                      <>
+                        {matchCirclesC()}
+                        {chainLinesC()}
+                      </>
+                    }
+                    labels={cExtraLabels()}
+                    alt="Fotka C — klik za merilne točke na tretji fotki"
+                  />
+                </div>
+              )}
+              {cFind && chainResult && chainResult.ok && (
+                <p className="text-xs text-muted-foreground">
+                  Klikni točke na fotki C — vsaka se samodejno poveže na fotko B po epipolarni črti in trijangulira v
+                  združen oblak. {chainResult.mode === 'full' ? 'Veriga na C se poveže z M-verigo prek mostu.' : 'Razdalje so smislene samo znotraj verige na C (način »samo merilo«).'}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── KORAK 6: izvoz ── */}
+      <div className="rounded-xl border bg-card">
+        <div className="p-4 sm:p-5 space-y-3">
+          <h3 className="flex items-center gap-2 text-sm font-bold">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">6</span>
             Izvoz poročila
           </h3>
           <div className="flex flex-wrap items-center gap-2">
