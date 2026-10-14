@@ -47,6 +47,12 @@ export interface OfferDTO {
   objectAddress: string | null;
   note: string | null;
   status: OfferStatus;
+  /** Kdaj označena za poslano (časovni žig za iskren win-rate). */
+  sentAt: string | null;
+  /** Kdaj je stranka odločila (sprejeto/zavrnjeno). */
+  decidedAt: string | null;
+  /** Wiedervorlage — datum ročnega opomnika za follow-up. */
+  followUpAt: string | null;
   subtotal: number;
   vatRate: number;
   vatAmount: number;

@@ -45,6 +45,12 @@ model Offer {
   objectAddress   String?
   note            String?
   status          String      @default("draft")
+  /// Kdaj je ponudba označena za poslano (časovni žig za iskren win-rate).
+  sentAt          DateTime?
+  /// Kdaj je stranka odločila (sprejeto/zavrnjeno) — izhodišče konverzije.
+  decidedAt       DateTime?
+  /// Wiedervorlage — datum, ko obrtnik sam sebi zastavi opomnik za follow-up.
+  followUpAt      DateTime?
   subtotal        Float
   vatRate         Float       @default(22)
   vatAmount       Float

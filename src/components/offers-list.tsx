@@ -24,15 +24,17 @@ import {
   MessageCircle, FilePlus2, FileCheck2, Receipt,
 } from 'lucide-react';
 import { formatDate, formatEUR, formatNum, STATUS_LABELS } from '@/lib/format';
+import {
+  computePipelineStats,
+  followUpInfo,
+  formatFollowUpRelative,
+  suggestFollowUpIso,
+} from '@/lib/offer-pipeline';
 import { openOfferPDF, openHandoverPrint, openInvoicePDF } from '@/lib/pdf';
 import { validUntil } from '@/lib/pdf';
 import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
 import { useChangeOrders, type ChangeOrderEntry } from '@/lib/store';
 import type { OfferDTO, SettingsDTO, OfferStatus, InvoiceDTO } from '@/lib/types';
-
-/** Dni brez odgovora, po katerih ponudba zasluži opomnik (raziskave: hitro
- *  spremljanje neodgovorjenih ponudb najbolj vpliva na konverzijo). */
-const FOLLOW_UP_AFTER_DAYS = 3;
 
 function daysSince(dateIso: string): number {
   const t = new Date(dateIso).getTime();
@@ -72,7 +74,7 @@ export function OffersList() {
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [followUpOffer, setFollowUpOffer] = useState<OfferDTO | null>(null);
+  const [followUpOfferId, setFollowUpOfferId] = useState<string | null>(null);
   const [changeOffer, setChangeOffer] = useState<OfferDTO | null>(null);
   const [handoverOffer, setHandoverOffer] = useState<OfferDTO | null>(null);
   const [invoiceOffer, setInvoiceOffer] = useState<OfferDTO | null>(null);
@@ -122,10 +124,34 @@ export function OffersList() {
       body: JSON.stringify({ status }),
     });
     if (res.ok) {
-      setOffers((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+      const data = await res.json();
+      // Strežnik nastavi časovne žige (sentAt/decidedAt) in počisti opomnik —
+      // lokalno stanje osvežimo z odgovorom.
+      setOffers((prev) => prev.map((o) => (o.id === id ? { ...o, ...(data.offer as OfferDTO) } : o)));
       toast({ title: 'Status posodobljen' });
     } else {
       toast({ title: 'Napaka', description: 'Statusa ni bilo mogoče spremeniti.', variant: 'destructive' });
+    }
+  };
+
+  /** Ročni opomnik (Wiedervorlage): nastavi ali počisti datum follow-upa. */
+  const setFollowUp = async (id: string, followUpAt: string | null) => {
+    const res = await fetch(`/api/offers/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ followUpAt }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setOffers((prev) => prev.map((o) => (o.id === id ? { ...o, ...(data.offer as OfferDTO) } : o)));
+      toast({
+        title: followUpAt ? 'Opomnik nastavljen' : 'Opomnik počiščen',
+        description: followUpAt
+          ? `Vrnemo se k ponudbi ${formatFollowUpRelative(followUpAt, new Date())}.`
+          : undefined,
+      });
+    } else {
+      toast({ title: 'Napaka', description: 'Opomnika ni bilo mogoče nastaviti.', variant: 'destructive' });
     }
   };
 
@@ -289,6 +315,14 @@ export function OffersList() {
       o.number.toLowerCase().includes(query.toLowerCase()),
   );
 
+  /** Iskren povzetek sledenja: lijak + win-rate (null = premalo odločenih). */
+  const pipeline = computePipelineStats(offers);
+
+  /** Zadnji status ponudbe v opomniku — izpeljano iz svežega stanja,
+   *  da se dialog osveži tudi po nastavitvi opomnika. */
+  const followUpOffer: OfferDTO | null = offers.find((o) => o.id === followUpOfferId) ?? null;
+  const setFollowUpOffer = (o: OfferDTO | null) => setFollowUpOfferId(o?.id ?? null);
+
   /** Zemljevid: offerId → računi. */
   const invoicesByOffer = new Map<string, InvoiceDTO[]>();
   for (const inv of invoices) {
@@ -312,6 +346,23 @@ export function OffersList() {
           onChange={(e) => setQuery(e.target.value)}
           className="sm:w-72"
         />
+      </div>
+
+      {/* Sledenje — lijak + iskren win-rate */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-secondary/30 px-3 py-2.5" data-testid="pipeline-strip">
+        <span className="text-xs text-muted-foreground">Lijak:</span>
+        {(['draft', 'sent', 'accepted', 'rejected'] as const).map((s) => (
+          <Badge key={s} variant={s === 'accepted' ? 'default' : s === 'rejected' ? 'destructive' : 'secondary'} className="font-normal">
+            {STATUS_LABELS[s]} {pipeline.counts[s]}
+          </Badge>
+        ))}
+        <span className="ml-auto text-xs text-muted-foreground">
+          {pipeline.winRate === null ? (
+            <>Stopnja uspešnosti: — (premalo odločenih, najmanj 3)</>
+          ) : (
+            <>Stopnja uspešnosti: <strong className="text-primary">{pipeline.winRate.toLocaleString('sl-SI', { maximumFractionDigits: 1 })} %</strong> ({pipeline.counts.accepted}/{pipeline.decided})</>
+          )}
+        </span>
       </div>
 
       {loading ? (
@@ -345,11 +396,20 @@ export function OffersList() {
                         <Badge variant={offer.status === 'accepted' ? 'default' : offer.status === 'rejected' ? 'destructive' : 'secondary'}>
                           {STATUS_LABELS[offer.status] ?? offer.status}
                         </Badge>
-                        {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
-                          <Badge variant="outline" className="border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                            {daysSince(offer.createdAt)} dni brez odgovora
-                          </Badge>
-                        )}
+                        {(() => {
+                          const info = followUpInfo(offer, new Date());
+                          if (!info.due || !info.reason) return null;
+                          return info.reason === 'opomnik' ? (
+                            <Badge variant="outline" className="border-amber-500/60 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                              <BellRing className="mr-1 h-3 w-3" />
+                              Opomnik {formatFollowUpRelative(offer.followUpAt ?? '', new Date())}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                              {info.days} dni brez odgovora
+                            </Badge>
+                          );
+                        })()}
                         {changeOrders.length > 0 && (
                           <Badge variant="outline" className="border-emerald-500/50 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                             {changeOrders.length} {changeOrders.length === 1 ? 'dodatno delo' : 'dodatni deli'}
@@ -432,18 +492,21 @@ export function OffersList() {
                       <Receipt className="mr-1.5 h-4 w-4" />
                       Račun
                     </Button>
-                    {(offer.status === 'sent' || offer.status === 'draft') && daysSince(offer.createdAt) >= FOLLOW_UP_AFTER_DAYS && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="min-h-9 border-amber-500/50 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
-                        onClick={() => setFollowUpOffer(offer)}
-                        data-testid={`followup-${offer.number}`}
-                      >
-                        <BellRing className="mr-1.5 h-4 w-4" />
-                        Opomni stranko
-                      </Button>
-                    )}
+                    {(() => {
+                      const info = followUpInfo(offer, new Date());
+                      return info.due ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-h-9 border-amber-500/50 text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950"
+                          onClick={() => setFollowUpOffer(offer)}
+                          data-testid={`followup-${offer.number}`}
+                        >
+                          <BellRing className="mr-1.5 h-4 w-4" />
+                          Opomni stranko
+                        </Button>
+                      ) : null;
+                    })()}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" aria-label={`Izbriši ponudbo ${offer.number}`}>
@@ -484,8 +547,11 @@ export function OffersList() {
                   Opomnik za ponudbo {followUpOffer.number}
                 </DialogTitle>
                 <DialogDescription>
-                  {followUpOffer.customerName} · {daysSince(followUpOffer.createdAt)} dni brez odgovora.
-                  Izberi besedilo, ga po potrebi prilagodi in pošlji — stranke najpogosteje odgovorijo
+                  {followUpOffer.customerName} · {followUpOffer.status === 'sent' ? `${daysSince(followUpOffer.sentAt ?? followUpOffer.createdAt)} dni od pošiljanja` : 'osnutek'}
+                  {followUpOffer.followUpAt && (
+                    <> · opomnik zastavljen: {formatFollowUpRelative(followUpOffer.followUpAt, new Date())}</>
+                  )}
+                  . Izberi besedilo, ga po potrebi prilagodi in pošlji — stranke najpogosteje odgovorijo
                   prav na kratek, prijazen opomnik.
                 </DialogDescription>
               </DialogHeader>
@@ -497,6 +563,24 @@ export function OffersList() {
                 );
                 return (
                   <div className="space-y-3">
+                    {/* Wiedervorlage — hitri hitri roki opomnika */}
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-secondary/30 p-3">
+                      <span className="text-xs font-semibold text-muted-foreground mr-1">Opomnik zase:</span>
+                      <Button size="sm" variant="outline" className="min-h-9 h-9" data-testid="fu-1d" onClick={() => setFollowUp(followUpOffer.id, suggestFollowUpIso(new Date(), 1))}>
+                        Jutri
+                      </Button>
+                      <Button size="sm" variant="outline" className="min-h-9 h-9" data-testid="fu-3d" onClick={() => setFollowUp(followUpOffer.id, suggestFollowUpIso(new Date(), 3))}>
+                        +3 dni
+                      </Button>
+                      <Button size="sm" variant="outline" className="min-h-9 h-9" data-testid="fu-7d" onClick={() => setFollowUp(followUpOffer.id, suggestFollowUpIso(new Date(), 7))}>
+                        +7 dni
+                      </Button>
+                      {followUpOffer.followUpAt && (
+                        <Button size="sm" variant="ghost" className="min-h-9 h-9 text-xs text-muted-foreground" data-testid="fu-clear" onClick={() => setFollowUp(followUpOffer.id, null)}>
+                          Počisti opomnik
+                        </Button>
+                      )}
+                    </div>
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">SMS</p>

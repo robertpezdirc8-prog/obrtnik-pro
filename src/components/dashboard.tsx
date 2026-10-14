@@ -1,13 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, ClipboardList, Euro, FileCheck2, Hammer, ScanSearch } from 'lucide-react';
+import { ArrowRight, BellRing, Check, ClipboardList, Euro, FileCheck2, Hammer, ScanSearch, X } from 'lucide-react';
 import { CRAFTS } from '@/lib/crafts-meta';
 import { useDraft, useView } from '@/lib/store';
-import { formatEUR } from '@/lib/format';
+import { formatDate, formatEUR, STATUS_LABELS } from '@/lib/format';
+import {
+  computePipelineStats,
+  dueFollowUps,
+  followUpInfo,
+  formatFollowUpRelative,
+  MIN_DECIDED_FOR_WINRATE,
+  type PipelineOffer,
+} from '@/lib/offer-pipeline';
 import { CraftImage } from './craft-image';
 import type { OfferDTO } from '@/lib/types';
 
@@ -17,15 +25,31 @@ export function Dashboard() {
   const draftCount = useDraft((s) => s.items.length);
   const [offers, setOffers] = useState<OfferDTO[] | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch('/api/offers')
       .then((r) => r.json())
       .then((d) => setOffers(d.offers ?? []))
       .catch(() => setOffers([]));
   }, []);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const totalValue = (offers ?? []).reduce((s, o) => s + o.total, 0);
   const accepted = (offers ?? []).filter((o) => o.status === 'accepted').length;
+  const stats = offers ? computePipelineStats(offers) : null;
+  const due = offers ? dueFollowUps(offers, new Date()).slice(0, 4) : [];
+
+  /** Hitra akcija na ponudbi iz opomnika (status ali premik opomnika). */
+  const patchOffer = async (id: string, body: Record<string, unknown>) => {
+    const res = await fetch(`/api/offers/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) load();
+  };
 
   return (
     <div className="space-y-8">
@@ -91,6 +115,110 @@ export function Dashboard() {
         />
       </section>
 
+      {/* Sledenje ponudbam — lijak + iskren win-rate + opomniki */}
+      <section aria-label="Sledenje ponudbam" className="rounded-2xl border bg-card">
+        <div className="flex flex-col gap-1 p-4 pb-3 sm:flex-row sm:items-center sm:justify-between sm:p-6 sm:pb-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Sledenje ponudbam</h2>
+            <p className="text-sm text-muted-foreground">
+              Lijak, stopnja uspešnosti in opomniki — brez pozabljenih ponudb.
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setView('ponudbe')}>
+            Vse ponudbe <ArrowRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+
+        {offers === null || stats === null ? (
+          <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-2">
+            <Skeleton className="h-14 w-full rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-xl" />
+          </div>
+        ) : (
+          <div className="px-4 pb-4 sm:px-6 sm:pb-6 space-y-4">
+            {/* Lijak + win-rate */}
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="funnel">
+                <FunnelChip label={STATUS_LABELS.draft} value={stats.counts.draft} hint="še ni poslanih" />
+                <FunnelChip label={STATUS_LABELS.sent} value={stats.counts.sent} hint={formatEUR(stats.valueSent)} />
+                <FunnelChip label={STATUS_LABELS.accepted} value={stats.counts.accepted} hint={formatEUR(stats.valueAccepted)} tone="good" />
+                <FunnelChip label={STATUS_LABELS.rejected} value={stats.counts.rejected} hint={formatEUR(stats.valueRejected)} tone="bad" />
+              </div>
+              <div className="rounded-xl border bg-secondary/40 p-3 sm:min-w-44" data-testid="winrate">
+                <p className="text-xs text-muted-foreground mb-1">Stopnja uspešnosti</p>
+                {stats.winRate === null ? (
+                  <p className="text-sm font-medium text-muted-foreground" title={`Iskreno: ${stats.decided} odločenih ponudb je premalo (najmanj ${MIN_DECIDED_FOR_WINRATE}).`}>
+                    — <span className="text-xs">premalo podatkov</span>
+                  </p>
+                ) : (
+                  <p className="text-2xl font-bold text-primary leading-none">
+                    {formatFollowPercent(stats.winRate)}
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                      {stats.counts.accepted}/{stats.decided} odločenih
+                    </span>
+                  </p>
+                )}
+                {stats.avgAccepted !== null && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    povprečno sprejeto {formatEUR(stats.avgAccepted)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Opomniki (Wiedervorlage) */}
+            <div>
+              <p className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                <BellRing className="h-4 w-4 text-amber-600" />
+                Za opomnik
+              </p>
+              {due.length === 0 ? (
+                <p className="text-sm text-muted-foreground rounded-xl border border-dashed p-3">
+                  Ni ponudb za opomnik — vse poslane imajo odgovor ali čakajo na nastavljeni rok.
+                </p>
+              ) : (
+                <ul className="space-y-2" data-testid="due-list">
+                  {due.map((o) => (
+                    <li key={o.id} className="flex flex-col gap-2 rounded-xl border bg-background p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">
+                          {o.customerName}
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">{o.number}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {o.info.reason === 'opomnik'
+                            ? `Opomnik: ${formatFollowUpRelative(o.followUpAt ?? '', new Date())}`
+                            : `${o.info.days} dni brez odgovora`}{' '}
+                          · {formatEUR(o.total)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {o.status === 'draft' && (
+                          <Button size="sm" variant="outline" className="min-h-9 h-9" onClick={() => patchOffer(o.id, { status: 'sent' })}>
+                            Poslana
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="min-h-9 h-9 border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300" onClick={() => patchOffer(o.id, { status: 'accepted' })}>
+                          <Check className="mr-1 h-3.5 w-3.5" />
+                          Sprejeta
+                        </Button>
+                        <Button size="sm" variant="outline" className="min-h-9 h-9 border-red-600/30 text-red-700 hover:bg-red-50 dark:text-red-300" onClick={() => patchOffer(o.id, { status: 'rejected' })}>
+                          <X className="mr-1 h-3.5 w-3.5" />
+                          Zavrnjena
+                        </Button>
+                        <Button size="sm" variant="ghost" className="min-h-9 h-9 text-xs" onClick={() => patchOffer(o.id, { followUpAt: suggestIso(3) })}>
+                          +3 dni
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* Dejavnosti */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -140,22 +268,54 @@ export function Dashboard() {
         ) : (
           <div className="space-y-2">
             {offers.slice(0, 4).map((o) => (
-              <button
-                key={o.id}
-                onClick={() => setView('ponudbe')}
-                className="w-full flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:border-primary/40 hover:shadow-sm transition-all"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold">{o.customerName}</p>
-                  <p className="text-xs text-muted-foreground">{o.number}</p>
-                </div>
-                <span className="font-bold text-primary shrink-0">{formatEUR(o.total)}</span>
-              </button>
+              <OfferRow key={o.id} offer={o} onClick={() => setView('ponudbe')} />
             ))}
           </div>
         )}
       </section>
     </div>
+  );
+}
+
+function suggestIso(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString();
+}
+
+function formatFollowPercent(v: number): string {
+  return `${v.toLocaleString('sl-SI', { maximumFractionDigits: 1 })} %`;
+}
+
+function FunnelChip({ label, value, hint, tone }: { label: string; value: number; hint: string; tone?: 'good' | 'bad' }) {
+  return (
+    <div className={`rounded-xl border p-3 ${tone === 'good' ? 'border-emerald-600/30 bg-emerald-50/60 dark:bg-emerald-950/20' : tone === 'bad' ? 'border-red-600/20 bg-red-50/50 dark:bg-red-950/20' : 'bg-secondary/30'}`}>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xl font-bold leading-tight">{value}</p>
+      <p className="text-xs text-muted-foreground truncate">{hint}</p>
+    </div>
+  );
+}
+
+function OfferRow({ offer, onClick }: { offer: OfferDTO; onClick: () => void }) {
+  const info = followUpInfo(offer, new Date());
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:border-primary/40 hover:shadow-sm transition-all"
+    >
+      <div className="min-w-0">
+        <p className="text-sm font-semibold">{offer.customerName}</p>
+        <p className="text-xs text-muted-foreground">
+          {offer.number} · {formatDate(offer.createdAt)}
+          {info.due && info.reason === 'opomnik' && (
+            <span className="ml-1.5 text-amber-700 dark:text-amber-300">· opomnik {formatFollowUpRelative(offer.followUpAt ?? '', new Date())}</span>
+          )}
+          {info.due && info.reason === 'brez-odgovora' && (
+            <span className="ml-1.5 text-amber-700 dark:text-amber-300">· {info.days} dni brez odgovora</span>
+          )}
+        </p>
+      </div>
+      <span className="font-bold text-primary shrink-0">{formatEUR(offer.total)}</span>
+    </button>
   );
 }
 
