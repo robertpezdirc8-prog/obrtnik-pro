@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat } from 'lucide-react';
+import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer } from 'lucide-react';
 import { useDraft, useView, useFieldMode, type AppView } from '@/lib/store';
 import { Dashboard } from './dashboard';
 import { CalculatorsView } from './calculators-view';
@@ -10,6 +10,7 @@ import { OfferEditor } from './offer-editor';
 import { OffersList } from './offers-list';
 import { CatalogView } from './catalog-view';
 import { SettingsView } from './settings-view';
+import { TimesheetView } from './timesheet-view';
 import { CameraView } from './camera/camera-view';
 
 const NAV: { id: AppView; label: string; icon: React.ElementType }[] = [
@@ -17,6 +18,7 @@ const NAV: { id: AppView; label: string; icon: React.ElementType }[] = [
   { id: 'kamera', label: 'Pametna kamera', icon: ScanSearch },
   { id: 'kalkulatorji', label: 'Nova ponudba', icon: ClipboardList },
   { id: 'ponudbe', label: 'Ponudbe', icon: FileText },
+  { id: 'časovnica', label: 'Časovnica', icon: Timer },
   { id: 'katalog', label: 'Katalog', icon: LayoutGrid },
   { id: 'nastavitve', label: 'Nastavitve', icon: Settings },
 ];
@@ -111,6 +113,7 @@ export function AppShell() {
         {view === 'kamera' && <CameraView />}
         {view === 'kalkulatorji' && (showEditor ? <OfferEditor /> : <CalculatorsView />)}
         {view === 'ponudbe' && <OffersList />}
+        {view === 'časovnica' && <TimesheetView />}
         {view === 'katalog' && <CatalogView />}
         {view === 'nastavitve' && <SettingsView />}
       </main>

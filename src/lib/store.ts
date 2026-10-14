@@ -66,7 +66,7 @@ export const useDraft = create<DraftState>()(
 
 // ─── Aktivni zavihek aplikacije ─────────────────────────────
 
-export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'ponudbe' | 'katalog' | 'nastavitve';
+export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'ponudbe' | 'katalog' | 'časovnica' | 'nastavitve';
 
 interface ViewState {
   view: AppView;
@@ -148,6 +148,39 @@ export const useChangeOrders = create<ChangeOrdersState>()(
         })),
     }),
     { name: 'obrtnik-change-orders' },
+  ),
+);
+
+// ─── Časomer časovnice (Zeiterfassung) ──────────────
+// Zagnan časomer preživi reload (persist) — na gradbišču se
+// stran lahko osveži, delo pa teče naprej. Ura je strežniško
+// nevtralna: shranjen je samo začetni ISO čas, minute se izračunajo
+// ob ustavitvi.
+
+interface TimerState {
+  startedAt: string | null;
+  label: string;
+  start: () => void;
+  setLabel: (l: string) => void;
+  stop: () => string | null; // vrne ISO začetka in počisti stanje
+  reset: () => void;
+}
+
+export const useTimer = create<TimerState>()(
+  persist(
+    (set, get) => ({
+      startedAt: null,
+      label: '',
+      start: () => set({ startedAt: new Date().toISOString() }),
+      setLabel: (label) => set({ label }),
+      stop: () => {
+        const startedAt = get().startedAt;
+        set({ startedAt: null });
+        return startedAt;
+      },
+      reset: () => set({ startedAt: null, label: '' }),
+    }),
+    { name: 'obrtnik-casomer' },
   ),
 );
 

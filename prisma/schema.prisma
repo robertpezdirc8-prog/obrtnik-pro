@@ -59,6 +59,7 @@ model Offer {
   updatedAt       DateTime    @updatedAt
   items           OfferItem[]
   invoices        Invoice[]
+  timeEntries     TimeEntry[]
 }
 
 // ─── Računi (iz sprejete ponudbe) ───────────────────────
@@ -125,4 +126,30 @@ model Settings {
   depositPercent  Float   @default(30)
   paymentDays     Int     @default(15)
   logoUrl         String?
+}
+
+// ─── Časovnica (Zeiterfassung) ──────────────────────────────
+
+model TimeEntry {
+  id           String    @id @default(cuid())
+  /// Delovni dan "YYYY-MM-DD" (niz brez časovnih pasov — iskreno in deterministično).
+  day          String
+  /// Opis opravila (npr. "Montaža ograje — balkon").
+  description  String
+  /// Oddelane minute (celo število ≥ 1).
+  minutes      Int
+  /// Urna postavka v času vnosa (€/h) — kasnejše spremembe nastavitev ne prepišejo zgodovine.
+  hourlyRate   Float
+  /// Stranka (iz ponudbe ali prosti vnos).
+  customerName String?
+  /// Povezava na ponudbo (opcijsko).
+  offerId      String?
+  offer        Offer?    @relation(fields: [offerId], references: [id])
+  /// Dejavnost (craftId ali null za "drugo").
+  craftId      String?
+  /// Kdaj je vnos označen kot obračunan (žig nastavlja strežnik prek PATCH).
+  billedAt     DateTime?
+  /// Referenca obračuna (št. ponudbe ali kratek opis).
+  billedRef    String?
+  createdAt    DateTime  @default(now())
 }
