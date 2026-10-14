@@ -7,12 +7,12 @@
 // fasada). Iskrenost: če se poligon ne zapre (> 5 %), površina NI
 // izračunana — napaka je eksplicitna.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Plus, Trash2, Wand2, Ruler } from 'lucide-react';
-import { closeRoomPolygon, type WallInput } from '@/lib/room-sketch';
+import { Plus, Trash2, Wand2, Ruler, Printer } from 'lucide-react';
+import { closeRoomPolygon, type RoomSketchResult, type WallInput } from '@/lib/room-sketch';
 import { formatCm, formatM2 } from '@/lib/measure-geometry';
 import { formatNum } from '@/lib/format';
 import type { PhotoMeasure } from '@/lib/camera-types';
@@ -29,6 +29,10 @@ interface RoomSketchProps {
     craft: 'keramika' | 'wpc-terasa' | 'fasada',
     inputs: Partial<CraftInputs>,
   ) => void;
+  /** Rezultat sporoči staršu (merilno poročilo). */
+  onResult?: (r: RoomSketchResult | null) => void;
+  /** Odpri merilno poročilo (tisk/PDF). */
+  onReport?: () => void;
 }
 
 let wallSeq = 0;
@@ -39,7 +43,7 @@ const newWall = (lengthCm: number, angleDeg = 90, label?: string): SketchWall =>
   label,
 });
 
-export function RoomSketch({ auxMeasures, onPrefill }: RoomSketchProps) {
+export function RoomSketch({ auxMeasures, onPrefill, onResult, onReport }: RoomSketchProps) {
   const [walls, setWalls] = useState<SketchWall[]>([]);
   const [lenIn, setLenIn] = useState('');
   const [angIn, setAngIn] = useState('90');
@@ -53,6 +57,16 @@ export function RoomSketch({ auxMeasures, onPrefill }: RoomSketchProps) {
     setWalls((list) => list.map((w) => (w.id === id ? { ...w, ...patch } : w)));
 
   const result = useMemo(() => closeRoomPolygon(walls), [walls]);
+
+  // Rezultat sporoči staršu (merilno poročilo) — prek ref, da callback
+  // ne sproža ponovnega izvajanja ob vsakem renderju starša.
+  const onResultRef = useRef(onResult);
+  useEffect(() => {
+    onResultRef.current = onResult;
+  });
+  useEffect(() => {
+    onResultRef.current?.(result);
+  }, [result]);
 
   // ── SVG risba ─────────────────────────────────────────────
   const svg = useMemo(() => {
@@ -81,7 +95,7 @@ export function RoomSketch({ auxMeasures, onPrefill }: RoomSketchProps) {
       return {
         x: tx((a.x + b.x) / 2),
         y: ty((a.y + b.y) / 2),
-        text: `${result.adjustedSidesCm[i]} cm`,
+        text: `${formatNum(result.adjustedSidesCm[i], 1)} cm`,
       };
     });
     const verts = pts.slice(0, result.n).map((p) => ({ x: tx(p.x), y: ty(p.y) }));
@@ -344,6 +358,20 @@ export function RoomSketch({ auxMeasures, onPrefill }: RoomSketchProps) {
               (dolžina × širina) jo uporabi za odmerek. Dejanska površina je površina poligona
               zgoraj.
             </p>
+          )}
+
+          {/* merilno poročilo (tisk/PDF) */}
+          {onReport && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 min-h-11 w-full"
+              onClick={onReport}
+              data-testid="skica-report"
+            >
+              <Printer className="mr-1.5 h-4 w-4" aria-hidden />
+              Merilno poročilo (tisk / PDF) — skica + vse meritve
+            </Button>
           )}
 
           {/* prefill kalkulatorjev */}

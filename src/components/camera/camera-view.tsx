@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus,
+  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus, Printer,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -37,6 +37,8 @@ import {
   buildPrefillFromMeasures, downloadMeasuresCsv, formatCm, formatM2, formatDeg, measuresToText,
 } from '@/lib/measure-geometry';
 import { buildMeasureSheet, loadImage } from '@/lib/measure-sheet';
+import { buildMeasureReportHTML, printMeasureReport } from '@/lib/measure-report';
+import type { RoomSketchResult } from '@/lib/room-sketch';
 import type { ProposalMeasureRow, ProposalCompany } from '@/lib/viz-proposal';
 import { PhotoCapture } from './photo-capture';
 import { PhotoCanvas } from './photo-canvas';
@@ -381,6 +383,9 @@ export function CameraView() {
   // ── Merilni list: fotka z anotiranimi merami + tabela (Hover standard) ──
   const [sheetBusy, setSheetBusy] = useState(false);
 
+  // Skica prostora (iz Pripomočkov) — vir za merilno poročilo
+  const [sketchResult, setSketchResult] = useState<RoomSketchResult | null>(null);
+
   const makeSheet = async () => {
     if (!photoUrl || allMeasures.length === 0) return null;
     const img = await loadImage(photoUrl);
@@ -437,6 +442,31 @@ export function CameraView() {
       toast({ title: 'Shranjevanje ni uspelo', variant: 'destructive' });
     } finally {
       setSheetBusy(false);
+    }
+  };
+
+  // ── Merilno poročilo: skica prostora + vse meritve v enem tisku/PDF ──
+  // (magicplan Report PDF standard — raziskava Task 40)
+  const openReport = () => {
+    if (!sketchResult && allMeasures.length === 0) {
+      toast({ title: 'Ni podatkov za poročilo', variant: 'destructive' });
+      return;
+    }
+    const html = buildMeasureReportHTML({
+      measures: allMeasures,
+      sketch: sketchResult,
+      craftLabel: result?.analysis.craft ? CRAFT_LABELS[result.analysis.craft] : undefined,
+      scene: result?.analysis.sceneDescription ?? null,
+      company: company ? { name: company.name, contact: company.contact } : null,
+    });
+    const ok = printMeasureReport(html);
+    if (ok) {
+      toast({
+        title: 'Poročilo za tisk pripravljeno ✓',
+        description: 'V tiskalnem pogovoru izberi »Shrani kot PDF«.',
+      });
+    } else {
+      toast({ title: 'Tisk ni dosegljiv v tem brskalniku', variant: 'destructive' });
     }
   };
 
@@ -866,6 +896,10 @@ export function CameraView() {
                       <Save className="mr-1.5 h-4 w-4" />
                       V galerijo
                     </Button>
+                    <Button size="sm" variant="outline" className="min-h-10" onClick={openReport} data-testid="report-print">
+                      <Printer className="mr-1.5 h-4 w-4" />
+                      Poročilo (tisk)
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -1184,6 +1218,8 @@ export function CameraView() {
             <CardContent className="p-4 sm:p-5">
               <RoomSketch
                 auxMeasures={auxMeasures}
+                onResult={setSketchResult}
+                onReport={openReport}
                 onPrefill={(craft, inputs) => {
                   setActiveCraft(craft);
                   setCameraPrefill({
