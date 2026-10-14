@@ -56,6 +56,7 @@ import { FasadaPanel } from './fasada-panel';
 import { VizPanel } from './viz-panel';
 import { FotoReplace } from './foto-replace';
 import { MultiView } from './multiview';
+import { RoomSketch } from './room-sketch';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
 import type { VizBarSuggest } from '@/lib/bar-count';
@@ -1176,6 +1177,24 @@ export function CameraView() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Skica prostora: stene (laser/glas/ročno) + koti → tloris z Bowditch zaprtjem → prefill kalkulatorjev */}
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <RoomSketch
+                auxMeasures={auxMeasures}
+                onPrefill={(craft, inputs) => {
+                  setActiveCraft(craft);
+                  setCameraPrefill({
+                    craft,
+                    inputs,
+                    photoTitle: 'Skica prostora — iz meritev sten',
+                  });
+                  setView('kalkulatorji');
+                }}
+              />
+            </CardContent>
+          </Card>
 
           {auxMeasures.length > 0 && (
             <Card>

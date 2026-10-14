@@ -30,6 +30,7 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 | Globalno merilo pxPerCm | `src/lib/measure-geometry.ts` — `lengthCm`, `polygonAreaM2`, `polygonSidesCm`, `chainStats`; VSE vračajo `null` pri `!pxPerCm ‖ pxPerCm ≤ 0` (TIHEGA PRIVZETKA 1 cm/px NI — grep po src potrdil) | `tests/verify/measurement-status.ts` 90/90 + uporaba v vseh panelih |
 | Planarna homografija | `src/lib/homography.ts` — `solveHomography` (Gaussova eliminacija, delna pivotizacija), `calibratePlane` (4 oglišča + realna W×H cm, degenerirane zavrnjene), `planeDistanceCm`, `planePolygonAreaM2`, `planeChainStats` | E2E `e2e-plane-*.png`; numerična pokritost prek `photo-replace` testov (isti reševalnik) |
 | Samodejni predlog reference | `src/lib/cv-engine.ts` — `buildScaleSuggestions` (blob/rob hevristika) | `tests/verify/scale-suggestions.ts` ✓ |
+| Skica prostora (tloris iz meritev sten) | `src/lib/room-sketch.ts` — `closeRoomPolygon` (tahometrija + kotno zaprtje + Bowditch/kompasna porazdelitev; ≤ 0,2 % = closed, ≤ 5 % = adjusted z opozorilom, > 5 % ali kotna napaka > 15°/kot = OPEN — površina null, ne tiha poravnava), `rectWalls`, `polygonAreaCm2`; UI `src/components/camera/room-sketch.tsx` (SVG risba, hitri vnos iz laserja/glasu, prefill keramika/WPC/fasada) | `tests/verify/room-sketch.ts` 48/48 (ročno izračunan Bowditch 500/300/505/300 → 5 cm, stranice 501,56/503,43, ploščina 15,07 m²); E2E namizje+mobilni |
 | Statusna pogodba meritev | `src/lib/measurement-status.ts` — `validateScale` (5 kod: NO_CALIBRATION, ASSUMED_SCALE, DEGENERATE_REFERENCE, PLANE_REQUIRED, OK), `MeasurementStatus` (ESTIMATED→CONFIRMED), `MeasurementProvenance`, `downgradeOnReferenceChange`, `makeProvenance` (POGODBA: assumed-reference NIKOLI CALIBRATED+) | `tests/verify/measurement-status.ts` 90/90 |
 | Označevanje statusov v UI | `src/components/camera/photo-canvas.tsx` — `measureProvenance()` (ravnina → CALIBRATED/plane-homography; znana dolžina → CALIBRATED/known-length; domnevna referenca/QUICK_REFS čipi → AUTO_SUGGESTED/assumed-reference); `camera-view.tsx` — `addAuxMeasure` (laser/glas → MANUAL) | E2E fotomontaže: značka »Kalibrirano · znane mere« |
 
@@ -86,7 +87,7 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 
 ## 5. Znan regresijski status (ob zapisu te osnove)
 
-- `measurement-status` 90/90 · `multiview` 91/91 · `photo-replace` 83/83 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `scale-suggestions` ✓ · `scene-classify` ✓
+- `measurement-status` 90/90 · `multiview` 91/91 · `photo-replace` 83/83 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `scale-suggestions` ✓ · `scene-classify` ✓
 - `tsc --noEmit`: src čist (prej obstoječe napake samo v `examples/` + `skills/`, niso del aplikacije)
 - `eslint .`: čisto · dev.log: brez napak · E2E zlata pot fotomontaže: namizje 1280 + mobilni 390×844 (brez vodoravnega drsenja), konzola čista
 
