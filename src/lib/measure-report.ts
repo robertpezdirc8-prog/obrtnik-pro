@@ -21,6 +21,7 @@ const KIND_LABEL: Record<PhotoMeasure['kind'], string> = {
   laser: 'laser',
   voice: 'glas',
   xr: 'AR',
+  model3d: '3D model',
 };
 
 function esc(s: string | null | undefined): string {

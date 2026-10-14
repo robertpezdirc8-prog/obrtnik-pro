@@ -1,0 +1,10 @@
+# Image list with two lines of data per image:
+# IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME
+# POINTS2D[] as (X, Y, POINT3D_ID)
+# Number of images: 3, mean observations per image: 3
+1 1 0 0 0 -1 -3 -5 1 fence_left.JPG
+100 100 1 200 100 2 150 100 3 300 100 6 250 100 -1
+2 1 0 0 0 2 -2.5 -4 1 fence_center.JPG
+110 120 1 210 120 2 310 120 4
+3 1 0 0 0 -3 -4 -6 1 fence_right.JPG
+120 90 3 220 90 5 20 90 7

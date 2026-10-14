@@ -142,7 +142,7 @@ export function normalizePhotoAnalysis(raw: unknown): PhotoAnalysis {
 }
 
 /** Vrsta meritve: daljica, površina, kot, veriga (naklon), laser, glas, pravi 3D AR (WebXR). */
-export type MeasureKind = 'length' | 'area' | 'angle' | 'chain' | 'laser' | 'voice' | 'xr';
+export type MeasureKind = 'length' | 'area' | 'angle' | 'chain' | 'laser' | 'voice' | 'xr' | 'model3d';
 
 /** Ena izmerjena vrednost (kalibrirano merilo ali vnos). */
 export interface PhotoMeasure {

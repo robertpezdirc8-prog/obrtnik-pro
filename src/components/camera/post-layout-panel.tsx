@@ -28,7 +28,7 @@ const MAX_SPANS = [100, 125, 150, 175, 200, 250];
 export function layoutSources(measures: PhotoMeasure[]): PhotoMeasure[] {
   const chains = measures.filter((m) => m.kind === 'chain' && (m.sides?.length ?? 0) >= 1 && m.value !== null);
   const flats = measures.filter(
-    (m) => (m.kind === 'length' || m.kind === 'laser' || m.kind === 'voice' || m.kind === 'xr') &&
+    (m) => (m.kind === 'length' || m.kind === 'laser' || m.kind === 'voice' || m.kind === 'xr' || m.kind === 'model3d') &&
       m.value !== null && m.value >= 100,
   );
   return [...chains, ...flats];

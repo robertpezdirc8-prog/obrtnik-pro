@@ -19,6 +19,7 @@ const KIND_LABEL: Record<PhotoMeasure['kind'], string> = {
   laser: 'laser',
   voice: 'glas',
   xr: 'AR',
+  model3d: '3D model',
 };
 
 export function loadImage(dataUrl: string): Promise<HTMLImageElement> {

@@ -20,7 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ScanSearch, Camera, Sparkles, History, Trash2, ArrowRight, Check,
-  Ruler, Wrench, Copy, Download, Box, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus, Printer,
+  Ruler, Wrench, Copy, Download, Box, Boxes, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus, Printer,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDraft, useView } from '@/lib/store';
@@ -47,6 +47,7 @@ import { LiveAr } from './live-ar';
 import { LaserPanel } from './laser-panel';
 import { VoiceInput } from './voice-input';
 import { WebXrAr } from './webxr-ar';
+import { Colmap3d } from './colmap-3d';
 import { Measure3dPreview } from './preview-3d';
 import { PostLayoutPanel } from './post-layout-panel';
 import { StairPanel } from './stair-panel';
@@ -75,7 +76,7 @@ interface PhotoRecord {
   createdAt: string;
 }
 
-type CameraTab = 'analiza' | 'ar' | 'viz' | 'fotomontaza' | 'vecpogled' | 'orodja';
+type CameraTab = 'analiza' | 'ar' | 'viz' | 'fotomontaza' | 'vecpogled' | 'model' | 'orodja';
 
 const ANALYSIS_STEPS = [
   'Prepoznavam sceno…',
@@ -232,9 +233,11 @@ export function CameraView() {
 
   const addAuxMeasure = (kind: MeasureKind) => (label: string, cm: number) => {
     // Status pogodbe (Task 36): laser/glas/WebXR = ročni vnos monterja
-    // (MANUAL, neodvisen od fotke); 'length' (BarCounter) računa iz
-    // domnevne reference analize → AUTO_SUGGESTED (nikoli potrjena mera).
-    const manual = kind === 'laser' || kind === 'voice' || kind === 'xr';
+    // (MANUAL, neodvisen od fotke); 'model3d' (Task 47) = izmerjeno po
+    // kalibriranem 3D modelu → MANUAL (monter izbere par + vnese referenco);
+    // 'length' (BarCounter) računa iz domnevne reference → AUTO_SUGGESTED
+    // (nikoli potrjena mera).
+    const manual = kind === 'laser' || kind === 'voice' || kind === 'xr' || kind === 'model3d';
     setAuxMeasures((list) => [...list, {
       id: auxId(), label, kind, value: cm, points: [],
       status: manual ? 'MANUAL' : 'AUTO_SUGGESTED',
@@ -252,7 +255,7 @@ export function CameraView() {
   // Povzetek meritev za "Predlog za stranko" (vizualizer → dokument)
   const MEASURE_KIND_SHORT: Record<MeasureKind, string> = {
     length: 'dolžina', area: 'površina', angle: 'kot', chain: 'veriga',
-    laser: 'laser', voice: 'glas', xr: 'AR',
+    laser: 'laser', voice: 'glas', xr: 'AR', model3d: '3D model',
   };
   const vizMeasures: ProposalMeasureRow[] = allMeasures
     .filter((m) => m.value !== null)
@@ -673,6 +676,7 @@ export function CameraView() {
     ['viz', 'Vizualizer', <Palette key="i" className="h-4 w-4" />],
     ['fotomontaza', 'Fotomontaža', <ImagePlus key="i" className="h-4 w-4" />],
     ['vecpogled', 'Večpogled', <Layers key="i" className="h-4 w-4" />],
+    ['model', '3D model', <Boxes key="i" className="h-4 w-4" />],
     ['orodja', 'Pripomočki', <Wrench key="i" className="h-4 w-4" />],
   ];
 
@@ -1197,6 +1201,15 @@ export function CameraView() {
       {/* ── Večpogled: klasična fotogrametrija iz dveh fotk (Task 37-b, Faza 3) ── */}
       {tab === 'vecpogled' && <MultiView />}
 
+      {/* ── 3D model objekta (COLMAP SfM uvoz, Task 47) ── */}
+      {tab === 'model' && (
+        <Card>
+          <CardContent className="p-4 sm:p-5">
+            <Colmap3d onAddMeasure={addAuxMeasure('model3d')} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Merilni pripomočki ─────────────────────────────── */}
       {tab === 'orodja' && (
         <div className="space-y-4">
@@ -1255,7 +1268,7 @@ export function CameraView() {
                     <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-1.5 text-sm">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0">
-                          {m.kind === 'laser' ? 'laser' : m.kind === 'voice' ? 'glas' : m.kind === 'xr' ? 'AR' : 'meritev'}
+                          {m.kind === 'laser' ? 'laser' : m.kind === 'voice' ? 'glas' : m.kind === 'xr' ? 'AR' : m.kind === 'model3d' ? '3D' : 'meritev'}
                         </Badge>
                         <span className="truncate font-medium">{m.label}</span>
                       </span>
