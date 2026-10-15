@@ -66,10 +66,10 @@ model Offer {
 // ─── Računi (iz sprejete ponudbe) ───────────────────────
 
 model Invoice {
-  id           String    @id @default(cuid())
-  number       String    @unique
+  id           String        @id @default(cuid())
+  number       String        @unique
   offerId      String
-  offer        Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  offer        Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
   customerName String
   subtotal     Float
   vatRate      Float
@@ -79,7 +79,29 @@ model Invoice {
   dueAt        DateTime?
   /// Kdaj je račun plačan — null = neplačan (izhodišče za terjatve + Mahnwesen).
   paidAt       DateTime?
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime      @default(now())
+  /// Snapshot postavk ob izdaji — e-račun (EN 16931) zahteva vsaj eno vrstico (BR-16).
+  items        InvoiceItem[]
+}
+
+// ─── Postavke računa (snapshot iz ponudbe ob izdaji) ────
+// Raziskava 2026 (ZIERDED — Državni zbor 23. 11. 2025): B2B e-račun
+// (e-SLOG / EN 16931, UBL 2.1) obvezen od 1. 1. 2028, za javni sektor
+// že zdaj prek UJP. Račun MORA imeti vrstice (BR-16) — zato se ob
+// izdaji računa postavke ponudbe ZAPIEJEJO tu (pravi snapshot:
+// poznejše spremembe ponudbe ne prepišejo zgodovine računa).
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quantity    Float
+  unit        String
+  unitPrice   Float
+  total       Float
+  sortOrder   Int     @default(0)
 }
 
 model OfferItem {

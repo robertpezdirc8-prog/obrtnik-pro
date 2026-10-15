@@ -51,7 +51,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Ni sprememb' }, { status: 400 });
     }
 
-    const invoice = await db.invoice.update({ where: { id }, data });
+    const invoice = await db.invoice.update({
+      where: { id },
+      data,
+      include: { _count: { select: { items: true } } },
+    });
 
     return NextResponse.json({
       invoice: {
@@ -66,6 +70,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         dueAt: invoice.dueAt ? invoice.dueAt.toISOString() : null,
         paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
         createdAt: invoice.createdAt.toISOString(),
+        itemCount: invoice._count.items,
       },
     });
   } catch (error) {

@@ -21,7 +21,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import {
   Check, FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy,
-  MessageCircle, FilePlus2, FileCheck2, Receipt,
+  MessageCircle, FilePlus2, FileCheck2, Receipt, FileCode2,
 } from 'lucide-react';
 import { formatDate, formatEUR, formatNum, STATUS_LABELS } from '@/lib/format';
 import {
@@ -40,6 +40,7 @@ import { openOfferPDF, openHandoverPrint, openInvoicePDF } from '@/lib/pdf';
 import { validUntil } from '@/lib/pdf';
 import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
 import { useChangeOrders, type ChangeOrderEntry } from '@/lib/store';
+import { eslogFilename } from '@/lib/eslog';
 import type { OfferDTO, SettingsDTO, OfferStatus, InvoiceDTO } from '@/lib/types';
 
 function daysSince(dateIso: string): number {
@@ -50,6 +51,34 @@ function daysSince(dateIso: string): number {
 
 function todayIso(): string {
   return new Date().toISOString();
+}
+
+/**
+ * Prenese e-račun (e-SLOG / EN 16931 UBL XML) za račun. Iskrene napake:
+ * 409 = račun brez postavk ali neskladni zneski (sporočilo strežnika).
+ */
+async function downloadEslog(inv: InvoiceDTO): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/invoices/${encodeURIComponent(inv.id)}/eslog`);
+  if (res.ok) {
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = eslogFilename(inv.number);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return { ok: true };
+  }
+  let error = 'E-računa ni bilo mogoče izdelati.';
+  try {
+    const data = (await res.json()) as { error?: string };
+    if (data.error) error = data.error;
+  } catch {
+    // ostane splošno sporočilo — ne izmišljujemo razloga
+  }
+  return { ok: false, error };
 }
 
 /** Izgradi besedili opomnika (SMS in e-pošta) — čista funkcija. */
@@ -870,6 +899,32 @@ export function OffersList() {
                                 <FileDown className="h-3.5 w-3.5" />
                               </Button>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              aria-label={`Prenesi e-račun XML za račun ${inv.number}`}
+                              title="E-račun (e-SLOG / EN 16931)"
+                              data-testid={`eslog-${inv.number}`}
+                              onClick={async () => {
+                                if (inv.itemCount === 0) {
+                                  toast({
+                                    title: 'E-račun ni mogoč',
+                                    description: 'Ta račun nima postavk (starejši vnos) — izdajte nov račun.',
+                                    variant: 'destructive',
+                                  });
+                                  return;
+                                }
+                                const r = await downloadEslog(inv);
+                                if (r.ok) {
+                                  toast({ title: `E-račun ${inv.number} prenesen`, description: 'XML (EN 16931) — oddaja poteka prek UJP/Peppol zunaj aplikacije.' });
+                                } else {
+                                  toast({ title: 'E-račun ni mogoč', description: r.error, variant: 'destructive' });
+                                }
+                              }}
+                            >
+                              <FileCode2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </div>
                       );
@@ -888,6 +943,11 @@ export function OffersList() {
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
                   Račun se nanaša na {invoiceOffer.items.length} postavk · DDV {formatNum(invoiceOffer.vatRate)} % · skupaj {formatEUR(invoiceOffer.total)}
+                </p>
+                <p className="text-[11px] leading-snug text-muted-foreground text-center">
+                  E-račun (e-SLOG / EN 16931, XML) prenesete pri vsakem izdanem računu —
+                  za B2B poslovanje postane obvezen 1. 1. 2028 (ZIERDED). Oddaja poteka
+                  prek UJP/Peppol zunaj aplikacije.
                 </p>
               </div>
             </>

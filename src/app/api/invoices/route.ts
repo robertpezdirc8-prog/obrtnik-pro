@@ -9,6 +9,9 @@ import { ensureSeeded } from '@/lib/seed';
 // deterministično in strežniško: RAC-LETO-NNN.
 // Task 44: žigi plačil (dueAt/paidAt) dodeljuje STREŽNIK — klient
 // ne more izmisliti zgodovine plačil (isti vzorec kot pri ponudbah).
+// Task 49: ob izdaji se postavke ponudbe ZAPIEJEJO kot snapshot
+// (InvoiceItem) — e-račun (EN 16931, ZIERDED od 2028) zahteva vrstice
+// (BR-16) in zgodovina računa ne sme slediti poznejšim spremembam ponudbe.
 
 import { DEFAULT_DUE_DAYS } from '@/lib/payment-tracking';
 
@@ -19,7 +22,10 @@ export async function GET() {
     await ensureSeeded();
     const invoices = await db.invoice.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { offer: { select: { number: true } } },
+      include: {
+        offer: { select: { number: true } },
+        _count: { select: { items: true } },
+      },
     });
     return NextResponse.json({
       invoices: invoices.map((i) => ({
@@ -35,6 +41,8 @@ export async function GET() {
         dueAt: i.dueAt ? i.dueAt.toISOString() : null,
         paidAt: i.paidAt ? i.paidAt.toISOString() : null,
         createdAt: i.createdAt.toISOString(),
+        // Task 49: št. postavk v snapshotu (0 = starejši račun brez snapshotov)
+        itemCount: i._count.items,
       })),
     });
   } catch (error) {
@@ -84,7 +92,22 @@ export async function POST(req: NextRequest) {
         vatAmount: r2(offer.vatAmount),
         total: r2(offer.total),
         dueAt: due,
+        // Snapshot postavk — pravi zgodovinski dokaz za e-račun (BR-16)
+        items: {
+          create: [...offer.items]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((it) => ({
+              name: it.name,
+              description: it.description,
+              quantity: it.quantity,
+              unit: it.unit,
+              unitPrice: it.unitPrice,
+              total: it.total,
+              sortOrder: it.sortOrder,
+            })),
+        },
       },
+      include: { _count: { select: { items: true } } },
     });
 
     return NextResponse.json({
@@ -101,6 +124,7 @@ export async function POST(req: NextRequest) {
         dueAt: invoice.dueAt ? invoice.dueAt.toISOString() : null,
         paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
         createdAt: invoice.createdAt.toISOString(),
+        itemCount: invoice._count.items,
       },
     });
   } catch (error) {

@@ -78,6 +78,8 @@ export interface InvoiceDTO {
   /** Kdaj plačano (ISO) — null = neplačan. */
   paidAt: string | null;
   createdAt: string;
+  /** Št. postavk v snapshotu (Task 49) — 0 = starejši račun brez snapshotov. */
+  itemCount?: number;
 }
 
 export interface OfferItemDTO {
