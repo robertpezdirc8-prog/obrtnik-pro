@@ -571,6 +571,120 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     metaP.exportLabel === EXPORT_LABEL && metaP.exportLabel.includes('VIZUALIZACIJA'));
 }
 
+// ── 11. WPC deka 140 tikovina (4. dokazani primer, Task 53) ──
+{
+  console.log('wpc-deka-140 (4. primer: WPC deka 140 mm tikovina, tile brez spojev):');
+  const p = ROKSAL_PROFILES.find((x) => x.id === 'wpc-deka-140');
+  check('profil wpc-deka-140 obstaja', !!p);
+  check('mere: deka 14 cm, fuga 0,4 cm, vodoravno, postCm 6, vzorec terasa',
+    !!p && p.plankCm === 14 && p.gapCm === 0.4 && p.orientation === 'horizontal' && p.postCm === 6 && p.pattern === 'terasa');
+  check('catalogSku je null (SKU se ne izmišljuje — čaka ROKSAL katalog #6)', p?.catalogSku === null);
+  const tex = assetById('tex-wpc-tikovina');
+  check('tekstura tex-wpc-tikovina obstaja z virom /textures/wpc-tikovina.jpg',
+    !!tex && tex.src === '/textures/wpc-tikovina.jpg');
+  check('tex-wpc-tikovina: real-photo + unverified + navpična žira + realCm 45',
+    tex?.origin === 'real-photo' && tex?.verification === 'unverified' && tex?.grain === 'vertical' && tex?.realCm === 45);
+  check('tex-wpc-tikovina note: izrez + tlakovanje dokumentirano (make-tikovina-tile)',
+    typeof tex?.note === 'string' && tex.note.includes('Izrez ENE čiste deske') && tex.note.includes('make-tikovina-tile'));
+  check('tex-wpc-tikovina note izrecno zanika original', typeof tex?.note === 'string' && tex.note.includes('NI original ROKSAL'));
+  if (p) {
+    const r = profileReadiness(p);
+    check('wpc-deka-140: canRender TRUE (tekstura ima vir)', r.canRender === true, JSON.stringify(r));
+    check('wpc-deka-140: isOriginal FALSE (ni overjenih originalov)', r.isOriginal === false);
+    check('iskreni label: "Realna fotografija materiala"', r.honestyLabel.includes('Realna fotografija materiala'), r.honestyLabel);
+  }
+  // register ↔ viz-textures konsistenca (isti vir in realCm → tlakovanje v istem merilu)
+  const vizTex = VIZ_TEXTURES.find((t) => t.id === 'wpc-tikovina');
+  check('viz-textures ima "wpc-tikovina" z ISTIM virom in realCm kot register',
+    !!vizTex && vizTex.src === tex?.src && vizTex.realCm === tex?.realCm,
+    JSON.stringify(vizTex ?? null));
+  // barva + mapiranje profila: foto-replace PROFILE_COLOR_ID in viz.ts flat barva
+  const { readFileSync } = await import('node:fs');
+  const frxSrc = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/components/camera/foto-replace.tsx`));
+  check('foto-replace PROFILE_COLOR_ID: wpc-deka-140 → wpc-tikovina',
+    frxSrc.includes("'wpc-deka-140': 'wpc-tikovina'"));
+  const vizSrc = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/lib/viz.ts`));
+  check('viz.ts: wpc-tikovina flat barva #8A6A48',
+    vizSrc.includes("'wpc-tikovina'") && vizSrc.includes('#8A6A48'));
+  // privzeti parametri vzorca "terasa" se ujemajo s profilom
+  const dp = defaultParamsForPattern('terasa');
+  check('defaultParamsForPattern("terasa") = element 14 / fuga 0,4 (ujema s profilom)',
+    dp.elementCm === 14 && dp.spacingCm === 0.4, JSON.stringify({ e: dp.elementCm, s: dp.spacingCm }));
+  // postavitev na demo pasu (isti kot 1. primer): ravnina 250×180 cm → 12 dek
+  const layout = computePlankLayouts({
+    quadPct: [[54.7, 22.7], [99.8, 1.2], [99.8, 92.8], [54.7, 87.7]],
+    imgSize: { w: 1280, h: 890 },
+    planeCm: { wCm: 250, hCm: 180 },
+    plankCm: 14, gapCm: 0.4,
+    orientation: 'horizontal', postCm: 6, postEveryCm: null,
+  });
+  const expectedDecks = Math.floor((180 + 0.4) / (14 + 0.4));
+  check(`postavitev: ${expectedDecks} dek na ravnini 180 cm (floor((180+0.4)/14,4))`,
+    layout.planks.length === expectedDecks, `dejansko ${layout.planks.length}`);
+  // deke so VODORAVNI trakovi: vsaka širša kot visoka (width > height)
+  const deckW = (q: QuadPx): number => Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+  const deckH = (q: QuadPx): number => Math.hypot(q.bl.x - q.tl.x, q.bl.y - q.tl.y);
+  check('deke so vodoravni trakovi (širina > višina)', layout.planks.every((k) => deckW(k.quad) > deckH(k.quad)));
+  // merilo na demo pasu (ocenjene mere — kot 1. primer okvirno 0,42–0,45)
+  check('merilo okvirno 0,40–0,46 cm/px (ocenjene mere demo pasu)',
+    layout.scaleCmPerPxAtQuad.top > 0.40 && layout.scaleCmPerPxAtQuad.top < 0.46
+    && layout.scaleCmPerPxAtQuad.bottom > 0.40 && layout.scaleCmPerPxAtQuad.bottom < 0.46,
+    JSON.stringify(layout.scaleCmPerPxAtQuad));
+  // TILE BREZ SPOJEV: JPEG dekodiran s sharp (že odvisnost) — neodvisna
+  // preverba istih invariant, ki jih zagotavlja tests/make-tikovina-tile.ts:
+  // 512×512, brez temnih kanalov (starih spojev), navpična žira.
+  if (tex?.src) {
+    const sharp = (await import('sharp')).default;
+    const d = await sharp(`${process.cwd()}/public${tex.src}`).raw().toBuffer({ resolveWithObject: true });
+    const TW = d.info.width, TH = d.info.height, TC = d.info.channels;
+    check('wpc-tikovina.jpg: 512×512', TW === 512 && TH === 512, `${TW}×${TH}`);
+    const lum = new Float64Array(TW * TH);
+    for (let i = 0, j = 0; i < lum.length; i++, j += TC) {
+      lum[i] = 0.2126 * d.data[j] + 0.7152 * d.data[j + 1] + 0.0722 * d.data[j + 2];
+    }
+    const colL = new Float64Array(TW);
+    for (let x = 0; x < TW; x++) {
+      let s = 0; for (let y = 0; y < TH; y++) s += lum[y * TW + x];
+      colL[x] = s / TH;
+    }
+    let darkCh = 0;
+    for (let x = 6; x < TW - 6; x++) {
+      if (colL[x] < (colL[x - 6] + colL[x + 6]) / 2 - 18) darkCh++;
+    }
+    check(`wpc-tikovina.jpg: brez temnih kanalov (starih spojev) — ${darkCh} > 4 bi bil FAIL`, darkCh <= 4, String(darkCh));
+    let ex = 0, ey = 0;
+    for (let y = 1; y < TH - 1; y += 2) {
+      for (let x = 1; x < TW - 1; x += 2) {
+        const v = lum[y * TW + x];
+        ex += Math.abs(lum[y * TW + x + 1] - v);
+        ey += Math.abs(lum[(y + 1) * TW + x] - v);
+      }
+    }
+    check(`wpc-tikovina.jpg: žira NAVPIČNA (|dx| ${ex.toFixed(0)} > |dy| ${ey.toFixed(0)}) — skladno z registrom`, ex > ey);
+  }
+  // metapodatki sprejmejo wpc-deka-140 z real-photo teksturo
+  const maskT = createMask(IMG_W, IMG_H);
+  paintMaskRect(maskT, 30, 30, 209, 149, 255);
+  const metaT = buildReplaceMetadata({
+    profileId: p!.id,
+    profileLabel: p!.label,
+    catalogSku: p!.catalogSku,
+    texture: { id: tex!.id, src: tex!.src, origin: tex!.origin, verification: tex!.verification, realCm: tex!.realCm },
+    planeCm: { wCm: 250, hCm: 180 },
+    params: { plankCm: 14, gapCm: 0.4 },
+    mask: maskT,
+    layout,
+    imgSize: { w: IMG_W, h: IMG_H },
+    inpaint: 'ok',
+    warnings: [],
+    createdAt: '2026-10-15T10:00:00.000Z',
+  });
+  check('metapodatki: wpc-deka-140 + tex-wpc-tikovina real-photo sprejeta',
+    metaT.profileId === 'wpc-deka-140' && metaT.texture?.origin === 'real-photo' && metaT.texture.src === '/textures/wpc-tikovina.jpg');
+  check('metapodatki: iskrenost izvoza (ni original, žig VIZUALIZACIJA)',
+    metaT.exportLabel === EXPORT_LABEL && metaT.exportLabel.includes('VIZUALIZACIJA'));
+}
+
 // ── 9. FNV-1a hash proti neodvisni referenčni implementaciji ─
 {
   console.log('fnv1aHash (neodvisna referenčna implementacija z BigInt):');

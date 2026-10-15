@@ -51,7 +51,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     id: 'tex-wpc-tikovina', kind: 'texture', label: 'WPC tikovina (tekstura)',
     src: '/textures/wpc-tikovina.jpg', realCm: 45, origin: 'real-photo', verification: 'unverified',
     license: 'Pexels License', sourceUrl: 'https://www.pexels.com/photo/326311/', grain: 'vertical',
-    note: GENERIC_NOTE,
+    note: 'Izrez ENE čiste deske iz fotke Pexels 326311 (avtorja originala ni mogoče zanesljivo prebrati s strani — vir je Pexels) + zrcalno tlakovanje 6× (izmenično flop) → tile 512×512 brez SPOJEV med deskami (stebrična svetilnost: 0 temnih kanalov; spoji v izvirniku so pri zasuku 90° postali neresnične vodoravne črte sredi deke — priprava tests/make-tikovina-tile.ts, deterministično). Žira ostaja navpična (energija gradientov |dx|>|dy|). ' + GENERIC_NOTE,
   },
   {
     id: 'tex-wpc-siva', kind: 'texture', label: 'WPC siva (tekstura)',
