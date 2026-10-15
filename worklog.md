@@ -1591,3 +1591,20 @@ Stage Summary:
 - README na GitHubu zdaj odraža dejansko preverjeno stanje (Task 59-60 + sweep) — vsaka trditev zapisana šele po zagonu orodij.
 - Širok E2E sweep: VSAH 8 zavihkov + 7 pod-zavihkov kamere brez stranskih napak; produkcijska različica DOKAZANO stabilna čez celotno aplikacijo, ne samo fotomontaža.
 - Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti, 0 sprememb aplikacijske kode (samo README + dokazi).
+
+---
+Task ID: 62
+Agent: Z.ai Code (glavni)
+Task: Nadaljevanje stojne direktive (izboljšuj — brez novih funkcij) — trajna kakovostna preverba žire VSEH 32 dekor tlakov vseh 5 družin (ROMB-67, POLNA-100, POLNA-128 — preostale 3 po Task 55–57 KUBO/TERASNA/OGRAJE), kalibrirana pikselska vrata kot nova verify skripta.
+
+Work Log:
+- KALIBRACIJA (začasna skripta, sharp raw nad vsemi 32 tlaki, rezultati dokumentirani v glavi tests/verify/roksal-tiles.ts): vseh 32 je 256×256, 0 skoraj-črnih pikslov (l<10), žira NAVPIČNA pri vseh (relativna marža (|dx|−|dy|)/(|dx|+|dy|) = 0,291–0,625; min polna100 dekor-8 0,291), brez notranje zrcalne simetrije (min symX 7,9 / symY 7,1 — polna100 dekor-6), vidna žira (meanDx 4,39–19,51; min deka dekor-5 4,39; std luminance 7,0–36,6). Pragi z iskreno maržo: vertikalnost ≥ 0,15 (~2× glava; ravnina bi imela ~0), simetrija ≥ 6 (enak prag kot pikselske preverbe v photo-replace.ts), meanDx ≥ 3,5, nearBlack = 0.
+- NOVA tests/verify/roksal-tiles.ts (35. verify skripta, 199 preverb): (1) registry ↔ disk 1:1 za vseh 32 (id, kind texture, src pot, grain vertical, realCm 45, roksal-original, unverified + datoteka na disku) + orphan preverba (na disku TOČNO n dekor datotek na družino); (2) pikselska vrata za VSAK tlak: 256×256, 0 skoraj-črnih, navpična žira z maržo, vidna žira (meanDx + std v izpisu), brez metulj-simetrije (symX+symY); (3) vsi texture kazalci registra na /roksal/… kažejo na obstoječe datoteke (src=null = iskreno manjkajoči originali, dovoljeni — RAL 7016). Dve poučni napaki med razvojem: ROKSAL_ASSETS vsebuje null vnose (manjkajoči originali) in texture src je string|null — popravljeno z varovali, prvi crashed zagon NI štel kot uspeh.
+- Šivi pri zrcalnem tlakovanju (renderer drawMirroredTexture 2×2): po konstrukciji zvezni za poljuben tlak (zrcaljenje podvoji rob) — ločena preverba šivov ni potrebna; zahteva po enojnem ne-zrcaljenem izrezu je pokrita s preverbami simetrije. Razlaga v glavi skripte.
+- README posodobljen: verifikacijske skripte 34→35 (+ roksal-tiles v primerih), odstavek o 32 tlakov dopolnjen s trajno preverbo od Task 62, uvodni blok „Stanje“ 35/35 (Task 59–62).
+- Regresija: polna 35/35 (exit codes), roksal-tiles 199/199, tsc čist (src/tests; preostale znane napake izven projekta v examples/+skills/), eslint čist.
+
+Stage Summary:
+- Kakovost žire je zdaj DOKAZANA in TRAJNO VAROVANA za vseh 32 dekor tlakov vseh 5 družin — prej samo vzorčno (KUBO dekor-2 + 2 ograja vzorca); polna-100 dekor-8 (najtanjša vertikalna marža 0,291) in dekor-6 (najtanjša simetrija 7,9/7,1) ostajata znotraj vrat s primerljivo maržo kot KUBO/DEKA.
+- Vsak prihodnji regresivni zagon zdaj samodejno pazi, da tile datoteke ne zgnijejo (nadomestitev z zrcaljeno/črno/ravno različico bi padla na simetrijo/črnino/meanDx) in da registry ostane 1:1 z diskom.
+- Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti, 0 sprememb aplikacijske kode (1 nova test skripta + README + worklog).

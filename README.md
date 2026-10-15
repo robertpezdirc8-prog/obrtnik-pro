@@ -11,9 +11,9 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 34/34, photo-replace 391/391, E2E celoten tok
+> Zadnja polna preverba: **regresija 35/35, photo-replace 391/391, E2E celoten tok
 > fotomontaže zeleno, mobilni 390 brez prelivanja, 0 konzolnih napak**
-> (Task 59–60, oktober 2026).
+> (Task 59–62, oktober 2026).
 
 ---
 
@@ -200,13 +200,14 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (34)
+### Verifikacijske skripte (35)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):
 
 ```bash
 bun tests/verify/photo-replace.ts     # fotomontaža — 391 preveritev
+bun tests/verify/roksal-tiles.ts      # kakovost VSEH 32 dekor tlakov — 199 preveritev
 bun tests/verify/multiview-chain.ts   # veriga fotk / od AB
 bun tests/verify/colmap-model.ts      # SfM/COLMAP
 bun tests/verify/deck-analysis.ts     # analiza dek
@@ -214,8 +215,9 @@ bun tests/verify/deck-analysis.ts     # analiza dek
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (HEAD `d8b28fa`, Task 59–60): **photo-replace 391/391**, polna
-regresija **34/34 skript zeleno** (pognano z izhodnimi kodami, ne citirano).
+Zadnja preverba (Task 62): polna regresija **35/35 skript zeleno** (pognano z
+izhodnimi kodami, ne citirano), vključno z **photo-replace 391/391** in
+**roksal-tiles 199/199**.
 
 ### E2E dokazi
 
@@ -240,7 +242,12 @@ KUBO dekor-2 z kalibrirano perspektivo 0,257 cm/px, metapodatki različice z
 Vseh **32 dekor tlakov** na disku je 256×256 — ločljivost je **zadoščajoča**:
 delovna kopija fotke je omejena na 1280 px, 45 cm tile je na njej ≈ 186 px
 (1,4× prevzorčenje), zato višja ločljivost ne bi dala vidnega dobička
-(izmerjeno Task 60).
+(izmerjeno Task 60). Kakovost vseh 32 tlakov (vseh 5 družin) je od Task 62
+**trajno preverjena** (`tests/verify/roksal-tiles.ts`, 199 preveritev):
+registry ↔ disk 1:1 (brez orphan datotek), 256×256 enojni izrez, 0 skoraj-črnih
+pikslov, navpična žira z merjeno maržo, vidna žira (meanDx) in brez notranje
+zrcalne (metulj) simetrije — pragi umerjeni na izmerjenih vrednostih vseh 32
+tlakov.
 
 ## Struktura projekta
 
@@ -251,7 +258,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (34 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (35 skript), e2e-*.png, make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```
