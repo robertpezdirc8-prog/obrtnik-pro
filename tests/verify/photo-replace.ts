@@ -29,6 +29,8 @@ import {
   type ReplaceMetadataInput,
 } from '../../src/lib/photo-replace-core';
 import { ROKSAL_ASSETS, ROKSAL_PROFILES, assetById, profileReadiness } from '../../src/lib/roksal-assets';
+import { VIZ_TEXTURES } from '../../src/lib/viz-textures';
+import { defaultParamsForPattern } from '../../src/lib/viz';
 
 let pass = 0, fail = 0;
 const check = (name: string, cond: boolean, info?: string) => {
@@ -494,6 +496,79 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     texture: { id: ralTex.id, src: ralTex.src, origin: 'izmisljen-origin' as 'real-photo', verification: ralTex.verification, realCm: ralTex.realCm },
   }));
   check('neznan origin → zavrnjen', badOrigin);
+}
+
+// ── 10. Piketna ograja 18 mm (3. dokazani primer, Task 52) ───
+{
+  console.log('piketna-18 (3. primer: piketna ograja, tex-hrast, tatice za piketami):');
+  const p = ROKSAL_PROFILES.find((x) => x.id === 'piketna-18');
+  check('profil piketna-18 obstaja', !!p);
+  check('mere: element 1,8 cm, reža 11 cm, navpično, postCm 4,5',
+    !!p && p.plankCm === 1.8 && p.gapCm === 11 && p.orientation === 'vertical' && p.postCm === 4.5);
+  check('catalogSku je null (SKU se ne izmišljuje — čaka ROKSAL katalog #6)', p?.catalogSku === null);
+  check('vzorec je "piketna"', p?.pattern === 'piketna');
+  const tex = assetById('tex-hrast');
+  check('tekstura tex-hrast obstaja z virom /textures/hrast.jpg', !!tex && tex.src === '/textures/hrast.jpg');
+  check('tex-hrast: real-photo + unverified + navpična žira + realCm 45',
+    tex?.origin === 'real-photo' && tex?.verification === 'unverified' && tex?.grain === 'vertical' && tex?.realCm === 45);
+  check('tex-hrast note izrecno zanika original', typeof tex?.note === 'string' && tex.note.includes('NI original ROKSAL'));
+  if (p) {
+    const r = profileReadiness(p);
+    check('piketna-18: canRender TRUE (tekstura ima vir)', r.canRender === true, JSON.stringify(r));
+    check('piketna-18: isOriginal FALSE (ni overjenih originalov)', r.isOriginal === false);
+    check('iskreni label: "Realna fotografija materiala"', r.honestyLabel.includes('Realna fotografija materiala'), r.honestyLabel);
+  }
+  // register ↔ viz-textures konsistenca (isti vir in realCm → tlakovanje v istem merilu)
+  const vizTex = VIZ_TEXTURES.find((t) => t.id === 'hrast');
+  check('viz-textures ima "hrast" z ISTIM virom in realCm kot register',
+    !!vizTex && vizTex.src === tex?.src && vizTex.realCm === tex?.realCm,
+    JSON.stringify(vizTex ?? null));
+  // privzeti parametri vzorca "piketna" se ujemajo s profilom
+  const dp = defaultParamsForPattern('piketna');
+  check('defaultParamsForPattern("piketna") = element 1,8 / razmak 11 (ujema s profilom)',
+    dp.elementCm === 1.8 && dp.spacingCm === 11, JSON.stringify({ e: dp.elementCm, s: dp.spacingCm }));
+  // postavitev na demo pasu (isti kot 2. primer): ravnina 200×95 cm → 16 piket
+  const layout = computePlankLayouts({
+    quadPct: [[56, 34], [92, 22], [92, 62], [56, 68]],
+    imgSize: { w: 1280, h: 890 },
+    planeCm: { wCm: 200, hCm: 95 },
+    plankCm: 1.8, gapCm: 11,
+    orientation: 'vertical', postCm: 4.5, postEveryCm: null,
+  });
+  const expectedPickets = Math.floor((200 + 11) / (1.8 + 11));
+  check(`postavitev: ${expectedPickets} piket na ravnini 200 cm (floor((200+11)/12,8))`,
+    layout.planks.length === expectedPickets, `dejansko ${layout.planks.length}`);
+  check('brez vmesnih stebrov (postEveryCm null — iskreno v opombah)', layout.posts.length === 0);
+  check('reže: ena manj kot piket (gapCm > 0)', layout.gaps.length === layout.planks.length - 1);
+  check('merilo okvirno 0,42–0,44 cm/px (ocenjene mere demo pasu)',
+    layout.scaleCmPerPxAtQuad.top > 0.4 && layout.scaleCmPerPxAtQuad.top < 0.45
+    && layout.scaleCmPerPxAtQuad.bottom > 0.4 && layout.scaleCmPerPxAtQuad.bottom < 0.45,
+    JSON.stringify(layout.scaleCmPerPxAtQuad));
+  // pikete so NAVPIČNI trakovi: vsaka ožja kot široka (width < height)
+  const picketW = (q: QuadPx): number => Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+  const picketH = (q: QuadPx): number => Math.hypot(q.bl.x - q.tl.x, q.bl.y - q.tl.y);
+  check('pikete so navpični trakovi (širina < višina)', layout.planks.every((k) => picketW(k.quad) < picketH(k.quad)));
+  // metapodatki sprejmejo piketna-18 z real-photo teksturo
+  const maskP = createMask(IMG_W, IMG_H);
+  paintMaskRect(maskP, 30, 30, 209, 149, 255);
+  const metaP = buildReplaceMetadata({
+    profileId: p!.id,
+    profileLabel: p!.label,
+    catalogSku: p!.catalogSku,
+    texture: { id: tex!.id, src: tex!.src, origin: tex!.origin, verification: tex!.verification, realCm: tex!.realCm },
+    planeCm: { wCm: 200, hCm: 95 },
+    params: { plankCm: 1.8, gapCm: 11 },
+    mask: maskP,
+    layout,
+    imgSize: { w: IMG_W, h: IMG_H },
+    inpaint: 'ok',
+    warnings: [],
+    createdAt: '2026-10-15T10:00:00.000Z',
+  });
+  check('metapodatki: piketna-18 + tex-hrast real-photo sprejeta',
+    metaP.profileId === 'piketna-18' && metaP.texture?.origin === 'real-photo' && metaP.texture.src === '/textures/hrast.jpg');
+  check('metapodatki: iskrenost izvoza (ni original, žig VIZUALIZACIJA)',
+    metaP.exportLabel === EXPORT_LABEL && metaP.exportLabel.includes('VIZUALIZACIJA'));
 }
 
 // ── 9. FNV-1a hash proti neodvisni referenčni implementaciji ─

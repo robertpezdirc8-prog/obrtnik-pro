@@ -664,6 +664,23 @@ export function buildPatternCanvas(
       const w = Math.max(1.5, params.elementCm * pxPerCm);
       const pointH = Math.min(H * 0.12, w * 2);
       const bodyTop = pointH;
+      // Tatice ZA piketami (realna izvedba piketne ograje: nosilci so
+      // zadaj in so skozi reže vidni le med piketami — Home Depot /
+      // Lowe's vodniki: »install your first picket against the rails«).
+      // Izris: najprej tatice (ravna barva, svetlejši zgornji rob za
+      // plastiko), čeznje pikete. Tatice NISO markirane → brez teksture
+      // (navpična žira teksture bi na vodoravnem nosilcu bila napačna
+      // smer — iskrena odločitev, ne naključni izgled).
+      const railH = Math.max(2, 3 * pxPerCm);
+      const railHi = Math.max(1, Math.round(railH * 0.35));
+      const drawRail = (yTop: number) => {
+        ctx.fillStyle = shade(rgb, 0.8);
+        ctx.fillRect(0, yTop, W, railH);
+        ctx.fillStyle = shade(rgb, 0.92);
+        ctx.fillRect(0, yTop, W, railHi);
+      };
+      drawRail(H * 0.28);
+      drawRail(H * 0.72 - railH);
       for (let x = 0; x < W; x += gap + w) {
         // oster vrh
         ctx.fillStyle = shade(rgb, 1.05);
@@ -682,11 +699,6 @@ export function buildPatternCanvas(
         ctx.fillRect(x, bodyTop, w, H - bodyTop);
         mark(x, 0, w, H); // vrh + telo (tekstura zadelo samo piketo)
       }
-      // dva vodoravna nosilca (tatice)
-      const railH = Math.max(2, 3 * pxPerCm);
-      ctx.fillStyle = shade(rgb, 0.9);
-      ctx.fillRect(0, H * 0.28, W, railH);
-      ctx.fillRect(0, H * 0.72 - railH, W, railH);
       break;
     }
     case 'mreza': {
