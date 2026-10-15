@@ -75,6 +75,13 @@ const PROFILE_COLOR_ID: Record<string, string> = {
   'fasadna-obloga-8': 'wpc-svetli-les', // tex-hrast ↔ najbližji svetli lesni ton
   'piketna-18': 'wpc-svetli-les',       // tex-hrast ↔ najbližji svetli lesni ton
   'mreza-3d-125': 'ral-7016',           // RAL 7016 antracit (flat barva)
+  // KUBO 80/42 — barva = najbližji VIZ_COLOR po povprečju dekorja
+  // (izmerjeno v tests/make-kubo-tiles.ts: dekor-1 RGB(95,94,97),
+  // dekor-2 RGB(177,148,125), dekor-3 RGB(154,127,97), dekor-4 RGB(110,99,89))
+  'kubo-80-42': 'wpc-svetli-les',          // dekor-2 (svetli zlati) ↔ svetli les #B99B72
+  'kubo-80-42-dekor-1': 'wpc-antracit',    // dekor-1 (temno sivi) ↔ antracit #3F4145
+  'kubo-80-42-dekor-3': 'wpc-tikovina',    // dekor-3 (zlati teak) ↔ tikovina #8A6A48
+  'kubo-80-42-dekor-4': 'wpc-oreh',        // dekor-4 (temno rjavo-sivi) ↔ oreh #5D4433
 };
 
 /** ROKSAL asset id → id teksture v viz-textures ('tex-wpc-tikovina' → 'wpc-tikovina'). */

@@ -364,9 +364,16 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('vsak "missing" asset ima src = null',
     missing.length > 0 && missing.every((a) => a.src === null), `${missing.length} manjkajočih`);
   const present = ROKSAL_ASSETS.filter((a) => a.src !== null);
-  check('vsak asset z virom ima origin real-photo/user-upload/standard-reference in neprazno licenco',
+  check('vsak asset z virom ima origin real-photo/user-upload/standard-reference/roksal-original in neprazno licenco',
     present.length > 0 && present.every((a) =>
-      (a.origin === 'real-photo' || a.origin === 'user-upload' || a.origin === 'standard-reference') && a.license.length > 0));
+      (a.origin === 'real-photo' || a.origin === 'user-upload' || a.origin === 'standard-reference' || a.origin === 'roksal-original') && a.license.length > 0));
+  // roksal-original z virom: URADNO gradivo roksal.com — vedno unverified (barvna zvestoba
+  // ni osebno overjena) + izpolnjen sourceUrl (sledljivost vira) + note
+  const rokOrig = ROKSAL_ASSETS.filter((a) => a.src !== null && a.origin === 'roksal-original');
+  check('roksal-original z virom: vedno unverified + neprazen sourceUrl + note (sledljivost uradnega vira)',
+    rokOrig.length > 0 && rokOrig.every((a) =>
+      a.verification === 'unverified' && a.sourceUrl.startsWith('https://roksal.com/') && typeof a.note === 'string' && a.note.length > 0),
+    rokOrig.map((a) => a.id).join(','));
   // standard-reference: javni standard, NE fotografija, NE original — izrecna kategorija
   const standard = ROKSAL_ASSETS.filter((a) => a.origin === 'standard-reference');
   check('standard-reference asseti: grain none + note izrecno zanika original + verification unverified',
@@ -811,6 +818,135 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   const vizSrc = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/lib/viz.ts`));
   check('viz.ts: izvozi patternPlaneHeightCm + veja quadHeightCm',
     vizSrc.includes('export function patternPlaneHeightCm') && vizSrc.includes('quadHeightCm?: number'));
+}
+
+// ── KUBO profil 80/42 — ORIGINALNI ROKSAL materiali in barvne različice ──
+// Vir: uradna stran roksal.com ("Barvni odtenki" + predelne stene).
+// 4 dekorji uradne barvne lestvice (brez imen → oznaka po POLOŽAJU),
+// 3 originalne fotke (lestvica/profil/vgradnja), 4 profili barvnih različic.
+{
+  console.log('kubo-80-42 (originalni ROKSAL materiali — uradna barvna lestvica):');
+  const dekorIds = ['tex-roksal-kubo-dekor-1', 'tex-roksal-kubo-dekor-2', 'tex-roksal-kubo-dekor-3', 'tex-roksal-kubo-dekor-4'];
+  const dekors = dekorIds.map((id) => assetById(id));
+  check('register ima TOČNO 4 KUBO dekor teksture (uradna lestvica KUBO ima 4 dekorje)',
+    dekors.every(Boolean) && ROKSAL_ASSETS.filter((a) => a.id.startsWith('tex-roksal-kubo-dekor-')).length === 4);
+  check('KUBO dekorji: roksal-original + unverified (barvna zvestoba NI osebno overjena)',
+    dekors.every((d) => d!.origin === 'roksal-original' && d!.verification === 'unverified'));
+  check('KUBO dekorji: viri /roksal/kubo/dekor-N.png + navpična žira + realCm 45',
+    dekors.every((d, i) => d!.src === `/roksal/kubo/dekor-${i + 1}.png` && d!.grain === 'vertical' && d!.realCm === 45));
+  check('KUBO dekorji: vir je uradna stran "Barvni odtenki" (roksal.com)',
+    dekors.every((d) => d!.sourceUrl === 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/'));
+  check('KUBO dekor-1 note: imena dekorjev NISO objavljena → oznaka po POLOŽAJU (iskrenost)',
+    typeof dekors[0]!.note === 'string' && dekors[0]!.note.includes('NISO objavljena') && dekors[0]!.note.includes('POLOŽAJ'));
+  check('KUBO dekor-1 note: realCm 45 IZRECNO privzetek (merilo lestvice ni objavljeno)',
+    typeof dekors[0]!.note === 'string' && dekors[0]!.note.includes('privzetek'));
+  // originalne fotke: lestvica + profil + vgradnja (roksal-original, z virom)
+  for (const id of ['pho-roksal-kubo-lestvica', 'pho-roksal-kubo-profil', 'pho-roksal-kubo-vgradnja']) {
+    const a = assetById(id);
+    check(`originalna fotka ${id} obstaja (roksal-original + unverified + src)`,
+      !!a && a.origin === 'roksal-original' && a.verification === 'unverified' && typeof a.src === 'string' && a.src.length > 0);
+  }
+  // profili: 4 barvne različice, uradni meri (80 mm → plankCm 8), vzorec vertikalne
+  const kuboIds = ['kubo-80-42', 'kubo-80-42-dekor-1', 'kubo-80-42-dekor-3', 'kubo-80-42-dekor-4'];
+  const kubos = kuboIds.map((id) => ROKSAL_PROFILES.find((x) => x.id === id));
+  check('4 KUBO profili obstajajo (privzeti dekor-2 + različice 1/3/4)',
+    kubos.every(Boolean) && ROKSAL_PROFILES.filter((x) => x.id.startsWith('kubo-80-42')).length === 4);
+  check('kubo-80-42: plankCm 8 (80 mm), gapCm 0,5, pokončno, postCm 6, vzorec vertikalne',
+    kubos.every((p) => p!.plankCm === 8 && p!.gapCm === 0.5 && p!.orientation === 'vertical' && p!.postCm === 6 && p!.pattern === 'vertikalne'));
+  check('kubo-80-42: catalogSku null (SKU se ne izmišljuje — čaka ROKSAL katalog #6)',
+    kubos.every((p) => p!.catalogSku === null));
+  check('kubo-80-42 teksture: dekor-2 privzeti, različice → dekor-1/3/4',
+    kubos[0]!.textureId === 'tex-roksal-kubo-dekor-2'
+    && kubos[1]!.textureId === 'tex-roksal-kubo-dekor-1'
+    && kubos[2]!.textureId === 'tex-roksal-kubo-dekor-3'
+    && kubos[3]!.textureId === 'tex-roksal-kubo-dekor-4');
+  check('kubo-80-42 note: uradni vir + gapCm/postCm izrecno tipena privzetka',
+    typeof kubos[0]!.note === 'string' && kubos[0]!.note.includes('roksal.com') && kubos[0]!.note.includes('tipena privzetka'));
+  // readiness: CAN render (uradni vir obstaja), NI overjen original, iskreni label
+  const r2 = profileReadiness(kubos[0]!);
+  check('kubo-80-42: canRender TRUE (uradno gradivo ima vir)', r2.canRender === true, JSON.stringify(r2));
+  check('kubo-80-42: isOriginal FALSE (unverified — izvoz z oznako original ostaja blokiran)', r2.isOriginal === false);
+  check('kubo-80-42: iskreni label "Originalno ROKSAL gradivo (roksal.com) — ni osebno overjeno"',
+    r2.honestyLabel.includes('Originalno ROKSAL gradivo (roksal.com)') && r2.honestyLabel.includes('ni osebno overjeno'), r2.honestyLabel);
+  // register ↔ viz-textures konsistenca (vsi 4 dekorji: isti vir + isti realCm)
+  for (let i = 1; i <= 4; i++) {
+    const reg = assetById(`tex-roksal-kubo-dekor-${i}`);
+    const viz = VIZ_TEXTURES.find((t) => t.id === `roksal-kubo-dekor-${i}`);
+    check(`viz-textures ima "roksal-kubo-dekor-${i}" z ISTIM virom in realCm kot register`,
+      !!viz && viz.src === reg?.src && viz.realCm === reg?.realCm, JSON.stringify(viz ?? null));
+  }
+  //PROFILE_COLOR_ID pokritje je preverjeno v spodnjem bloku (pokriva TOČNO vse profile)
+  const { readFileSync: rfsK } = await import('node:fs');
+  const frxK = new TextDecoder().decode(rfsK(`${process.cwd()}/src/components/camera/foto-replace.tsx`));
+  check('PROFILE_COLOR_ID: kubo-80-42 → wpc-svetli-les, dekor-1 → wpc-antracit, dekor-3 → wpc-tikovina, dekor-4 → wpc-oreh',
+    frxK.includes("'kubo-80-42': 'wpc-svetli-les'") && frxK.includes("'kubo-80-42-dekor-1': 'wpc-antracit'")
+    && frxK.includes("'kubo-80-42-dekor-3': 'wpc-tikovina'") && frxK.includes("'kubo-80-42-dekor-4': 'wpc-oreh'"));
+  // PNG bajtno dekodiranje dekor-2 (privzeti dekor): 512×512, brez črnega ozadja, navpična žira
+  {
+    const sharp = (await import('sharp')).default;
+    const d = await sharp(`public/roksal/kubo/dekor-2.png`).raw().toBuffer({ resolveWithObject: true });
+    const TW = d.info.width, TH = d.info.height, TC = d.info.channels;
+    check('dekor-2.png: 512×512', TW === 512 && TH === 512, `${TW}×${TH}`);
+    let nearBlack = 0, ex = 0, ey = 0;
+    let R = 0, G = 0, B = 0;
+    for (let y = 0; y < TH; y++) {
+      for (let x = 0; x < TW; x++) {
+        const j = (y * TW + x) * TC;
+        const l = 0.2126 * d.data[j] + 0.7152 * d.data[j + 1] + 0.0722 * d.data[j + 2];
+        if (l < 10) nearBlack++;
+        R += d.data[j]; G += d.data[j + 1]; B += d.data[j + 2];
+        if (y > 0 && x > 0 && y < TH - 1 && x < TW - 1 && y % 2 === 1 && x % 2 === 1) {
+          const jr = (y * TW + x + 1) * TC, jd = ((y + 1) * TW + x) * TC;
+          const lr = 0.2126 * d.data[jr] + 0.7152 * d.data[jr + 1] + 0.0722 * d.data[jr + 2];
+          const ld = 0.2126 * d.data[jd] + 0.7152 * d.data[jd + 1] + 0.0722 * d.data[jd + 2];
+          ex += Math.abs(lr - l); ey += Math.abs(ld - l);
+        }
+      }
+    }
+    const n = TW * TH;
+    R = Math.round(R / n); G = Math.round(G / n); B = Math.round(B / n);
+    check('dekor-2.png: 0 skoraj-črnih pikslov (črno ozadje lestvice NI v tile-u)', nearBlack === 0, String(nearBlack));
+    check(`dekor-2.png: žira NAVPIČNA (|dx| ${ex.toFixed(0)} > |dy| ${ey.toFixed(0)}) — skladno z registrom (pokončna vgradnja)`, ex > ey);
+    check(`dekor-2.png: svetel zlati ton (povprečje RGB(${R},${G},${B}) — svetel in topel: R>150, R>B)`,
+      R > 150 && R > B && R - B > 30, JSON.stringify({ R, G, B }));
+  }
+  // postavitev KUBO na standardnem frontalnem pasu: vertikalne deske se štejejo
+  // po ŠIRINI 200 cm → floor((200+0,5)/8,5) = 23 (enaka logika kot alu-palice-18)
+  const layK = computePlankLayouts({
+    quadPct: [[10, 20], [90, 20], [90, 80], [10, 80]],
+    imgSize: { w: 1280, h: 890 },
+    planeCm: { wCm: 200, hCm: 95 },
+    plankCm: 8, gapCm: 0.5, orientation: 'vertical', postCm: 6, postEveryCm: null,
+  });
+  const expectedKubo = Math.floor((200 + 0.5) / (8 + 0.5));
+  check(`postavitev: ${expectedKubo} KUBO desk po širini 200 cm (floor((200+0.5)/8.5))`,
+    layK.planks.length === expectedKubo, `dejansko ${layK.planks.length}`);
+  // KUBO deske so NAVPIČNI trakovi
+  const kw = (q: QuadPx): number => Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+  const kh = (q: QuadPx): number => Math.hypot(q.bl.x - q.tl.x, q.bl.y - q.tl.y);
+  check('KUBO deske so navpični trakovi (širina < višina)', layK.planks.every((k) => kw(k.quad) < kh(k.quad)));
+  // metapodatki: kubo-80-42 z roksal-original teksturo (unverified) sprejeta + iskrenost
+  const maskK = createMask(IMG_W, IMG_H);
+  paintMaskRect(maskK, 30, 30, 209, 149, 255);
+  const texK = assetById('tex-roksal-kubo-dekor-2')!;
+  const metaK = buildReplaceMetadata({
+    profileId: kubos[0]!.id,
+    profileLabel: kubos[0]!.label,
+    catalogSku: kubos[0]!.catalogSku,
+    texture: { id: texK.id, src: texK.src, origin: texK.origin, verification: texK.verification, realCm: texK.realCm },
+    planeCm: { wCm: 200, hCm: 95 },
+    params: { plankCm: 8, gapCm: 0.5 },
+    mask: maskK,
+    layout: layK,
+    imgSize: { w: IMG_W, h: IMG_H },
+    inpaint: 'ok',
+    warnings: [],
+    createdAt: '2026-10-15T12:30:00.000Z',
+  });
+  check('metapodatki: kubo-80-42 + tex-roksal-kubo-dekor-2 (roksal-original) sprejeta',
+    metaK.profileId === 'kubo-80-42' && metaK.texture?.origin === 'roksal-original' && metaK.texture.src === '/roksal/kubo/dekor-2.png');
+  check('metapodatki: iskrenost izvoza (unverified original → žig VIZUALIZACIJA ostaja)',
+    metaK.exportLabel === EXPORT_LABEL && metaK.exportLabel.includes('VIZUALIZACIJA'));
 }
 
 // ── Primerjava profilov (korak 6, navdih konkurence D2K/VisualFencePro) ──

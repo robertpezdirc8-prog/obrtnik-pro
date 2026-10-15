@@ -146,6 +146,71 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: MISSING_LICENSE, sourceUrl: '', grain: 'none',
     note: 'Čaka original ROKSAL vzorec barve (#6). RAL je sicer gladka barvana kovina — upodobitev z flat barvo je realna, brez teksture.',
   },
+  // ── Originalni ROKSAL gradivi — KUBO profil 80/42 (roksal.com, 2026) ──
+  // Preneseno z uradne strani roksal.com (stran "Barvni odtenki" +
+  // stran predelnih sten). To so DOBEREDA originalna ROKSAL gradiva —
+  // prvič v registru — a barvna zvestoba zaslonu NI osebno overjena
+  // (verification ostaja 'unverified'; izvoz z oznako "original" je
+  // dokler traja to blokiran — iskrenost!).
+  // Merilo dekorja na barvni lestvici NI objavljeno → realCm 45 pri
+  // dekorjih je IZRECNO označen privzetek (isti kot ostali WPC tile-i
+  // kataloga), samo za približek tlakovanja — NI izmerjeno.
+  {
+    id: 'tex-roksal-kubo-dekor-1', kind: 'texture', label: 'KUBO dekor 1/4 — temno sivi (uradna lestvica)',
+    src: '/roksal/kubo/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 4, z leve) iz URADNE ROKSAL barvne lestvice profila KUBO (BARVNA_LESTVICA_5-kubo4.png, 2217×675) + zasuk 90° (žira na lestvici vodoravna |dy|>|dx|, KUBO se vgrajuje pokončno) + zrcalno tlakovanje 2×2 → 512×512 (priprava tests/make-kubo-tiles.ts, deterministično; 0 skoraj-črnih pikslov = brez ozadja lestvice). Imena dekorjev na lestvici NISO objavljena → dekor je označen po POLOŽAJU (1/4); barvni opis "temno sivi" je opisni, NE trgovsko ime. Povprečje RGB(95,94,97). Merilo dekorja NI objavljeno → realCm 45 je privzetek (glej komentar sekcije).',
+  },
+  {
+    id: 'tex-roksal-kubo-dekor-2', kind: 'texture', label: 'KUBO dekor 2/4 — svetli zlati (uradna lestvica)',
+    src: '/roksal/kubo/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90° + tlakovanje 2×2, tests/make-kubo-tiles.ts). Povprečje RGB(177,148,125) — svetel zlato-rjavi odtenek, najbolj podoben dekorju na uradni fotki profila KUBO (profil-deske.jpg) → PRIVZETI dekor profila kubo-80-42.',
+  },
+  {
+    id: 'tex-roksal-kubo-dekor-3', kind: 'texture', label: 'KUBO dekor 3/4 — zlati teak (uradna lestvica)',
+    src: '/roksal/kubo/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90° + tlakovanje 2×2, tests/make-kubo-tiles.ts). Povprečje RGB(154,127,97).',
+  },
+  {
+    id: 'tex-roksal-kubo-dekor-4', kind: 'texture', label: 'KUBO dekor 4/4 — temno rjavo-sivi (uradna lestvica)',
+    src: '/roksal/kubo/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90° + tlakovanje 2×2, tests/make-kubo-tiles.ts). Povprečje RGB(110,99,89).',
+  },
+  {
+    id: 'pho-roksal-kubo-lestvica', kind: 'product-photo', label: 'KUBO — original ROKSAL barvna lestvica (4 dekorja)',
+    src: '/roksal/kubo/barvna-lestvica-kubo.png', realCm: 0, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'none',
+    note: 'Uradna paleta dekorjev profila KUBO (BARVNA_LESTVICA_5-kubo4.png, 2217×675) — TOČNO 4 dekorji, brez besedilnih oznak. Vir izposojenih dekorjev (tex-roksal-kubo-dekor-1…4).',
+  },
+  {
+    id: 'pho-roksal-kubo-profil', kind: 'product-photo', label: 'KUBO — original ROKSAL posnetek profila (aluminijasta cev)',
+    src: '/roksal/kubo/profil-deske.jpg', realCm: 0, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — predelne stene, pokončne deske)',
+    sourceUrl: 'https://roksal.com/en/woodcore-wpc-boards/partition-walls/vertical-boards',
+    grain: 'none',
+    note: 'Uradni posnetek profila KUBO 80/42: WPC ovoj z VSTAVLJENO aluminijasto cevjo (deske-kubo-razlicne-cevi.jpg, 2307×1668). To izpolnjuje prej MANJKAJOČE originalno gradivo vrste "posnetek profila" — ampak ZA KUBO (wpc-deka in alu palica ostajata brez originalov, #6).',
+  },
+  {
+    id: 'pho-roksal-kubo-vgradnja', kind: 'product-photo', label: 'KUBO — original ROKSAL posnetek vgradnje (pregradna stena)',
+    src: '/roksal/kubo/vgradnja-pregradna-stena.jpg', realCm: 0, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — predelne stene, pokončne deske)',
+    sourceUrl: 'https://roksal.com/en/woodcore-wpc-boards/partition-walls/vertical-boards',
+    grain: 'none',
+    note: 'Uradni posnetek vgradnje: pokončna pregradna stena iz KUBO desk, temno sivi dekor (pregradna-stena-k_h.jpg, 736×552).',
+  },
   // ── Standardne reference (javni standardi, NE ROKSAL originali) ─
   {
     id: 'tex-ral-7016-standard', kind: 'texture', label: 'RAL 7016 antracit — standardni barvni vzorec (flat)',
@@ -295,6 +360,58 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     pattern: 'mreza',
     note: 'Mere iz privzetkov vizualizerja (žica 5 mm, očesce 125 mm). Original ROKSAL vzorec manjka (#6).',
   },
+  // ── KUBO profil 80/42 (WPC deska z alu cevjo, pokončna vgradnja) ──
+  // Urani vir: roksal.com (predelne stene — pokončne deske + barvni
+  // odtenki). Uradno: "KUBO profil — 80/42. Namestitev je možna pri
+  // širini 80 mm ali 42 mm. Deska ima skrito vijačenje." Barvne
+  // različice = TOČNO 4 dekorji uradne barvne lestvice (brez imen —
+  // označeni po položaju 1–4). gapCm/postCm sta TIPENA gradbena
+  // privzetka (ocenjena z uradne fotke vgradnje) — čakata ROKSAL
+  // katalog (#6); catalogSku je null (SKU se ne izmišljuje).
+  {
+    id: 'kubo-80-42',
+    label: 'KUBO profil 80/42 (pokončno) — dekor 2/4 uradne lestvice',
+    catalogSku: null,
+    plankCm: 8, gapCm: 0.5,
+    orientation: 'vertical',
+    textureId: 'tex-roksal-kubo-dekor-2',
+    postCm: 6,
+    pattern: 'vertikalne',
+    note: 'Uradne mere profila: vidna širina 80 mm (ali 42 mm — druga vgradnja), WPC z alu cevjo, skrito vijačenje (roksal.com). PRIVZETI dekor = 2/4 (svetli zlati — najbolj podoben dekorju na uradni fotki profila). gapCm 0,5 in postCm 6 sta tipena privzetka ocenjena z uradne fotke vgradnje — čakata katalog (#6).',
+  },
+  {
+    id: 'kubo-80-42-dekor-1',
+    label: 'KUBO profil 80/42 (pokončno) — dekor 1/4 uradne lestvice (temno sivi)',
+    catalogSku: null,
+    plankCm: 8, gapCm: 0.5,
+    orientation: 'vertical',
+    textureId: 'tex-roksal-kubo-dekor-1',
+    postCm: 6,
+    pattern: 'vertikalne',
+    note: 'Barvna različica profila kubo-80-42: dekor 1/4 uradne lestvice (temno sivi — kot na uradni fotki vgradnje pregradne stene).',
+  },
+  {
+    id: 'kubo-80-42-dekor-3',
+    label: 'KUBO profil 80/42 (pokončno) — dekor 3/4 uradne lestvice (zlati teak)',
+    catalogSku: null,
+    plankCm: 8, gapCm: 0.5,
+    orientation: 'vertical',
+    textureId: 'tex-roksal-kubo-dekor-3',
+    postCm: 6,
+    pattern: 'vertikalne',
+    note: 'Barvna različica profila kubo-80-42: dekor 3/4 uradne lestvice.',
+  },
+  {
+    id: 'kubo-80-42-dekor-4',
+    label: 'KUBO profil 80/42 (pokončno) — dekor 4/4 uradne lestvice (temno rjavo-sivi)',
+    catalogSku: null,
+    plankCm: 8, gapCm: 0.5,
+    orientation: 'vertical',
+    textureId: 'tex-roksal-kubo-dekor-4',
+    postCm: 6,
+    pattern: 'vertikalne',
+    note: 'Barvna različica profila kubo-80-42: dekor 4/4 uradne lestvice.',
+  },
 ];
 
 /**
@@ -327,12 +444,18 @@ export function profileReadiness(p: RoksalProfile): {
   const canRender = linked.every((a) => a.src !== null);
   const isOriginal = linked.every((a) => a.origin === 'roksal-original' && a.verification === 'verified');
   const allStandard = linked.length > 0 && linked.every((a) => a.origin === 'standard-reference');
+  // roksal-original + unverified: prineseno z uradne strani roksal.com,
+  // ampak barvna zvestoba NI osebno overjena — lastna iskrena kategorija
+  // (ne sme dobiti oznake "realna fotografija" in NE sme trditvi "original").
+  const allRoksalUnverified = linked.length > 0 && linked.every((a) => a.origin === 'roksal-original' && a.verification === 'unverified');
   const honestyLabel = missing.length > 0
     ? `Gradivo manjka: ${missing.map((a) => a.label).join(', ')}`
     : isOriginal
       ? 'Original ROKSAL gradivo'
-      : allStandard
-        ? 'Standardna barvna referenca (RAL) — ni original ROKSAL vzorec površine'
-        : 'Realna fotografija materiala (ni original ROKSAL posnetek)';
+      : allRoksalUnverified
+        ? 'Originalno ROKSAL gradivo (roksal.com) — ni osebno overjeno (barvna zvestoba zaslonu nepotrjena)'
+        : allStandard
+          ? 'Standardna barvna referenca (RAL) — ni original ROKSAL vzorec površine'
+          : 'Realna fotografija materiala (ni original ROKSAL posnetek)';
   return { canRender, isOriginal, missingAssets: missing, honestyLabel };
 }

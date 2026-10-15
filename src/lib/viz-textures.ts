@@ -26,6 +26,13 @@ export const VIZ_TEXTURES: VizTexture[] = [
   { id: 'keramika-les', label: 'Keramika les-dekor', src: '/textures/keramika-les.jpg', realCm: 60 },
   { id: 'keramika-kamen', label: 'Keramika kamen', src: '/textures/keramika-kamen.jpg', realCm: 60 },
   { id: 'fasada-omet', label: 'Fasada omet', src: '/textures/fasada-omet.jpg', realCm: 50 },
+  // KUBO 80/42 — ORIGINALNA ROKSAL gradiva (barvna lestvica roksal.com,
+  // izrez dekorjev prek tests/make-kubo-tiles.ts). realCm 45 = privzetek
+  // (merilo dekorja na lestvici NI objavljeno — glej register roksal-assets).
+  { id: 'roksal-kubo-dekor-1', label: 'KUBO dekor 1/4 (temno sivi)', src: '/roksal/kubo/dekor-1.png', realCm: 45 },
+  { id: 'roksal-kubo-dekor-2', label: 'KUBO dekor 2/4 (svetli zlati)', src: '/roksal/kubo/dekor-2.png', realCm: 45 },
+  { id: 'roksal-kubo-dekor-3', label: 'KUBO dekor 3/4 (zlati teak)', src: '/roksal/kubo/dekor-3.png', realCm: 45 },
+  { id: 'roksal-kubo-dekor-4', label: 'KUBO dekor 4/4 (temno rjavo-sivi)', src: '/roksal/kubo/dekor-4.png', realCm: 45 },
 ];
 
 /** Predloga tekstur po vzorcu (UI ureja izbiro). */
@@ -44,7 +51,7 @@ export function texturesForPattern(
     case 'vozlik':
     case 'vertikalne':
     case 'piketna':
-      return VIZ_TEXTURES.filter((t) => ['hrast', 'wpc-tikovina', 'wpc-siva'].includes(t.id));
+      return VIZ_TEXTURES.filter((t) => ['hrast', 'wpc-tikovina', 'wpc-siva'].includes(t.id) || t.id.startsWith('roksal-kubo-dekor-'));
     default:
       return []; // 'barva' in 'steklo' brez tekstur
   }
