@@ -1608,3 +1608,21 @@ Stage Summary:
 - Kakovost žire je zdaj DOKAZANA in TRAJNO VAROVANA za vseh 32 dekor tlakov vseh 5 družin — prej samo vzorčno (KUBO dekor-2 + 2 ograja vzorca); polna-100 dekor-8 (najtanjša vertikalna marža 0,291) in dekor-6 (najtanjša simetrija 7,9/7,1) ostajata znotraj vrat s primerljivo maržo kot KUBO/DEKA.
 - Vsak prihodnji regresivni zagon zdaj samodejno pazi, da tile datoteke ne zgnijejo (nadomestitev z zrcaljeno/črno/ravno različico bi padla na simetrijo/črnino/meanDx) in da registry ostane 1:1 z diskom.
 - Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti, 0 sprememb aplikacijske kode (1 nova test skripta + README + worklog).
+
+---
+Task ID: 63
+Agent: Z.ai Code (glavni)
+Task: Stanka direktiva „raziskuj po spletu forume podobne programe kaj se izboljsamo dodamo" — raziskovalni krog: konkurenca vizualizacije ograj/teras, pritožbe uporabnikov na forumih, SI/DE trg programske opreme za obrtnike; destilacija v iskrene kandidate za izboljšave.
+
+Work Log:
+- 6 spletnih poizvedb (z-ai web_search, EN/DE/SI): fence/deck vizualizerji, Reddit pritožbe, nemška Handwerker/Aufmaß programska oprema, slovenski trg obrtniške programske opreme, merilne aplikacije po fotki.
+- 2 poglobljena vira (z-ai page_reader): outdoorbrite.com „7 best free fence design apps (2026)" (23.472 znakov HTML razčlenjen) + paperplan.app/deck-visualizer (6.658 znakov) — prvi strukturiran pregled konkurence, drugi (plačljiv AI, 19 $ enkratno) z lastnimi iskrenimi opozorili, ki POTRJUJEJO naša načela (zaslonska barva/žira ni zanesljiva → fizikalni vzorci; AI spreminja detajle scenarija; potrebne so preverjene mere).
+- KLJUČNO zunanje potrditev smeri (Reddit r/landscaping): „Glavni problem vseh teh 3D orodij je, da nikoli ne upoštevajo pravih razmakov, pozicioniranja in mer" — točno to je naše jedro (kalibrirana homografija → cm/px → pravi razmaki). Merilne aplikacije: pritožbe „ni natančno / ne deluje v nizki svetlobi" — naš vodič po zajemu + iskrene ravni zaupanja sta odgovor.
+- Trg: preplavljen AI generativnimi orodji z naročninami (29 $/mesec); le Betafence Simulator deli deterministično filozofijo (realni izdelki na fotki). SI trg (Ponudbapro, Moj Račun, e-racuni, Čebelca, NeoBiz, Račun123): SAMO ponudbe/računi/FURS, noben brez merjenja po fotki/vizualizacije → Obrtnik Pro edinstven v SI. DE trg (angebotfix, Plancraft, HERO …): „Schluss mit Doppelerfassung" — naš prefill že to dela.
+- Ugotovitve + 3 konkretne kandidate (razvrščene) + 3 zavrnjene s razlogi zapisane v docs/task63-podobni-programi.md (nov docs/research/ prostor po vzoru obstoječe docs/ strukture).
+- Preverba pred trditvijo: computePlankLayouts res vrača { planks, gaps, posts, … } (src/lib/photo-replace-core.ts vrstica 605) — kandidat #1 (kosovnica/BOM iz fotomontaže) uporablja obstoječe funkcije, ni novega cevovoda.
+
+Stage Summary:
+- Kandidat #1 za naslednji krog: KOŠČNICA IZ FOTOMONTAŽE (BOM) — iz shranjene različice en klik „Dodaj material v ponudbo" (deske N×, stebri, pritrdilni material; podatki ŽE izračunani). Vzorec iz trga: Simpson Strong-Tie BOM (ključna funkcija #2). Najvišja vrednost / najmanjše tveganje.
+- Kandidat #2: izvoz pred/po para v enem koraku (PaperPlan tržni dokaz). Kandidat #3: izmerjena obstoječa deska → predlog najbližjega uradnega profila. ZAVRJENO s razlogom: FURS (zunanja obvezna storitev), AI generativni načini (proti jedru), naročnine.
+- Diferenciacija potrjena z zunanjo raziskavo: pravi razmaki/mere (Reddit pritožba), determinizem (AI lažni rezultati), iskrenost (PaperPlan sam opozarja na zaslonske barve), 0 AI, brez naročnin. Issue #14 NE zaprt. 0 sprememb aplikacijske kode (raziskava + dokumentacija).
