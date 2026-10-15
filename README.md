@@ -11,6 +11,9 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
+> Zadnja polna preverba: **regresija 34/34, photo-replace 391/391, E2E celoten tok
+> fotomontaže zeleno, mobilni 390 brez prelivanja, 0 konzolnih napak**
+> (Task 59–60, oktober 2026).
 
 ---
 
@@ -211,16 +214,18 @@ bun tests/verify/deck-analysis.ts     # analiza dek
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Pri HEAD `101d5a0`: **photo-replace 391/391**, zadnja polna regresija **34/34
-skript zeleno**.
+Zadnja preverba (HEAD `d8b28fa`, Task 59–60): **photo-replace 391/391**, polna
+regresija **34/34 skript zeleno** (pognano z izhodnimi kodami, ne citirano).
 
 ### E2E dokazi
 
 Posnetki agent-browser sej so shranjeni v `tests/` (konvencija
 `tests/e2e-<tema>-*.png`), npr. `e2e-ograje-01-polna100-rezultat.png`,
-`e2e-kubo6-03-detajl-desk.png`, `e2e-deka-04-primerjava.png`. Pokrivajo
-namizni in mobilni prikaz (390 px), izvoz z žigom, primerjave profilov in
-celoten tok fotomontaže.
+`e2e-kubo6-03-detajl-desk.png`, `e2e-deka-04-primerjava.png` ter najnovejši
+celoten tok `e2e-final-01-rezultat … -03-mobilni390.png` (Task 59: upodobitev
+KUBO dekor-2 z kalibrirano perspektivo 0,257 cm/px, metapodatki različice z
+žigom, mobilni 390). Pokrivajo namizni in mobilni prikaz (390 px), izvoz z
+žigom, primerjave profilov in celoten tok fotomontaže.
 
 ### Orodja za gradiva (`tests/make-*`)
 
@@ -231,6 +236,11 @@ celoten tok fotomontaže.
   deterministična obdelava v dekor tile-e (detekcija krogov na lestvici,
   enojni ne-zrcaljen izrez, zasuk, preverbe: brez skoraj-črnih pikslov,
   navpična žira, brez notranje metulj-simetrije).
+
+Vseh **32 dekor tlakov** na disku je 256×256 — ločljivost je **zadoščajoča**:
+delovna kopija fotke je omejena na 1280 px, 45 cm tile je na njej ≈ 186 px
+(1,4× prevzorčenje), zato višja ločljivost ne bi dala vidnega dobička
+(izmerjeno Task 60).
 
 ## Struktura projekta
 
@@ -261,7 +271,10 @@ worklog.md        # delovni dnevnik razvoja (po Task ID)
 - **Manjkajoča originalna gradiva (3):** presek alu palice (ni v programu
   ROKSAL), vzorec RAL 7016 (ROKSAL ne objavlja RAL lestvic — uporabljena je
   standardna barvna referenca z iskreno oznako), presek POLNA-100 (ni
-  objavljen). Vsi dokumentirani v registru z opombami »RAZISKAVA 2026«.
+  objavljen; poglobljena raziskava 2026-10-15: roksal.com nima katalogov za
+  prenos, trgovski viri — WPS katalog in KAVA Co-ex — zavrnjeni po iskrenem
+  standardu, ker niso ROKSAL WoodCore). Vsi dokumentirani v registru z
+  opombami »RAZISKAVA 2026«.
 - **Renderer ne riše** kosooglatega preseka ROMB desk in alu cevi (reže kažejo
   ozadje) — dokumentirano v opombi profila.
 - **Izvoz z oznako „original“ je blokiran** dokler gradiva niso osebno overjena
