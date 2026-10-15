@@ -1574,3 +1574,20 @@ Stage Summary:
 - Dokazano: vsi 32 dekor tlakov na disku, vsi 256×256, ločljivost zadostna za 1280px cevovod (1,4× prevzorčenje) — brez potrebe po spremembah.
 - Raziskava za POLNA-100 presek POGLOBLJENA in ZAKLJUČENA: uradni vir ne obstaja, trgovski viri zavrnjeni po iskrenem standardu (druga znamka/neuradno) — opomba v registru zdaj nosi celotno evidenco raziskave. Manjkajoči originali ostajajo TOČNO 3, vsi z dokumentiranim razlogom.
 - Regresija 34/34 + photo-replace 391/391 + tsc/eslint čisti. Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti.
+
+---
+Task ID: 61
+Agent: Z.ai Code (glavni)
+Task: Posodobitev README (po zahtevi uporabnika) + nadaljevanje — širok E2E pregled vseh zavihkov produkcijske različice (brez novih funkcij).
+
+Work Log:
+- README posodobljen (5 kirurških popravkov, vse resnično): (1) uvodni blok "Stanje" dopolnjen z zadnjo polno preverbo (34/34, 391/391, E2E celoten tok zeleno, mobilni 390, 0 konzolnih napak — Task 59-60); (2) referenca pri testih osvežena na HEAD d8b28fa z opombo "pognano z izhodnimi kodami, ne citirano"; (3) E2E dokazi dopolnjeni z e2e-final-01..03 (Task 59: KUBO dekor-2, perspektiva 0,257 cm/px, žig, mobilni 390); (4) NOV odstavek o ločljivosti tlakov: 32× 256×256 zadošča (cevovod ≤1280px → 45cm tile ≈186px, 1,4× prevzorčenje, Task 60); (5) iskrena omejitev POLNA-100 dopolnjena s poglobljeno raziskavo (WPS/KAVA zavrnjena). Commit 12102d2 + push.
+- ŠIROK E2E PREGLED (agent-browser, localhost:3000, HEAD 12102d2): zavihki Domov, Nova ponudba, Ponudbe, Časovnica, Dnevnik, Katalog, Nastavitve — vsak klik + wait + page errors: 0 napak. Pod-zavihki kamere: AR merjenje, Vizualizer, Večpogled, 3D model, Pripomočki — vsi 0 napak (Zajem+analiza in Fotomontaža že E2E potrjena v Task 59). Konzola celotne seje: 0 error vrstic. dev.log: brez error/unhandled/fatal.
+- Vizualna kontrola: e2e-sweep-01-vizualizer.png pravilno upodobljen (prazno začetno stanje z vabilom za nalaganje — pričakovano, ne zlomljeno).
+- Dokazi: tests/e2e-sweep-01-vizualizer.png, -02-3dmodel.png, -03-ponudbe.png.
+- Push: README + dokazi + worklog na origin/main.
+
+Stage Summary:
+- README na GitHubu zdaj odraža dejansko preverjeno stanje (Task 59-60 + sweep) — vsaka trditev zapisana šele po zagonu orodij.
+- Širok E2E sweep: VSAH 8 zavihkov + 7 pod-zavihkov kamere brez stranskih napak; produkcijska različica DOKAZANO stabilna čez celotno aplikacijo, ne samo fotomontaža.
+- Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti, 0 sprememb aplikacijske kode (samo README + dokazi).
