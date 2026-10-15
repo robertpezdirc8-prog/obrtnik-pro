@@ -16,12 +16,17 @@
 //  3. žira: energija gradientov |dx| vs |dy| — če je žira na lestvici
 //     VODORAVNA (|dy|>|dx|), zavrti 90° (KUBO se vgrajuje POKONČNO →
 //     žira mora slediti smeri deske, kot pri wpc-siva v registru).
-//  4. zrcalno tlakovanje 2×2 (izmenično flop/flip — brez vidnih šivov)
-//     → 608×608 → 512×512 (downscale = čistost, merilo ohranjeno znotraj
-//     faktorja resize, realCm v registru je označen kot privzetek —
-//     lestvica NE objavlja fizičnega merila).
-//  5. neodvisna preverba: 512×512, 0 temnih kanalov, žira navpična,
-//     povprečne barve po dekorju (za PROFILE_COLOR_ID in teste).
+//  4. ENOJNI NEPREKINJEN izrez → 256×256 (lanczos3): tile NE vsebuje
+//     notranjega zrcaljenja — zrcalno tlakovanje na nivoju vzorca
+//     zagotavlja renderer (viz.ts drawMirroredTexture vsaki drugi tile
+//     zrcali). Prejšnja različica (2×2 zrcaljenje → 512×512) je v VSAKEM
+//     tile-u ustvarila metuljasto simetrijo, ki jo je renderer še enkrat
+//     zrcalil → dvojna zrcalna simetrija je bila vidna na upodobitvi.
+//     Enojni izrez pokaže dekor enkrat v 45 cm (realCm privzetek —
+//     lestvica NE objavlja fizičnega merila) z NARAVNO ne-simetrično žiro.
+//  5. neodvisna preverba: 256×256, 0 temnih kanalov, žira navpična,
+//     NI notranje zrcalne simetrije (leva/desna + zgornja/spodnja pola
+//     se razlikujeta), povprečne barve po dekorju (PROFILE_COLOR_ID).
 //
 // Zagon: bun tests/make-kubo-tiles.ts
 
@@ -122,29 +127,44 @@ for (const t of tiles) {
   processed.push(prepped);
 }
 
-// ── 5. zrcalno tlakovanje 2×2 → 512×512 ──
+// ── 5. enojni neprekinjen izrez → 256×256 (brez notranjega zrcaljenja) ──
 for (let k = 0; k < processed.length; k++) {
   const src = processed[k];
   const m = await sharp(src).metadata();
   const s = m.width ?? 0;
   if (s < 120) throw new Error(`dekor ${k + 1}: izrez preozek (${s}).`);
-  const tl = src;
-  const tr = await sharp(src).flop().toBuffer();                      // zrcali vodoravno
-  const bl = await sharp(src).flip().toBuffer();                      // zrcali navpično
-  const br = await sharp(src).flop().flip().toBuffer();               // obe
-  const tiled = await sharp({
-    create: { width: s * 2, height: s * 2, channels: 3, background: { r: 128, g: 128, b: 128 } },
-  }).composite([
-    { input: tl, left: 0, top: 0 }, { input: tr, left: s, top: 0 },
-    { input: bl, left: 0, top: s }, { input: br, left: s, top: s },
-  ]).png().toBuffer();
   const out = `${OUT_DIR}/dekor-${k + 1}.png`;
-  await sharp(tiled).resize(512, 512, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile(out);
+  await sharp(src).resize(256, 256, { fit: 'fill', kernel: 'lanczos3' }).png({ compressionLevel: 9 }).toFile(out);
 
   // ── 6. neodvisna preverba zapisanega ──
   const { data: od, info: oi } = await sharp(out).raw().toBuffer({ resolveWithObject: true });
   const OW = oi.width, OH = oi.height, OC = oi.channels;
-  if (OW !== 512 || OH !== 512) throw new Error(`dekor ${k + 1}: izhod ni 512×512 (${OW}×${OH}).`);
+  if (OW !== 256 || OH !== 256) throw new Error(`dekor ${k + 1}: izhod ni 256×256 (${OW}×${OH}).`);
+  // (c) NOTRANJA ZRCALNA SIMETRIJA: enojni izrez mora biti naravno
+  //     ne-simetričen — povprečna razlika levih/desnih (in zgornjih/
+  //     spodnjih) zrcalnih parov stolpcev/vrstic mora biti opazna
+  //     (zrcaljen tile bi imel ~0). Meja 6/255 je varna nad šumom.
+  let symX = 0, symY = 0;
+  for (let x = 0; x < OW; x++) {
+    let d = 0;
+    for (let y = 0; y < OH; y++) {
+      const ia = (y * OW + x) * OC;
+      const ib = (y * OW + (OW - 1 - x)) * OC;
+      d += Math.abs(od[ia] - od[ib]) + Math.abs(od[ia + 1] - od[ib + 1]) + Math.abs(od[ia + 2] - od[ib + 2]);
+    }
+    symX += d / (OH * 3);
+  }
+  for (let y = 0; y < OH; y++) {
+    let d = 0;
+    for (let x = 0; x < OW; x++) {
+      const ia = (y * OW + x) * OC;
+      const ib = (((OH - 1 - y) * OW) + x) * OC;
+      d += Math.abs(od[ia] - od[ib]) + Math.abs(od[ia + 1] - od[ib + 1]) + Math.abs(od[ia + 2] - od[ib + 2]);
+    }
+    symY += d / (OW * 3);
+  }
+  symX /= OW; symY /= OH;
+  if (symX < 6 || symY < 6) throw new Error(`dekor ${k + 1}: tile je notranje zrcaljen (symX=${symX.toFixed(1)}, symY=${symY.toFixed(1)}) — pričakovano enojni ne-simetričen izrez.`);
   // (a) ČRNO OZADJE: piksli z lum < 10 so ozadje lestvice — v vpisanem
   //     kvadratu jih NI smeti biti (naravna dekor barva dekora 1 je temno
   //     siva, povprečje lum ≈ 87, min je nad 10).
@@ -171,7 +191,7 @@ for (let k = 0; k < processed.length; k++) {
   const n = OW * OH;
   for (let i = 0; i < n; i++) { R += od[i * OC]; G += od[i * OC + 1]; B += od[i * OC + 2]; }
   R = Math.round(R / n); G = Math.round(G / n); B = Math.round(B / n);
-  console.log(`dekor ${k + 1}: ${out} — skoraj-črnih pikslov ${nearBlack}, polnih temnih črt ${fullDarkLines}, žira |dx|=${ex2.toFixed(0)} vs |dy|=${ey2.toFixed(0)}, povprečje RGB(${R},${G},${B})`);
+  console.log(`dekor ${k + 1}: ${out} — skoraj-črnih pikslov ${nearBlack}, polnih temnih črt ${fullDarkLines}, žira |dx|=${ex2.toFixed(0)} vs |dy|=${ey2.toFixed(0)}, simetrija lev/des ${symX.toFixed(1)} zgornj/spod ${symY.toFixed(1)} (mora biti ≥ 6), povprečje RGB(${R},${G},${B})`);
   if (nearBlack > 0) throw new Error(`dekor ${k + 1}: ${nearBlack} skoraj-črnih pikslov — črno ozadje lestvice je zašlo v izrez.`);
   if (fullDarkLines > 2) throw new Error(`dekor ${k + 1}: ${fullDarkLines} polnih temnih črt — vidni šivi zrcaljenja/ozadja.`);
   if (ex2 <= ey2) throw new Error(`dekor ${k + 1}: žira v zapisani datoteki NI navpična.`);
@@ -181,4 +201,4 @@ function lum2(d: Buffer, i: number, _c: number): number {
   return 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
 }
 
-console.log('V REDU — 4 KUBO dekorji iz uradne lestvice: 512×512, brez črnega ozadja, navpična žira.');
+console.log('V REDU — 4 KUBO dekorji iz uradne lestvice: 256×256 enojni ne-zrcaljen izrez, brez črnega ozadja, navpična žira.');

@@ -881,12 +881,13 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('PROFILE_COLOR_ID: kubo-80-42 → wpc-svetli-les, dekor-1 → wpc-antracit, dekor-3 → wpc-tikovina, dekor-4 → wpc-oreh',
     frxK.includes("'kubo-80-42': 'wpc-svetli-les'") && frxK.includes("'kubo-80-42-dekor-1': 'wpc-antracit'")
     && frxK.includes("'kubo-80-42-dekor-3': 'wpc-tikovina'") && frxK.includes("'kubo-80-42-dekor-4': 'wpc-oreh'"));
-  // PNG bajtno dekodiranje dekor-2 (privzeti dekor): 512×512, brez črnega ozadja, navpična žira
+  // PNG bajtno dekodiranje dekor-2 (privzeti dekor): 256×256 enojni ne-zrcaljen
+  // izrez (brez metuljaste simetrije), brez črnega ozadja, navpična žira
   {
     const sharp = (await import('sharp')).default;
     const d = await sharp(`public/roksal/kubo/dekor-2.png`).raw().toBuffer({ resolveWithObject: true });
     const TW = d.info.width, TH = d.info.height, TC = d.info.channels;
-    check('dekor-2.png: 512×512', TW === 512 && TH === 512, `${TW}×${TH}`);
+    check('dekor-2.png: 256×256 enojni izrez', TW === 256 && TH === 256, `${TW}×${TH}`);
     let nearBlack = 0, ex = 0, ey = 0;
     let R = 0, G = 0, B = 0;
     for (let y = 0; y < TH; y++) {
@@ -909,6 +910,19 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     check(`dekor-2.png: žira NAVPIČNA (|dx| ${ex.toFixed(0)} > |dy| ${ey.toFixed(0)}) — skladno z registrom (pokončna vgradnja)`, ex > ey);
     check(`dekor-2.png: svetel zlati ton (povprečje RGB(${R},${G},${B}) — svetel in topel: R>150, R>B)`,
       R > 150 && R > B && R - B > 30, JSON.stringify({ R, G, B }));
+    // ne-zrcaljenost: povprečna razlika levih/desnih zrcalnih parov stolpcev
+    // mora biti opazna (zrcaljen tile — stara 2×2 različica — bi imel ~0)
+    let symX = 0;
+    for (let x = 0; x < TW; x++) {
+      let diff = 0;
+      for (let y = 0; y < TH; y++) {
+        const ia = (y * TW + x) * TC, ib = (y * TW + (TW - 1 - x)) * TC;
+        diff += Math.abs(d.data[ia] - d.data[ib]) + Math.abs(d.data[ia + 1] - d.data[ib + 1]) + Math.abs(d.data[ia + 2] - d.data[ib + 2]);
+      }
+      symX += diff / (TH * 3);
+    }
+    symX /= TW;
+    check(`dekor-2.png: NI notranje zrcalne simetrije (lev/des razlika ${symX.toFixed(1)} ≥ 6 — dekor je enojni neprekinjen izrez, metulj 2×2 odstranjen)`, symX >= 6);
   }
   // postavitev KUBO na standardnem frontalnem pasu: vertikalne deske se štejejo
   // po ŠIRINI 200 cm → floor((200+0,5)/8,5) = 23 (enaka logika kot alu-palice-18)

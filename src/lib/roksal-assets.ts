@@ -161,7 +161,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
     grain: 'vertical',
-    note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 4, z leve) iz URADNE ROKSAL barvne lestvice profila KUBO (BARVNA_LESTVICA_5-kubo4.png, 2217×675) + zasuk 90° (žira na lestvici vodoravna |dy|>|dx|, KUBO se vgrajuje pokončno) + zrcalno tlakovanje 2×2 → 512×512 (priprava tests/make-kubo-tiles.ts, deterministično; 0 skoraj-črnih pikslov = brez ozadja lestvice). Imena dekorjev na lestvici NISO objavljena → dekor je označen po POLOŽAJU (1/4); barvni opis "temno sivi" je opisni, NE trgovsko ime. Povprečje RGB(95,94,97). Merilo dekorja NI objavljeno → realCm 45 je privzetek (glej komentar sekcije).',
+    note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 4, z leve) iz URADNE ROKSAL barvne lestvice profila KUBO (BARVNA_LESTVICA_5-kubo4.png, 2217×675) + zasuk 90° (žira na lestvici vodoravna |dy|>|dx|, KUBO se vgrajuje pokončno) → ENOJNI NEPREKINJEN IZREZ 256×256 (priprava tests/make-kubo-tiles.ts, deterministično; 0 skoraj-črnih pikslov = brez ozadja lestvice; brez notranjega zrcaljenja — zrcalno tlakovanje na nivoju vzorca zagotavlja renderer drawMirroredTexture; prejšnja 2×2 zrcalna različica je metuljasto simetrijo vidno podvajala). Imena dekorjev na lestvici NISO objavljena → dekor je označen po POLOŽAJU (1/4); barvni opis "temno sivi" je opisni, NE trgovsko ime. Povprečje RGB(95,94,97). Merilo dekorja NI objavljeno → realCm 45 je privzetek (glej komentar sekcije).',
   },
   {
     id: 'tex-roksal-kubo-dekor-2', kind: 'texture', label: 'KUBO dekor 2/4 — svetli zlati (uradna lestvica)',
@@ -169,7 +169,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
     grain: 'vertical',
-    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90° + tlakovanje 2×2, tests/make-kubo-tiles.ts). Povprečje RGB(177,148,125) — svetel zlato-rjavi odtenek, najbolj podoben dekorju na uradni fotki profila KUBO (profil-deske.jpg) → PRIVZETI dekor profila kubo-80-42.',
+    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90°, enojni ne-zrcaljen izrez 256×256, tests/make-kubo-tiles.ts). Povprečje RGB(177,148,125) — svetel zlato-rjavi odtenek, najbolj podoben dekorju na uradni fotki profila KUBO (profil-deske.jpg) → PRIVZETI dekor profila kubo-80-42.',
   },
   {
     id: 'tex-roksal-kubo-dekor-3', kind: 'texture', label: 'KUBO dekor 3/4 — zlati teak (uradna lestvica)',
@@ -177,7 +177,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
     grain: 'vertical',
-    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90° + tlakovanje 2×2, tests/make-kubo-tiles.ts). Povprečje RGB(154,127,97).',
+    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90°, enojni ne-zrcaljen izrez 256×256, tests/make-kubo-tiles.ts). Povprečje RGB(154,127,97).',
   },
   {
     id: 'tex-roksal-kubo-dekor-4', kind: 'texture', label: 'KUBO dekor 4/4 — temno rjavo-sivi (uradna lestvica)',
@@ -185,7 +185,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
     grain: 'vertical',
-    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90° + tlakovanje 2×2, tests/make-kubo-tiles.ts). Povprečje RGB(110,99,89).',
+    note: 'Enak postopek kot dekor 1 (izrez + zasuk 90°, enojni ne-zrcaljen izrez 256×256, tests/make-kubo-tiles.ts). Povprečje RGB(110,99,89).',
   },
   {
     id: 'pho-roksal-kubo-lestvica', kind: 'product-photo', label: 'KUBO — original ROKSAL barvna lestvica (4 dekorja)',
