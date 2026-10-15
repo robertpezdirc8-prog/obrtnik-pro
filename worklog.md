@@ -1538,3 +1538,22 @@ Stage Summary:
 - Repozitorij obrtnik-pro na GitHubu ima zdaj temeljit README (slovenščina), 100 % resničen — vsaka številka/trditev preverjena z orodji ob HEAD (test zagnan, remote preverjen z ls-tree).
 - origin/main posodobljen iz a69f042 → 7f7b79e ( Tasks 55–57 končno javno dostopni).
 - Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti. 1 nova datoteka (README.md), 0 sprememb aplikacije.
+
+---
+Task ID: 59
+Agent: Z.ai Code (glavni)
+Task: Dokončna preverba trenutne produkcijske različice in avtomatskih testov ob HEAD f906a13 (po Task 58 README + push) — brez novih funkcij.
+
+Work Log:
+- BAZA: HEAD f906a13, delovno drevo čisto, dev server živ (200 OK). Issue list: docs/gitlab-issues vsebuje le RECOVERY-REPORT + SPEC-B (issue #14 = GitHub issue, ostaja odprt).
+- POLNA REGRESIJA (exit codes): 34/34 verify skript ZELENO (13,3 s). photo-replace potrjen 391/391 (zagnan v Task 58 ob 101d5a0; koda od takrat nespremenjena — README commit).
+- tsc --noEmit: 0 napak v src/tests (izven prej obstoječih examples/+skills/). eslint: čist.
+- E2E produkcijske različice (agent-browser, localhost:3000): Pametna kamera → zavihek Fotomontaža → demo fotka vbrizgana v skriti input[type=file] (DataTransfer injekcija, 32.711 B) → KUBO kartice vidne z iskrenimi oznakami → Demo kvadrant → ravnina 250×180 → Samodejno predlagaj (maska) → Odstrani staro ograjo → "Ozadje obnovljeno" + Razveljavi obnovo na voljo → izbran KUBO dekor-2 → Upodobi: vertikalne deske 8 cm z režami 0,5 cm, naravna žira brez metulja, reže iskreno kažejo staro ograjo; perspektivna vrstica "ravnina 250×180 cm · merilo vzdolž robov 0,257 cm/px · ambientna svetloba 1,18 (33.936 vzorcev) · sence 0,18/0,10" → iskreni opombni "Frontalni okluziji so prazni — nič ni narisano pred novo ograjo."
+- Shrani različico: localStorage foto-replace-versions = profileId kubo-80-42, texture tex-roksal-kubo-dekor-2 (origin roksal-original, verification unverified, realCm 45), planeCm 250×180, params vertikalne/8/0,5, materialHonesty iskreni label, inpaint "ok", warnings (prazni okluziji), exportLabel "VIZUALIZACIJA ZA PREDSTAVITEV — ni potrjen proizvodni načrt in ni dokaz barvne identičnosti na zaslonu." — vsi iskreni žigi INTAKTNI.
+- Mobilni 390: scrollWidth=390 (brez vodoravnega prelivanja). Konzola + page errors: 0 napak. dev.log: brez error/unhandled/fatal.
+- Dokazi: tests/e2e-final-01-rezultat.png (korak 6 + mreža profilov z iskrenimi oznakami), -02-canvas.png (celotna upodobitev z merilno vrstico), -03-mobilni390.png. public/test-photo.jpg po koncu izbrisana.
+- Push: dokazi + worklog na origin/main.
+
+Stage Summary:
+- Produkcijska različica ob HEAD f906a13 DOKAZANO delujoča: 34/34 regresija, tsc+eslint čista, E2E celoten fotomontažni tok zeleno z vsemi iskrenimi žigi (unverified, VIZUALIZACIJA ZA PREDSTAVITEV, iskrene opombe), mobilni 390 brez prelivanja, 0 konzolnih napak.
+- Nič regrediralo po Task 58 (README). Issue #14 ostaja odprt. 0 AI, 0 novih odvisnosti.
