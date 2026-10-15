@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
-  ChevronDown, ChevronUp, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Save, Upload, ZoomIn,
+  ChevronDown, ChevronUp, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Save, ShoppingCart, Upload, ZoomIn,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -57,6 +57,8 @@ import {
   type VizPattern,
 } from '@/lib/viz';
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
+import { buildBomFromMeta } from '@/lib/photo-bom';
+import { useDraft, useView } from '@/lib/store';
 import { statusColor, statusHint, statusLabel } from '@/lib/measurement-status';
 import type { CraftCategory } from '@/lib/camera-types';
 
@@ -233,6 +235,9 @@ function thumbDataUrl(c: HTMLCanvasElement, maxW: number): string {
 
 export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   const { toast } = useToast();
+  const addDraftItems = useDraft((s) => s.addItems);
+  const setView = useView((s) => s.setView);
+  const setActiveCraft = useView((s) => s.setActiveCraft);
 
   // ── Stanje: fotografija + canvasi ──
   const ownUpload = useRef<{ dataUrl: string } | null>(null);
@@ -1013,6 +1018,33 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     img.src = v.dataUrl;
   };
 
+  // ── Korak 7: kosovnica (BOM) iz shranjenih metapodatkov — deterministično, 0 AI ──
+  // Štetje desk = ista formula kot v upodobitvi (computePlankLayouts); cene ostanejo 0
+  // (ROKSAL cen ne prevajamo); stebri/pritrdilni material se NE izmišljajo — opozorilo.
+  const onAddBom = () => {
+    if (!result) return;
+    let bom;
+    try {
+      bom = buildBomFromMeta(result.meta);
+    } catch (err) {
+      toast({ title: 'Kosovnica ni mogoča', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+      return;
+    }
+    if (bom.items.length === 0) {
+      toast({ title: 'Ni postavk za dodajo', description: bom.warnings.join(' '), variant: 'destructive' });
+      return;
+    }
+    addDraftItems(bom.items);
+    toast({
+      title: `Material v ponudbo: ${bom.items.length} ${bom.items.length === 1 ? 'postavka' : 'postavki'} ✓`,
+      description:
+        `${bom.boards} kosov × rez ${Math.round(bom.cutLenCm * 10) / 10} cm (${bom.totalMeters.toFixed(2)} m)` +
+        `${bom.stocks ? ` — ${bom.stocks.count} nabavnih profilov` : ''}. Cene vpiši v ponudbi; stebri in pritrdilni material niso modelirani.`,
+    });
+    setActiveCraft(null); // da se pokaže osnutek ponudbe (OfferEditor)
+    setView('kalkulatorji');
+  };
+
   const onExport = () => {
     if (!result) return;
     const profile = ROKSAL_PROFILES.find((p) => p.id === result.meta.profileId) ?? null;
@@ -1719,6 +1751,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <Button size="sm" onClick={onExport} disabled={!result} data-testid="fr-export">
               <Download className="mr-1.5 h-4 w-4" />
               Izvozi PNG
+            </Button>
+            <Button size="sm" variant="outline" onClick={onAddBom} disabled={!result} data-testid="fr-bom">
+              <ShoppingCart className="mr-1.5 h-4 w-4" />
+              Material v ponudbo
             </Button>
             {result && (
               <Badge variant="secondary" className="text-[10px]" data-testid="fr-version-script">
