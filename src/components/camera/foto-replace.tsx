@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
-  ChevronDown, ChevronUp, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Save, ShoppingCart, Upload, ZoomIn,
+  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Save, ShoppingCart, Upload, ZoomIn,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -58,6 +58,12 @@ import {
 } from '@/lib/viz';
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
+import {
+  buildCompareLabels,
+  compareExportFilename,
+  computeCompareLayout,
+  drawCompareExport,
+} from '@/lib/photo-compare';
 import { useDraft, useView } from '@/lib/store';
 import { statusColor, statusHint, statusLabel } from '@/lib/measurement-status';
 import type { CraftCategory } from '@/lib/camera-types';
@@ -1099,6 +1105,60 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     }, 'image/png');
   };
 
+  // ── Korak 7: izvoz pred/po para (kandidat #2 iz raziskave Task 63) ──
+  // PRED = NESPREMENJEN original (originalCanvasRef), PO = kompozit. Isti izvozni
+  // prehod iskrenosti kot enojni izvoz (canExportResult) in isti žig (EXPORT_LABEL,
+  // enoten vir resnice). Brez originala v sejanu → iskrena napaka (ne ugibamo).
+  const onExportCompare = () => {
+    if (!result) return;
+    const before = originalCanvasRef.current;
+    const after = resultCanvasRef.current;
+    if (!before || !after) {
+      toast({
+        title: 'Primerjava ni mogoča',
+        description: 'Originalna fotografija ni naložena v tem sejanu — naloži fotko in upodobi različico znova (ali uporabi „Izvozi PNG\u201c samo za rezultat).',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const profile = ROKSAL_PROFILES.find((p) => p.id === result.meta.profileId) ?? null;
+    const canRender = profile ? profileReadiness(profile).canRender : false;
+    const chk = canExportResult(result.meta, { canRender });
+    if (!chk.allowed) {
+      setExportBlocked(chk.reason);
+      toast({ title: 'Izvoz blokiran', description: chk.reason ?? undefined, variant: 'destructive' });
+      return;
+    }
+    setExportBlocked(null);
+    try {
+      const opts = { pad: 12, dividerPx: 2, lineH: 17, fontSize: 13 };
+      const meas = document.createElement('canvas').getContext('2d')!;
+      meas.font = `${opts.fontSize}px system-ui, sans-serif`;
+      // 1. prehod: širina ne obstaja od št. vrstic žiga → meri na širino postavitve
+      const probe = computeCompareLayout(before.width, before.height, after.width, after.height, opts);
+      const zigLines = wrapText(meas, EXPORT_LABEL, Math.max(200, probe.canvasW - 2 * opts.pad));
+      // 2. prehod: prava postavitev z dejanskim številom vrstic
+      const layout = computeCompareLayout(before.width, before.height, after.width, after.height, { ...opts, zigLineCount: zigLines.length });
+      const labels = buildCompareLabels(result.meta);
+      const ec = drawCompareExport({ before, after, layout, labels, zigLines, opts });
+      ec.toBlob((blob) => {
+        if (!blob) {
+          toast({ title: 'Izvoza ni bilo mogoče pripraviti', variant: 'destructive' });
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = compareExportFilename(result.meta);
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        toast({ title: 'Primerjava pred/po izvožena ✓', description: `Ena datoteka: PRED levo, PO desno, žigosano. (${compareExportFilename(result.meta)})` });
+      }, 'image/png');
+    } catch (err) {
+      toast({ title: 'Izvoza ni bilo mogoče pripraviti', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+    }
+  };
+
   // ── Lastni nalagalnik (fallback, če kamera ni posnela) ──
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
@@ -1751,6 +1811,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <Button size="sm" onClick={onExport} disabled={!result} data-testid="fr-export">
               <Download className="mr-1.5 h-4 w-4" />
               Izvozi PNG
+            </Button>
+            <Button size="sm" variant="outline" onClick={onExportCompare} disabled={!result} data-testid="fr-compare-export">
+              <Columns2 className="mr-1.5 h-4 w-4" />
+              Izvozi pred/po
             </Button>
             <Button size="sm" variant="outline" onClick={onAddBom} disabled={!result} data-testid="fr-bom">
               <ShoppingCart className="mr-1.5 h-4 w-4" />

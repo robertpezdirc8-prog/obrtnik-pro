@@ -11,9 +11,9 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 36/36, photo-replace 391/391, E2E celoten tok
+> Zadnja polna preverba: **regresija 37/37, photo-replace 391/391, E2E celoten tok
 > fotomontaže zeleno, mobilni 390 brez prelivanja, 0 konzolnih napak**
-> (Task 59–64, oktober 2026).
+> (Task 59–65, oktober 2026).
 
 ---
 
@@ -121,6 +121,11 @@ Tok (`foto-replace.tsx` + `src/lib/photo-replace-*`):
    dokazuje invarianto z `computePlankLayouts`), rez, skupni metri in rezalni
    načrt (samo z uradnimi nabavnimi dolžinami ROKSAL). Cene ostanejo 0 z opombo
    (ROKSAL cen ne prevajamo); stebri/pritrdilni material se ne izmišljajo.
+   Poleg tega **izvoz pred/po v ENI datoteki** („Izvozi pred/po“): levo
+   nespremenjeni original, desno upodobitev, žig + kontekst v sliki — isti
+   izvozni prehod iskrenosti (`canExportResult`) in enoten žig (`EXPORT_LABEL`);
+   enaki vhodi → bajt-identična datoteka (dokazano: namizje ≡ mobilni 390,
+   100.907 bajtov).
 
 ### Katalog ROKSAL profilov (originalna gradiva roksal.com)
 
@@ -205,7 +210,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (36)
+### Verifikacijske skripte (37)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):
@@ -213,6 +218,7 @@ brez brskalnika):
 ```bash
 bun tests/verify/photo-replace.ts     # fotomontaža — 391 preveritev
 bun tests/verify/photo-bom.ts         # kosovnica iz fotomontaže — invarianta z upodobitvijo
+bun tests/verify/photo-compare.ts     # izvoz pred/po — postavitev, oznake, iskrenost
 bun tests/verify/roksal-tiles.ts      # kakovost VSEH 32 dekor tlakov — 199 preveritev
 bun tests/verify/multiview-chain.ts   # veriga fotk / od AB
 bun tests/verify/colmap-model.ts      # SfM/COLMAP
@@ -221,9 +227,9 @@ bun tests/verify/deck-analysis.ts     # analiza dek
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (Task 64): polna regresija **36/36 skript zeleno** (pognano z
+Zadnja preverba (Task 65): polna regresija **37/37 skript zeleno** (pognano z
 izhodnimi kodami, ne citirano), vključno z **photo-replace 391/391**,
-**roksal-tiles 199/199** in **photo-bom 25/25**.
+**roksal-tiles 199/199**, **photo-bom 25/25** in **photo-compare 45/45**.
 
 ### E2E dokazi
 
@@ -232,9 +238,14 @@ Posnetki agent-browser sej so shranjeni v `tests/` (konvencija
 `e2e-kubo6-03-detajl-desk.png`, `e2e-deka-04-primerjava.png`, celoten tok
 `e2e-final-01-rezultat … -03-mobilni390.png` (Task 59: upodobitev KUBO
 dekor-2 z kalibrirano perspektivo 0,257 cm/px, metapodatki različice z žigom,
-mobilni 390) ter kosovnica `e2e-bom-01-kosovnica-v-ponudbi … -04-mobilni-
+mobilni 390), kosovnica `e2e-bom-01-kosovnica-v-ponudbi … -04-mobilni-
 kosovnica.png` (Task 64: material iz različice v osnutek ponudbe — 16 kosov,
-rezalni načrt, namizje + mobilni 390). Pokrivajo namizni in mobilni prikaz
+rezalni načrt, namizje + mobilni 390) ter pred/po izvoz `e2e-compare-01-
+primerjava.png … -05-brez-originala.png` (Task 65: PRAVA izvožena datoteka
+ujetá pri palačinki `URL.createObjectURL` in preverjena pikselsko
+(`tests/e2e-compare-check.ts`: levo = original, desno = upodobitev, žig temen,
+ločilo), bajt-identična na namizju in mobilnem 390, blokirana brez gradiva,
+iskrena napaka brez originala v sejanu). Pokrivajo namizni in mobilni prikaz
 (390 px), izvoz z žigom, primerjave profilov in celoten tok fotomontaže.
 
 ### Orodja za gradiva (`tests/make-*`)
@@ -266,7 +277,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (36 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (37 skript), e2e-*.png, make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```
