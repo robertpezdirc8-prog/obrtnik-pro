@@ -43,6 +43,30 @@ export const VIZ_TEXTURES: VizTexture[] = [
   { id: 'roksal-deka-dekor-5', label: 'DEKA dekor 5/7 (svetlo zlati, rebra)', src: '/roksal/deka/dekor-5.png', realCm: 45 },
   { id: 'roksal-deka-dekor-6', label: 'DEKA dekor 6/7 (fina tekstura)', src: '/roksal/deka/dekor-6.png', realCm: 45 },
   { id: 'roksal-deka-dekor-7', label: 'DEKA dekor 7/7 (fina tekstura)', src: '/roksal/deka/dekor-7.png', realCm: 45 },
+  // OGRAJE (POLNA DESKA + ROMB) — ORIGINALNA ROKSAL gradiva (barvne
+  // lestvice roksal.com, izrez dekorjev prek tests/make-ograje-tiles.ts).
+  // realCm 45 = privzetek (merilo dekorja na lestvicah NI objavljeno).
+  { id: 'roksal-romb67-dekor-1', label: 'ROMB-67 dekor 1/7 (temno sivi)', src: '/roksal/ograje/romb-67/dekor-1.png', realCm: 45 },
+  { id: 'roksal-romb67-dekor-2', label: 'ROMB-67 dekor 2/7 (svetlo sivi)', src: '/roksal/ograje/romb-67/dekor-2.png', realCm: 45 },
+  { id: 'roksal-romb67-dekor-3', label: 'ROMB-67 dekor 3/7 (rožnato-rjavi)', src: '/roksal/ograje/romb-67/dekor-3.png', realCm: 45 },
+  { id: 'roksal-romb67-dekor-4', label: 'ROMB-67 dekor 4/7 (rjavo-bež)', src: '/roksal/ograje/romb-67/dekor-4.png', realCm: 45 },
+  { id: 'roksal-romb67-dekor-5', label: 'ROMB-67 dekor 5/7 (svetli zlati)', src: '/roksal/ograje/romb-67/dekor-5.png', realCm: 45 },
+  { id: 'roksal-romb67-dekor-6', label: 'ROMB-67 dekor 6/7 (zlati teak)', src: '/roksal/ograje/romb-67/dekor-6.png', realCm: 45 },
+  { id: 'roksal-romb67-dekor-7', label: 'ROMB-67 dekor 7/7 (temno rjavo-sivi)', src: '/roksal/ograje/romb-67/dekor-7.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-1', label: 'POLNA-100 dekor 1/8 (temno sivi)', src: '/roksal/ograje/polna-100/dekor-1.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-2', label: 'POLNA-100 dekor 2/8 (svetlo sivi)', src: '/roksal/ograje/polna-100/dekor-2.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-3', label: 'POLNA-100 dekor 3/8 (rožnato-rjavi)', src: '/roksal/ograje/polna-100/dekor-3.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-4', label: 'POLNA-100 dekor 4/8 (rjavo-bež)', src: '/roksal/ograje/polna-100/dekor-4.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-5', label: 'POLNA-100 dekor 5/8 (svetli zlati)', src: '/roksal/ograje/polna-100/dekor-5.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-6', label: 'POLNA-100 dekor 6/8 (beli)', src: '/roksal/ograje/polna-100/dekor-6.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-7', label: 'POLNA-100 dekor 7/8 (zlati teak)', src: '/roksal/ograje/polna-100/dekor-7.png', realCm: 45 },
+  { id: 'roksal-polna100-dekor-8', label: 'POLNA-100 dekor 8/8 (temno rjavo-sivi)', src: '/roksal/ograje/polna-100/dekor-8.png', realCm: 45 },
+  { id: 'roksal-polna128-dekor-1', label: 'POLNA-128 dekor 1/6 (temno sivi)', src: '/roksal/ograje/polna-128/dekor-1.png', realCm: 45 },
+  { id: 'roksal-polna128-dekor-2', label: 'POLNA-128 dekor 2/6 (svetlo sivi)', src: '/roksal/ograje/polna-128/dekor-2.png', realCm: 45 },
+  { id: 'roksal-polna128-dekor-3', label: 'POLNA-128 dekor 3/6 (rjavo-bež)', src: '/roksal/ograje/polna-128/dekor-3.png', realCm: 45 },
+  { id: 'roksal-polna128-dekor-4', label: 'POLNA-128 dekor 4/6 (svetli zlati)', src: '/roksal/ograje/polna-128/dekor-4.png', realCm: 45 },
+  { id: 'roksal-polna128-dekor-5', label: 'POLNA-128 dekor 5/6 (zlati teak)', src: '/roksal/ograje/polna-128/dekor-5.png', realCm: 45 },
+  { id: 'roksal-polna128-dekor-6', label: 'POLNA-128 dekor 6/6 (temno rjavo-sivi)', src: '/roksal/ograje/polna-128/dekor-6.png', realCm: 45 },
 ];
 
 /** Predloga tekstur po vzorcu (UI ureja izbiro). */
@@ -61,7 +85,7 @@ export function texturesForPattern(
     case 'vozlik':
     case 'vertikalne':
     case 'piketna':
-      return VIZ_TEXTURES.filter((t) => ['hrast', 'wpc-tikovina', 'wpc-siva'].includes(t.id) || t.id.startsWith('roksal-kubo-dekor-'));
+      return VIZ_TEXTURES.filter((t) => ['hrast', 'wpc-tikovina', 'wpc-siva'].includes(t.id) || t.id.startsWith('roksal-kubo-dekor-') || t.id.startsWith('roksal-romb67-dekor-') || t.id.startsWith('roksal-polna100-dekor-') || t.id.startsWith('roksal-polna128-dekor-'));
     default:
       return []; // 'barva' in 'steklo' brez tekstur
   }
