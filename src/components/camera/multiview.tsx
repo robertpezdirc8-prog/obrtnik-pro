@@ -1074,11 +1074,14 @@ export function MultiView({ onAddMeasures }: { onAddMeasures?: (measures: PhotoM
   const activeResult = chainActive ? chainResult : result;
 
   // ── Faza 4: veriga → merilni list (glavni tok, brez vzporednega jedra) ──
-  const canAddSheet = canExport && chain.length > 0 && mvStatus?.status != null && !!onAddMeasures;
+  // (Združitev vzporednih linij: uporablja AKTIVNE razdalje — veriga (3 fotke)
+  // ali par AB — skladno s prikazom zgoraj; vzporedna linija je uporabljala
+  // samo AB `chain` iz skupnega bloka, ki ga chain-aware prenova ni več imela.)
+  const canAddSheet = canExport && activeMeasures.length > 0 && mvStatus?.status != null && !!onAddMeasures;
   const onAddToSheet = () => {
     if (!canAddSheet || !result || !mvStatus?.status) return;
     try {
-      const rows = multiViewChainToMeasures({ distancesCm: result.distancesCm ?? [], status: mvStatus.status });
+      const rows = multiViewChainToMeasures({ distancesCm: activeMeasures, status: mvStatus.status });
       if (rows.length === 0) return;
       onAddMeasures?.(rows);
       toast({
