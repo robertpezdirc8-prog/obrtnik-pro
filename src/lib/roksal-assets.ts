@@ -549,7 +549,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     id: 'pho-roksal-polna100-profil', kind: 'product-photo', label: 'POLNA-100 — original ROKSAL posnetek profila (presek)',
     src: null, realCm: 0, origin: 'roksal-original', verification: 'missing',
     license: MISSING_LICENSE, sourceUrl: '', grain: 'none',
-    note: 'RAZISKAVA 2026: uradna stran roksal.com v razdelku "Elementi" za POLNA DESKA-100 NE objavlja posnetka profila (naslov brez slike — za ostale profile so slike). Čaka ROKSAL katalog (#6) ali objavo na strani; ne vpliva na upodabljanje (readiness veže samo textureId).',
+    note: 'RAZISKAVA 2026 (poglobljena, 2026-10-15): uradna stran roksal.com v razdelku "Elementi" za POLNA DESKA-100 NE objavlja posnetka profila (naslov brez slike — za ostale profile so slike). Poglobljeno iskanje: roksal.com NIMA razdelka za prenose katalogov ("Več informacij" vsebuje le piškotke/kontakt, nič PDF); spletni trgovci objavljajo ali katalog DRUGE blagovne znamke (KAVA Co-ex, wpc-talne-obloge.si) ali neuradni trgovski katalog (WPS, montaze-mlakar.si, 2020 — imagescan, ne ROKSAL WoodCore) → po iskrenem standardu NIČ od tega ni original ROKSAL gradivo in se NE registrira. Čaka ROKSAL katalog (#6) ali objavo na strani; ne vpliva na upodabljanje (readiness veže samo textureId).',
   },
   {
     id: 'pho-roksal-polna100-vgradnja-amazon', kind: 'product-photo', label: 'POLNA-100 — original ROKSAL posnetek vgradnje (pokončna ograja)',

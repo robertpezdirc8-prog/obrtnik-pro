@@ -1557,3 +1557,20 @@ Work Log:
 Stage Summary:
 - Produkcijska različica ob HEAD f906a13 DOKAZANO delujoča: 34/34 regresija, tsc+eslint čista, E2E celoten fotomontažni tok zeleno z vsemi iskrenimi žigi (unverified, VIZUALIZACIJA ZA PREDSTAVITEV, iskrene opombe), mobilni 390 brez prelivanja, 0 konzolnih napak.
 - Nič regrediralo po Task 58 (README). Issue #14 ostaja odprt. 0 AI, 0 novih odvisnosti.
+
+---
+Task ID: 60
+Agent: Z.ai Code (glavni)
+Task: Nadaljevanje stojne direktive (brez novih funkcij) — preverba kakovosti/prisotnosti VSEH 32 dekor tlakov na disku + analiza zadostnosti ločljivosti + poglobljena spletna raziskava za 1 od 3 manjkajočih originalov (POLNA-100 presek) + polna regresija.
+
+Work Log:
+- INVENTAR TLAkov NA DISKU (sharp, prebrano — brez regeneracije): 32/32 dekor tlakov prisotnih in vseh 256×256 — kubo 4, deka 7, ograie/romb-67 7, ograie/polna-100 8, ograie/polna-128 6; polna-57-32 uradno uporablja KUBO tlake (brez lastnih — po uradnem parjenju). Pri prvem poskusu lažni alarm "manjkajoči PNG" — vzrok napaka lastne poti (ograie/*.png glob namesto podmap ograie/polna-100/...); pred popravki VEKRJENO z ls -la + git ls-files → NIČ manjkajo, NIČ popravljeno (dokaz discipline: preveri pred popravkom).
+- ANALIZA LOČLJIVOSTI (iskrena): delovna kopija fotke v cevovodu ≤ 1280 px (foto-replace.tsx vrstica 1075) → 250 cm ograja ≈ 1030 px platna → 45 cm tile ≈ 186 px na zaslonu → 256×256 tlak je 1,4× prevzorčen → NADGRADNJA ločljivosti ne bi dala vidnega dobička (izvirni izrezi s lestvic 2217–2560 px bi dali ~350–420 px, ampak cevovod je zgornja meja). Sklep: 256×256 ZADOŠČA, dokumentirano, brez nepotrebnih sprememb 32 sredstev + testov.
+- POGLOBLJENA RAZISKAVA POLNA-100 presek (web_search + page_reader): (1) roksal.com NIMA razdelka za prenose katalogov — "Več informacij" vsebuje le piškotke/kontakt, nič PDF; (2) trgovski PDF montaze-mlakar.si "WPS Ograje in terase" (2020, avtor "murov", imagescan brez besedila, zaščiten z istim "One moment" izzivom) — WPS ≠ ROKSAL WoodCore, trgovčeva blagovna znamka → po iskrenem standardu NE registriramo; (3) wpc-talne-obloge.si prodaja KAVA Co-ex ogradne deske = DRUGI proizvajalec. SKLEP: POLNA-100 presek ostaja manjkajoč; iskrena opomba v registru posodobljena z celotno evidenco poglobljene raziskave (datumi, viri, razlogi za zavračanje trgovskih virov).
+- Register: samo opomba pho-roksal-polna100-profil posodobljena (ostane missing, 3 manjkajoči nespremenjeni). Testa foto-replace vrstica 1000/1003 ostajata združljiva (note.includes('RAZISKAVA 2026') še vedno res).
+- Regresija: photo-replace 391/391, POLNA 34/34 (exit codes), tsc čist (src/tests), eslint čist.
+
+Stage Summary:
+- Dokazano: vsi 32 dekor tlakov na disku, vsi 256×256, ločljivost zadostna za 1280px cevovod (1,4× prevzorčenje) — brez potrebe po spremembah.
+- Raziskava za POLNA-100 presek POGLOBLJENA in ZAKLJUČENA: uradni vir ne obstaja, trgovski viri zavrnjeni po iskrenem standardu (druga znamka/neuradno) — opomba v registru zdaj nosi celotno evidenco raziskave. Manjkajoči originali ostajajo TOČNO 3, vsi z dokumentiranim razlogom.
+- Regresija 34/34 + photo-replace 391/391 + tsc/eslint čisti. Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti.
