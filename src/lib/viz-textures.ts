@@ -33,6 +33,16 @@ export const VIZ_TEXTURES: VizTexture[] = [
   { id: 'roksal-kubo-dekor-2', label: 'KUBO dekor 2/4 (svetli zlati)', src: '/roksal/kubo/dekor-2.png', realCm: 45 },
   { id: 'roksal-kubo-dekor-3', label: 'KUBO dekor 3/4 (zlati teak)', src: '/roksal/kubo/dekor-3.png', realCm: 45 },
   { id: 'roksal-kubo-dekor-4', label: 'KUBO dekor 4/4 (temno rjavo-sivi)', src: '/roksal/kubo/dekor-4.png', realCm: 45 },
+  // TERASNA deka 150×25 — ORIGINALNA ROKSAL gradiva (barvna lestvica
+  // roksal.com, izrez dekorjev prek tests/make-deka-tiles.ts).
+  // realCm 45 = privzetek (merilo dekorja na lestvici NI objavljeno).
+  { id: 'roksal-deka-dekor-1', label: 'DEKA dekor 1/7 (temno sivi, rebra)', src: '/roksal/deka/dekor-1.png', realCm: 45 },
+  { id: 'roksal-deka-dekor-2', label: 'DEKA dekor 2/7 (svetlo sivi, rebra)', src: '/roksal/deka/dekor-2.png', realCm: 45 },
+  { id: 'roksal-deka-dekor-3', label: 'DEKA dekor 3/7 (bakreno-peščeni, rebra)', src: '/roksal/deka/dekor-3.png', realCm: 45 },
+  { id: 'roksal-deka-dekor-4', label: 'DEKA dekor 4/7 (rožnato-bež, rebra)', src: '/roksal/deka/dekor-4.png', realCm: 45 },
+  { id: 'roksal-deka-dekor-5', label: 'DEKA dekor 5/7 (svetlo zlati, rebra)', src: '/roksal/deka/dekor-5.png', realCm: 45 },
+  { id: 'roksal-deka-dekor-6', label: 'DEKA dekor 6/7 (fina tekstura)', src: '/roksal/deka/dekor-6.png', realCm: 45 },
+  { id: 'roksal-deka-dekor-7', label: 'DEKA dekor 7/7 (fina tekstura)', src: '/roksal/deka/dekor-7.png', realCm: 45 },
 ];
 
 /** Predloga tekstur po vzorcu (UI ureja izbiro). */
@@ -41,7 +51,7 @@ export function texturesForPattern(
 ): VizTexture[] {
   switch (pattern) {
     case 'terasa':
-      return VIZ_TEXTURES.filter((t) => t.id.startsWith('wpc') || t.id === 'hrast');
+      return VIZ_TEXTURES.filter((t) => t.id.startsWith('wpc') || t.id === 'hrast' || t.id.startsWith('roksal-deka-dekor-'));
     case 'ploscice':
       return VIZ_TEXTURES.filter((t) => t.id.startsWith('keramika'));
     case 'panel':

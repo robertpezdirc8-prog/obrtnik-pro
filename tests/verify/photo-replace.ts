@@ -29,7 +29,7 @@ import {
   type ReplaceMetadataInput,
 } from '../../src/lib/photo-replace-core';
 import { ROKSAL_ASSETS, ROKSAL_PROFILES, assetById, profileReadiness } from '../../src/lib/roksal-assets';
-import { VIZ_TEXTURES } from '../../src/lib/viz-textures';
+import { VIZ_TEXTURES, texturesForPattern } from '../../src/lib/viz-textures';
 import { defaultParamsForPattern, patternPlaneHeightCm } from '../../src/lib/viz';
 
 let pass = 0, fail = 0;
@@ -961,6 +961,163 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     metaK.profileId === 'kubo-80-42' && metaK.texture?.origin === 'roksal-original' && metaK.texture.src === '/roksal/kubo/dekor-2.png');
   check('metapodatki: iskrenost izvoza (unverified original → žig VIZUALIZACIJA ostaja)',
     metaK.exportLabel === EXPORT_LABEL && metaK.exportLabel.includes('VIZUALIZACIJA'));
+}
+
+// ── ROKSAL TERASNA deka 150×25 — ORIGINALNI materiali + 7 barvnih različic ──
+{
+  console.log('roksal-deka-150 (originalni ROKSAL materiali — uradna barvna lestvica TERASNI profil):');
+  const dIds = ['tex-roksal-deka-dekor-1', 'tex-roksal-deka-dekor-2', 'tex-roksal-deka-dekor-3', 'tex-roksal-deka-dekor-4', 'tex-roksal-deka-dekor-5', 'tex-roksal-deka-dekor-6', 'tex-roksal-deka-dekor-7'];
+  const dekors = dIds.map((id) => assetById(id));
+  check('register ima TOČNO 7 DEKA dekor tekstur (uradna lestvica TERASNI profil ima 7 odtenkov)',
+    dekors.every(Boolean) && ROKSAL_ASSETS.filter((a) => a.id.startsWith('tex-roksal-deka-dekor-')).length === 7);
+  check('DEKA dekorji: roksal-original + unverified (barvna zvestoba NI osebno overjena)',
+    dekors.every((d) => d!.origin === 'roksal-original' && d!.verification === 'unverified'));
+  check('DEKA dekorji: viri /roksal/deka/dekor-N.png + navpična žira (konvencija tlakov) + realCm 45',
+    dekors.every((d, i) => d!.src === `/roksal/deka/dekor-${i + 1}.png` && d!.grain === 'vertical' && d!.realCm === 45));
+  check('DEKA dekorji: vir je uradna stran "Barvni odtenki" (roksal.com)',
+    dekors.every((d) => d!.sourceUrl === 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/'));
+  check('DEKA dekor-1 note: oznaka po POLOŽAJU (imena niso objavljena) + realCm 45 izrecno privzetek',
+    typeof dekors[0]!.note === 'string' && dekors[0]!.note.includes('POLOŽAJU') && dekors[0]!.note.includes('privzetek'));
+  check('DEKA dekor-6/7 note: RUSTIC povezava IZRECNO sklepanje (ne uradna trditev)',
+    typeof dekors[5]!.note === 'string' && /sklepanje/i.test(dekors[5]!.note)
+    && typeof dekors[6]!.note === 'string' && /sklepanje/i.test(dekors[6]!.note));
+  // zapolnjeno prej manjkajoče originalno gradivo (issue #6)
+  const dekaProfil = assetById('pho-roksal-wpc-deka-profil');
+  check('pho-roksal-wpc-deka-profil: NI več missing — uraden presek, roksal-original + unverified',
+    !!dekaProfil && dekaProfil.src !== null && dekaProfil.verification === 'unverified' && dekaProfil.origin === 'roksal-original');
+  check('pho-roksal-wpc-deka-profil: vir uradna stran terase + iskrena opomba o majhni ločljivosti (200×139)',
+    dekaProfil!.sourceUrl === 'https://roksal.com/woodcore-wpc-deske/wpc-deske-za-teraso/'
+    && typeof dekaProfil!.note === 'string' && dekaProfil!.note.includes('200×139'));
+  for (const id of ['pho-roksal-deka-lestvica', 'pho-roksal-deka-vgradnja']) {
+    const a = assetById(id);
+    check(`${id}: obstaja z virom, roksal-original + unverified`, !!a && a.src !== null && a.origin === 'roksal-original' && a.verification === 'unverified');
+  }
+  const remainMissing = ROKSAL_ASSETS.filter((a) => a.verification === 'missing').map((a) => a.id);
+  check('manjkajoči originali: še vedno TOČNO alu-palica-profil + ral-7016 (deka profil zapolnjen)',
+    remainMissing.length === 2 && remainMissing.includes('pho-roksal-alu-palica-profil') && remainMissing.includes('tex-roksal-ral-7016'),
+    JSON.stringify(remainMissing));
+  // profili
+  const dProfileIds = ['roksal-deka-150', 'roksal-deka-150-dekor-2', 'roksal-deka-150-dekor-3', 'roksal-deka-150-dekor-4', 'roksal-deka-150-dekor-5', 'roksal-deka-150-dekor-6', 'roksal-deka-150-dekor-7'];
+  const dekaProfiles = dProfileIds.map((id) => ROKSAL_PROFILES.find((x) => x.id === id));
+  check('7 DEKA profilov obstaja (privzeti dekor-1 + različice 2…7)',
+    dekaProfiles.every(Boolean) && ROKSAL_PROFILES.filter((x) => x.id.startsWith('roksal-deka-150')).length === 7);
+  check('roksal-deka-150: plankCm 15 (uradno 150 mm), gapCm 0,4, vodoravno, postCm 6, vzorec terasa',
+    dekaProfiles.every((p) => p!.plankCm === 15 && p!.gapCm === 0.4 && p!.orientation === 'horizontal' && p!.postCm === 6 && p!.pattern === 'terasa'));
+  check('roksal-deka-150: catalogSku null (SKU se ne izmišljuje — čaka ROKSAL katalog #6)',
+    dekaProfiles.every((p) => p!.catalogSku === null));
+  check('roksal-deka-150 teksture: dekor-1 privzeti, različice → dekor-2…7 po vrsti',
+    dekaProfiles[0]!.textureId === 'tex-roksal-deka-dekor-1'
+    && dekaProfiles.slice(1).every((p, i) => p!.textureId === `tex-roksal-deka-dekor-${i + 2}`));
+  check('roksal-deka-150 note: uradne mere 150 × 25 + gapCm/postCm izrecno tipena privzetka',
+    typeof dekaProfiles[0]!.note === 'string' && dekaProfiles[0]!.note.includes('150 × 25') && dekaProfiles[0]!.note.includes('tipena privzetka'));
+  const rd = profileReadiness(dekaProfiles[0]!);
+  check('roksal-deka-150: canRender TRUE (uradno gradivo ima vir)', rd.canRender === true, JSON.stringify(rd));
+  check('roksal-deka-150: isOriginal FALSE (unverified — izvoz z oznako original ostaja blokiran)', rd.isOriginal === false);
+  check('roksal-deka-150: iskreni label "Originalno ROKSAL gradivo (roksal.com) — ni osebno overjeno"',
+    rd.honestyLabel.includes('Originalno ROKSAL gradivo (roksal.com)') && rd.honestyLabel.includes('ni osebno overjeno'), rd.honestyLabel);
+  // register ↔ viz-textures konsistenca (vsi 7 dekorjev: isti vir + isti realCm)
+  for (let i = 1; i <= 7; i++) {
+    const reg = assetById(`tex-roksal-deka-dekor-${i}`);
+    const viz = VIZ_TEXTURES.find((t) => t.id === `roksal-deka-dekor-${i}`);
+    check(`viz-textures ima "roksal-deka-dekor-${i}" z ISTIM virom in realCm kot register`,
+      !!viz && viz.src === reg?.src && viz.realCm === reg?.realCm, JSON.stringify(viz ?? null));
+  }
+  // texturesForPattern('terasa') vključuje VSE 7 deka tlakov (profil je terasa)
+  const terasaTex = texturesForPattern('terasa');
+  const dekaVizIds = Array.from({ length: 7 }, (_, i) => `roksal-deka-dekor-${i + 1}`);
+  check("texturesForPattern('terasa') vključuje vseh 7 DEKA dekorjev",
+    dekaVizIds.every((id) => terasaTex.some((t) => t.id === id)));
+  // PROFILE_COLOR_ID: 7 DEKA vnosov (polno pokritost preverja spodnji blok)
+  const { readFileSync: rfsD } = await import('node:fs');
+  const frxD = new TextDecoder().decode(rfsD(`${process.cwd()}/src/components/camera/foto-replace.tsx`));
+  check("PROFILE_COLOR_ID: roksal-deka-150 → antracit, dekor-2 → ral-9006, dekor-3/4/5 → svetli-les, dekor-6/7 → tikovina",
+    frxD.includes("'roksal-deka-150': 'wpc-antracit'") && frxD.includes("'roksal-deka-150-dekor-2': 'ral-9006'")
+    && frxD.includes("'roksal-deka-150-dekor-3': 'wpc-svetli-les'") && frxD.includes("'roksal-deka-150-dekor-6': 'wpc-tikovina'"));
+  // PNG bajtno dekodiranje dekor-1 (privzeti): 256×256, brez črnega ozadja,
+  // navpična žira, nevtralen temno siv ton, NI notranje zrcalne simetrije
+  {
+    const sharp = (await import('sharp')).default;
+    const d = await sharp(`public/roksal/deka/dekor-1.png`).raw().toBuffer({ resolveWithObject: true });
+    const TW = d.info.width, TH = d.info.height, TC = d.info.channels;
+    check('deka dekor-1.png: 256×256 enojni izrez', TW === 256 && TH === 256, `${TW}×${TH}`);
+    let nearBlack = 0, ex = 0, ey = 0;
+    let R = 0, G = 0, B = 0;
+    for (let y = 0; y < TH; y++) {
+      for (let x = 0; x < TW; x++) {
+        const j = (y * TW + x) * TC;
+        const l = 0.2126 * d.data[j] + 0.7152 * d.data[j + 1] + 0.0722 * d.data[j + 2];
+        if (l < 10) nearBlack++;
+        R += d.data[j]; G += d.data[j + 1]; B += d.data[j + 2];
+        if (y > 0 && x > 0 && y < TH - 1 && x < TW - 1 && y % 2 === 1 && x % 2 === 1) {
+          const jr = (y * TW + x + 1) * TC, jd = ((y + 1) * TW + x) * TC;
+          const lr = 0.2126 * d.data[jr] + 0.7152 * d.data[jr + 1] + 0.0722 * d.data[jr + 2];
+          const ld = 0.2126 * d.data[jd] + 0.7152 * d.data[jd + 1] + 0.0722 * d.data[jd + 2];
+          ex += Math.abs(lr - l); ey += Math.abs(ld - l);
+        }
+      }
+    }
+    const n = TW * TH;
+    R = Math.round(R / n); G = Math.round(G / n); B = Math.round(B / n);
+    check('deka dekor-1.png: 0 skoraj-črnih pikslov (črno ozadje lestvice NI v tile-u)', nearBlack === 0, String(nearBlack));
+    check(`deka dekor-1.png: žira NAVPIČNA (|dx| ${ex.toFixed(0)} > |dy| ${ey.toFixed(0)}) — konvencija tlakov, renderer zasuka za vodoravne deke`, ex > ey);
+    check(`deka dekor-1.png: nevtralen temno siv ton (povprečje RGB(${R},${G},${B}) — |R−B| majhen, lum 70–130)`,
+      Math.abs(R - B) <= 25 && (0.2126 * R + 0.7152 * G + 0.0722 * B) >= 70 && (0.2126 * R + 0.7152 * G + 0.0722 * B) <= 130, JSON.stringify({ R, G, B }));
+    let symX = 0;
+    for (let x = 0; x < TW; x++) {
+      let diff = 0;
+      for (let y = 0; y < TH; y++) {
+        const ia = (y * TW + x) * TC, ib = (y * TW + (TW - 1 - x)) * TC;
+        diff += Math.abs(d.data[ia] - d.data[ib]) + Math.abs(d.data[ia + 1] - d.data[ib + 1]) + Math.abs(d.data[ia + 2] - d.data[ib + 2]);
+      }
+      symX += diff / (TH * 3);
+    }
+    symX /= TW;
+    check(`deka dekor-1.png: NI notranje zrcalne simetrije (lev/des razlika ${symX.toFixed(1)} ≥ 6 — enojni neprekinjen izrez)`, symX >= 6);
+    // dekor-6 (RUSTIC sklep): topel rjavi ton, R > B
+    const d6 = await sharp(`public/roksal/deka/dekor-6.png`).raw().toBuffer({ resolveWithObject: true });
+    let R6 = 0, B6 = 0;
+    const n6 = d6.info.width * d6.info.height;
+    for (let i = 0; i < n6; i++) { R6 += d6.data[i * d6.info.channels]; B6 += d6.data[i * d6.info.channels + 2]; }
+    R6 = Math.round(R6 / n6); B6 = Math.round(B6 / n6);
+    check(`deka dekor-6.png: topel rjavi ton (R−B = ${R6 - B6} > 25 — lesni dekor)`, R6 - B6 > 25, JSON.stringify({ R6, B6 }));
+  }
+  // postavitev DEKE na standardnem frontalnem pasu: vodoravne deke se štejejo
+  // po VIŠINI 95 cm → floor((95+0,4)/15,4) = 6 vrstic dek
+  const layD = computePlankLayouts({
+    quadPct: [[10, 20], [90, 20], [90, 80], [10, 80]],
+    imgSize: { w: 1280, h: 890 },
+    planeCm: { wCm: 200, hCm: 95 },
+    plankCm: 15, gapCm: 0.4, orientation: 'horizontal', postCm: 6, postEveryCm: null,
+  });
+  const expectedDeka = Math.floor((95 + 0.4) / (15 + 0.4));
+  check(`postavitev: ${expectedDeka} vrstic DEK po višini 95 cm (floor((95+0.4)/15.4))`,
+    layD.planks.length === expectedDeka, `dejansko ${layD.planks.length}`);
+  // DEKE so VODORAVNI trakovi (širina > višina)
+  const dw = (q: QuadPx): number => Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+  const dh = (q: QuadPx): number => Math.hypot(q.bl.x - q.tl.x, q.bl.y - q.tl.y);
+  check('DEKE so vodoravni trakovi (širina > višina)', layD.planks.every((k) => dw(k.quad) > dh(k.quad)));
+  // metapodatki: roksal-deka-150 z roksal-original teksturo (unverified) sprejeta + iskrenost
+  const maskD = createMask(IMG_W, IMG_H);
+  paintMaskRect(maskD, 30, 30, 209, 149, 255);
+  const texD = assetById('tex-roksal-deka-dekor-1')!;
+  const metaD = buildReplaceMetadata({
+    profileId: dekaProfiles[0]!.id,
+    profileLabel: dekaProfiles[0]!.label,
+    catalogSku: dekaProfiles[0]!.catalogSku,
+    texture: { id: texD.id, src: texD.src, origin: texD.origin, verification: texD.verification, realCm: texD.realCm },
+    planeCm: { wCm: 200, hCm: 95 },
+    params: { plankCm: 15, gapCm: 0.4 },
+    mask: maskD,
+    layout: layD,
+    imgSize: { w: IMG_W, h: IMG_H },
+    inpaint: 'ok',
+    warnings: [],
+    createdAt: '2026-10-15T15:30:00.000Z',
+  });
+  check('metapodatki: roksal-deka-150 + tex-roksal-deka-dekor-1 (roksal-original) sprejeta',
+    metaD.profileId === 'roksal-deka-150' && metaD.texture?.origin === 'roksal-original' && metaD.texture.src === '/roksal/deka/dekor-1.png');
+  check('metapodatki: iskrenost izvoza (unverified original → žig VIZUALIZACIJA ostaja)',
+    metaD.exportLabel === EXPORT_LABEL && metaD.exportLabel.includes('VIZUALIZACIJA'));
 }
 
 // ── Primerjava profilov (korak 6, navdih konkurence D2K/VisualFencePro) ──

@@ -129,12 +129,6 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
   },
   // ── Manjkajoči ORIGINALI ROKSAL (čaka knjižnica iz issue #6) — src = null
   {
-    id: 'pho-roksal-wpc-deka-profil', kind: 'product-photo', label: 'WPC deka — original ROKSAL posnetek profila',
-    src: null, realCm: 0, origin: 'roksal-original', verification: 'missing',
-    license: MISSING_LICENSE, sourceUrl: '', grain: 'none',
-    note: 'Čaka original ROKSAL knjižnico (#6). Do takrat nadomestna tekstura NI original.',
-  },
-  {
     id: 'pho-roksal-alu-palica-profil', kind: 'product-photo', label: 'Alu palica — original ROKSAL posnetek profila',
     src: null, realCm: 0, origin: 'roksal-original', verification: 'missing',
     license: MISSING_LICENSE, sourceUrl: '', grain: 'none',
@@ -145,6 +139,100 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     src: null, realCm: 0, origin: 'roksal-original', verification: 'missing',
     license: MISSING_LICENSE, sourceUrl: '', grain: 'none',
     note: 'Čaka original ROKSAL vzorec barve (#6). RAL je sicer gladka barvana kovina — upodobitev z flat barvo je realna, brez teksture.',
+  },
+  // ── Originalni ROKSAL gradivi — TERASNA deka 150 × 25 mm (roksal.com, 2026) ──
+  // Preneseno z uradnih strani roksal.com ("Barvni odtenki" — razdelek
+  // TERASNI profil + "WPC deske za teraso"). DOBEREDA originalna
+  // ROKSAL gradiva — barvna zvestoba zaslonu NI osebno overjena
+  // (verification ostaja 'unverified'; izvoz z oznako "original" je
+  // dokler traja to blokiran — iskrenost).
+  // Uradno (roksal.com): TERASNI profil — "sedmimi barvnimi odtenki in
+  // tremi površinami"; KLASIK — "150 x 25 x 4000 ali 2200 mm, v petih
+  // barvnih odtenkih"; RUSTIC — "izgled STARAN LES, na eni strani
+  // gladka, na drugi rebričena". Lestvica (2560×680) prikazuje 7
+  // dekorjev BREZ imen → oznake po POLOŽAJU 1–7; da sta dekorja 6 in 7
+  // RUSTIC (finija tekstura brez reber), je SKLEPANJE iz opisa površin,
+  // NE uradna trditev. Merilo dekorja na lestvici NI objavljeno →
+  // realCm 45 je IZRECNO označen privzetek.
+  {
+    id: 'tex-roksal-deka-dekor-1', kind: 'texture', label: 'DEKA dekor 1/7 — temno sivi, rebra (uradna lestvica)',
+    src: '/roksal/deka/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 7, z leve) iz URADNE ROKSAL barvne lestvice terasnih desk (BARVNA_LESTVICA_1-terasa4.png, 2560×680) + zasuk 90° (žira/rebra na lestvici vodoravna; konvencija tlakov v viz.ts je NAVPIČNA žira — vodoravne deke renderer zasuka sam) → ENOJNI NEPREKINJEN IZREZ 256×256 (tests/make-deka-tiles.ts, deterministično; 0 skoraj-črnih pikslov; brez notranjega zrcaljenja; rebra preverjena kot periodična — avtentična površina KLASIK deske). Imena dekorjev niso objavljena → oznaka po POLOŽAJU (1/7); "temno sivi, rebra" je opisno, NE trgovsko ime. Povprečje RGB(97,100,104). Merilo NI objavljeno → realCm 45 privzetek.',
+  },
+  {
+    id: 'tex-roksal-deka-dekor-2', kind: 'texture', label: 'DEKA dekor 2/7 — svetlo sivi, rebra (uradna lestvica)',
+    src: '/roksal/deka/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1 (enojni ne-zrcaljen izrez 256×256, zasuk 90°, tests/make-deka-tiles.ts). Povprečje RGB(161,163,163).',
+  },
+  {
+    id: 'tex-roksal-deka-dekor-3', kind: 'texture', label: 'DEKA dekor 3/7 — bakreno-peščeni, rebra (uradna lestvica)',
+    src: '/roksal/deka/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1. Povprečje RGB(201,153,128).',
+  },
+  {
+    id: 'tex-roksal-deka-dekor-4', kind: 'texture', label: 'DEKA dekor 4/7 — rožnato-bež, rebra (uradna lestvica)',
+    src: '/roksal/deka/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1. Povprečje RGB(177,146,130).',
+  },
+  {
+    id: 'tex-roksal-deka-dekor-5', kind: 'texture', label: 'DEKA dekor 5/7 — svetlo zlati, rebra (uradna lestvica)',
+    src: '/roksal/deka/dekor-5.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1. Povprečje RGB(212,172,131).',
+  },
+  {
+    id: 'tex-roksal-deka-dekor-6', kind: 'texture', label: 'DEKA dekor 6/7 — srednje rjavi, fina tekstura (uradna lestvica)',
+    src: '/roksal/deka/dekor-6.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1. POVRAŠINA BREZ GROBIH REBER (0 polnih temnih črt) — skladno z uradnim opisom RUSTIC ("izgled STARAN LES, na eni strani gladka"), a povezava dekor 6–7 ↔ RUSTIC je SKLEPANJE iz opisa površin, NE uradna trditev. Povprečje RGB(156,129,98).',
+  },
+  {
+    id: 'tex-roksal-deka-dekor-7', kind: 'texture', label: 'DEKA dekor 7/7 — temno sivo-rjavi, fina tekstura (uradna lestvica)',
+    src: '/roksal/deka/dekor-7.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'vertical',
+    note: 'Enak postopek kot dekor 1. POVRAŠINA BREZ GROBIH REBER (0 polnih temnih črt) — skladno z opisom RUSTIC (sklepanje, glej dekor 6). Povprečje RGB(110,99,89).',
+  },
+  {
+    id: 'pho-roksal-deka-lestvica', kind: 'product-photo', label: 'TERASNA deka — original ROKSAL barvna lestvica (7 dekorjev)',
+    src: '/roksal/deka/barvna-lestvica-deka.png', realCm: 0, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
+    grain: 'none',
+    note: 'Uradna paleta odtenkov terasnih desk (BARVNA_LESTVICA_1-terasa4.png, 2560×680; alt: "Barvna paleta odtenkov WPC desk za desko 150") — TOČNO 7 dekorjev, brez besedilnih oznak. Vir izposojenih dekorjev (tex-roksal-deka-dekor-1…7).',
+  },
+  {
+    id: 'pho-roksal-wpc-deka-profil', kind: 'product-photo', label: 'WPC deka — original ROKSAL posnetek profila (presek)',
+    src: '/roksal/deka/profil-deske.jpg', realCm: 0, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — WPC deske za teraso)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/wpc-deske-za-teraso/',
+    grain: 'none',
+    note: 'Uradni posnetek profila terasne deske (presek: komorne deske, deska-za-terase.jpg). Prej MANJKAJOČE gradivo (#6) je zdaj izpolnjeno ZA DEKO — LOČLJIVOST je majhna (200×139, toliko objavlja stran — ni večje variante). Uradne mere deske: 150 × 25 × 4000/2200 mm.',
+  },
+  {
+    id: 'pho-roksal-deka-vgradnja', kind: 'product-photo', label: 'TERASNA deka — original ROKSAL posnetek vgradnje (strešna terasa)',
+    src: '/roksal/deka/vgradnja-strešna-terasa.jpg', realCm: 0, origin: 'roksal-original', verification: 'unverified',
+    license: 'Gradivo ROKSAL (roksal.com — WPC deske za teraso)',
+    sourceUrl: 'https://roksal.com/woodcore-wpc-deske/wpc-deske-za-teraso/',
+    grain: 'none',
+    note: 'Uradni posnetek vgradnje: strešna terasa s temno dekorjo (deske-za-terase_215.jpg, 793×529) — najbližji dekor po povprečju je dekor 1 (temno sivi).',
   },
   // ── Originalni ROKSAL gradivi — KUBO profil 80/42 (roksal.com, 2026) ──
   // Preneseno z uradne strani roksal.com (stran "Barvni odtenki" +
@@ -303,7 +391,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-wpc-tikovina',
     postCm: 6,
     pattern: 'terasa',
-    note: 'Mere iz privzetkov vizualizerja (deka 140 mm + fuga 4 mm). postCm je tipen privzetek — čaka ROKSAL katalog (#6).',
+    note: 'Mere iz privzetkov vizualizerja (deka 140 mm + fuga 4 mm). postCm je tipen privzetek — čaka ROKSAL katalog (#6). Uradna ROKSAL terasna deska je 150 × 25 mm — glej profil roksal-deka-150 (uradni gradivi).',
   },
   {
     id: 'wpc-deka-140-antracit',
@@ -411,6 +499,93 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     postCm: 6,
     pattern: 'vertikalne',
     note: 'Barvna različica profila kubo-80-42: dekor 4/4 uradne lestvice.',
+  },
+  // ── ROKSAL TERASNA deka 150 × 25 (uradni gradivi, roksal.com) ──
+  // Uradne mere: 150 × 25 × 4000 ali 2200 mm (roksal.com — WPC deske
+  // za teraso). TERASNI profil ima uradno "sedem barvnih odtenkov in
+  // tri površine" — barvne različice = TOČNO 7 dekorjev uradne
+  // barvne lestvice (oznake po POLOŽAJU 1–7, imena niso objavljena).
+  // PRIVZETI dekor = 1/7 (temno sivi — najbolj podoben dekorju na
+  // uradni fotki profila/preseka in uradni fotki vgradnje, obe temno
+  // sivi). Fuga NI uradno objavljena → gapCm 0,4 TIPEN privzetek
+  // (isti kot obstoječi wpc-deka-140); postCm 6 tipen; catalogSku
+  // null (SKU se ne izmišljuje).
+  {
+    id: 'roksal-deka-150',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 1/7 uradne lestvice',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-1',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Uradne mere: 150 × 25 × 4000/2200 mm (roksal.com). PRIVZETI dekor = 1/7 (temno sivi — kot na uradni fotki profila in vgradnje). gapCm 0,4 in postCm 6 sta tipena privzetka — čakata ROKSAL katalog (#6).',
+  },
+  {
+    id: 'roksal-deka-150-dekor-2',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 2/7 (svetlo sivi)',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-2',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Barvna različica profila roksal-deka-150: dekor 2/7 uradne lestvice.',
+  },
+  {
+    id: 'roksal-deka-150-dekor-3',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 3/7 (bakreno-peščeni)',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-3',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Barvna različica profila roksal-deka-150: dekor 3/7 uradne lestvice.',
+  },
+  {
+    id: 'roksal-deka-150-dekor-4',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 4/7 (rožnato-bež)',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-4',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Barvna različica profila roksal-deka-150: dekor 4/7 uradne lestvice.',
+  },
+  {
+    id: 'roksal-deka-150-dekor-5',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 5/7 (svetlo zlati)',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-5',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Barvna različica profila roksal-deka-150: dekor 5/7 uradne lestvice.',
+  },
+  {
+    id: 'roksal-deka-150-dekor-6',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 6/7 (fina tekstura, brez reber)',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-6',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Barvna različica profila roksal-deka-150: dekor 6/7 uradne lestvice (površina brez grobih reber — skladno z opisom RUSTIC; povezava je sklepanje).',
+  },
+  {
+    id: 'roksal-deka-150-dekor-7',
+    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 7/7 (fina tekstura, brez reber)',
+    catalogSku: null,
+    plankCm: 15, gapCm: 0.4,
+    orientation: 'horizontal',
+    textureId: 'tex-roksal-deka-dekor-7',
+    postCm: 6,
+    pattern: 'terasa',
+    note: 'Barvna različica profila roksal-deka-150: dekor 7/7 uradne lestvice (površina brez grobih reber — skladno z opisom RUSTIC; povezava je sklepanje).',
   },
 ];
 

@@ -63,3 +63,5 @@ async function main() {
   }
 }
 main().catch((e) => { console.error('NAPAKA', e); process.exit(1); });
+
+export {};

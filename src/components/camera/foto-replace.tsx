@@ -82,6 +82,18 @@ const PROFILE_COLOR_ID: Record<string, string> = {
   'kubo-80-42-dekor-1': 'wpc-antracit',    // dekor-1 (temno sivi) ↔ antracit #3F4145
   'kubo-80-42-dekor-3': 'wpc-tikovina',    // dekor-3 (zlati teak) ↔ tikovina #8A6A48
   'kubo-80-42-dekor-4': 'wpc-oreh',        // dekor-4 (temno rjavo-sivi) ↔ oreh #5D4433
+  // DEKA 150×25 — barva = najbližji VIZ_COLOR po povprečju dekorja
+  // (izmerjeno v tests/make-deka-tiles.ts: dekor-1 RGB(97,100,104),
+  // dekor-2 RGB(161,163,163), dekor-3 RGB(201,153,128),
+  // dekor-4 RGB(177,146,130), dekor-5 RGB(212,172,131),
+  // dekor-6 RGB(156,129,98), dekor-7 RGB(110,99,89))
+  'roksal-deka-150': 'wpc-antracit',       // dekor-1 (temno sivi) ↔ antracit #3F4145 (d≈60)
+  'roksal-deka-150-dekor-2': 'ral-9006',   // dekor-2 (svetlo sivi) ↔ RAL 9006 #A5A8A6 (d≈7 — najbližji)
+  'roksal-deka-150-dekor-3': 'wpc-svetli-les', // dekor-3 ↔ svetli les #B99B72 (d≈21)
+  'roksal-deka-150-dekor-4': 'wpc-svetli-les', // dekor-4 ↔ svetli les #B99B72 (d≈20)
+  'roksal-deka-150-dekor-5': 'wpc-svetli-les', // dekor-5 ↔ svetli les #B99B72 (d≈36)
+  'roksal-deka-150-dekor-6': 'wpc-tikovina',   // dekor-6 (srednje rjavi) ↔ tikovina #8A6A48 (d≈39)
+  'roksal-deka-150-dekor-7': 'wpc-tikovina',   // dekor-7 (temno rjavi) ↔ tikovina #8A6A48 (d≈34)
 };
 
 /** ROKSAL asset id → id teksture v viz-textures ('tex-wpc-tikovina' → 'wpc-tikovina'). */
