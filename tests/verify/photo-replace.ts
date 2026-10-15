@@ -362,14 +362,25 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('vsak "missing" asset ima src = null',
     missing.length > 0 && missing.every((a) => a.src === null), `${missing.length} manjkajočih`);
   const present = ROKSAL_ASSETS.filter((a) => a.src !== null);
-  check('vsak asset z virom ima origin real-photo/user-upload in neprazno licenco',
+  check('vsak asset z virom ima origin real-photo/user-upload/standard-reference in neprazno licenco',
     present.length > 0 && present.every((a) =>
-      (a.origin === 'real-photo' || a.origin === 'user-upload') && a.license.length > 0));
+      (a.origin === 'real-photo' || a.origin === 'user-upload' || a.origin === 'standard-reference') && a.license.length > 0));
+  // standard-reference: javni standard, NE fotografija, NE original — izrecna kategorija
+  const standard = ROKSAL_ASSETS.filter((a) => a.origin === 'standard-reference');
+  check('standard-reference asseti: grain none + note izrecno zanika original + verification unverified',
+    standard.length > 0 && standard.every((a) =>
+      a.grain === 'none' && a.verification === 'unverified' && typeof a.note === 'string' && a.note.includes('NI original ROKSAL')),
+    standard.map((a) => a.id).join(','));
   const alu = ROKSAL_PROFILES.find((pr) => pr.id === 'alu-palice-18')!;
   const rdAlu = profileReadiness(alu);
-  check('profil z manjkajočo teksturo → canRender false', !rdAlu.canRender, JSON.stringify(rdAlu));
+  check('alu-palice-18 (standardna RAL referenca) → canRender TRUE', rdAlu.canRender, JSON.stringify(rdAlu));
+  check('… in NI original (isOriginal false) ter oznaka omenja standardno referenco in "ni original"',
+    !rdAlu.isOriginal && rdAlu.honestyLabel.includes('Standardna') && rdAlu.honestyLabel.toLowerCase().includes('ni original'), rdAlu.honestyLabel);
+  const mreza = ROKSAL_PROFILES.find((pr) => pr.id === 'mreza-3d-125')!;
+  const rdMreza = profileReadiness(mreza);
+  check('mreza-3d-125 (tex-roksal-ral-7016 še vedno manjka) → canRender false', !rdMreza.canRender, JSON.stringify(rdMreza));
   check('… in oznaka iskrenosti vsebuje "manjk"',
-    rdAlu.honestyLabel.toLowerCase().includes('manjk'), rdAlu.honestyLabel);
+    rdMreza.honestyLabel.toLowerCase().includes('manjk'), rdMreza.honestyLabel);
   const wpc = ROKSAL_PROFILES.find((pr) => pr.id === 'wpc-deka-140')!;
   const rdWpc = profileReadiness(wpc);
   check('profil z obstoječo teksturo → canRender true', rdWpc.canRender);
@@ -377,6 +388,57 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     !rdWpc.isOriginal && rdWpc.honestyLabel.length > 0, rdWpc.honestyLabel);
   check('assetById za neznan/prazen id → null', assetById('ne-obstaja') === null && assetById('') === null);
   check('assetById najde obstoječi asset', assetById('tex-wpc-tikovina')?.id === 'tex-wpc-tikovina');
+  check('assetById najde standardno referenco', assetById('tex-ral-7016-standard')?.origin === 'standard-reference');
+
+  // ── Barvni vzorec PNG: bajtno dekodiran in preverjen ────────
+  // register trdi: raven RGB(56,62,66) — to se DEJANSKO preveri
+  // (zlib inflate vseh IDAT-ov, filter 0, vsak piksel točno 56/62/66).
+  const sw = assetById('tex-ral-7016-standard');
+  if (sw?.src) {
+    const { readFileSync } = await import('node:fs');
+    const { inflateSync } = await import('node:zlib');
+    const path = `${process.cwd()}/public${sw.src}`;
+    const d = new Uint8Array(readFileSync(path));
+    const pngSig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    check('ral-7016.png: PNG podpis', pngSig.every((b, i) => d[i] === b));
+    // IHDR: width/height big-endian na offsetu 16/20, bitdepth 8, colortype 2
+    const w = (d[16] << 24) | (d[17] << 16) | (d[18] << 8) | d[19];
+    const h = (d[20] << 24) | (d[21] << 16) | (d[22] << 8) | d[23];
+    check('ral-7016.png: 256×256, 8 bit, truecolor', w === 256 && h === 256 && d[24] === 8 && d[25] === 2, `${w}×${h} bit ${d[24]} ct ${d[25]}`);
+    let idat = new Uint8Array(0);
+    let i = 8;
+    while (i < d.length) {
+      const dv = new DataView(d.buffer, d.byteOffset + i, 8);
+      const ln = dv.getUint32(0);
+      const type = String.fromCharCode(d[i + 4], d[i + 5], d[i + 6], d[i + 7]);
+      if (type === 'IDAT') {
+        const next = new Uint8Array(idat.length + ln);
+        next.set(idat); next.set(d.subarray(i + 8, i + 8 + ln), idat.length);
+        idat = next;
+      }
+      i += 12 + ln;
+    }
+    const raw = new Uint8Array(inflateSync(idat));
+    const stride = 1 + w * 3;
+    let allExact = raw.length === h * stride;
+    if (allExact) {
+      for (let y = 0; y < h && allExact; y++) {
+        const off = y * stride;
+        if (raw[off] !== 0) { allExact = false; break; }
+        for (let x = 0; x < w; x++) {
+          const j = off + 1 + x * 3;
+          if (raw[j] !== 56 || raw[j + 1] !== 62 || raw[j + 2] !== 66) { allExact = false; break; }
+        }
+      }
+    }
+    check('ral-7016.png: vsak piksel točno RGB(56,62,66), filter 0 (zlib dekodiran)', allExact);
+    // konsistentnost z viz.ts: isti hex kot riše vizualizator
+    const vizSrc = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/lib/viz.ts`));
+    check('register (#383E42) = barva, ki jo riše viz.ts ral-7016',
+      vizSrc.includes("id: 'ral-7016'") && vizSrc.includes("'#383E42'"));
+  } else {
+    check('ral-7016.png dekodiranje', false, 'standardna referenca nima vira');
+  }
 }
 
 // ── 8. Metapodatki + iskrenost izvoza ────────────────────────
@@ -417,6 +479,21 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     !noRender.allowed && typeof noRender.reason === 'string' && noRender.reason.length > 0, noRender.reason ?? '');
   const okRender = canExportResult(meta1, { canRender: true });
   check('canRender true → izvoz dovoljen, razlog null', okRender.allowed && okRender.reason === null);
+  // standard-reference origin: veljaven vhod za metapodatke (nov origin 2026)
+  const ralTex = assetById('tex-ral-7016-standard')!;
+  const metaRal = buildReplaceMetadata({
+    ...input,
+    profileId: 'alu-palice-18',
+    profileLabel: 'Vertikalne alu palice 18 mm (razmak 11 cm)',
+    texture: { id: ralTex.id, src: ralTex.src, origin: ralTex.origin, verification: ralTex.verification, realCm: ralTex.realCm },
+    params: { plankCm: 1.8, gapCm: 11 },
+  });
+  check('metapodatki sprejmejo origin standard-reference', metaRal.texture?.origin === 'standard-reference' && metaRal.texture.src === '/textures/ral-7016.png');
+  const badOrigin = throws(() => buildReplaceMetadata({
+    ...input,
+    texture: { id: ralTex.id, src: ralTex.src, origin: 'izmisljen-origin' as 'real-photo', verification: ralTex.verification, realCm: ralTex.realCm },
+  }));
+  check('neznan origin → zavrnjen', badOrigin);
 }
 
 // ── 9. FNV-1a hash proti neodvisni referenčni implementaciji ─

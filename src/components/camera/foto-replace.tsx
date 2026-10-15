@@ -63,9 +63,11 @@ import type { CraftCategory } from '@/lib/camera-types';
 // ─── Preslikava ROKSAL profil → barva v VIZ_COLORS (viz.ts) ──────
 // Izbrana je kataloška barva, katere ton najbolje ustreza teksturi
 // profila. VIZ_COLORS nima 'hrast' id-ja, zato lesena profila uporabita
-// najbližji svetli WPC ton ('wpc-svetli-les'); manjkajoča RAL tekstura
-// se upodobi FLAT (RAL je gladka barvana kovina — realno). Mapiranje je
-// dokumentirano in deterministično — brez ugibanja med izrisom.
+// najbližji svetli WPC ton ('wpc-svetli-les'); RAL profila se upodobita
+// FLAT s standardno barvo (RAL je gladka barvana kovina — realno;
+// standardna referenca tex-ral-7016-standard ni render tekstura —
+// vizTextureIdFor je ne najde v viz-textures → flat izris z barvo spodaj).
+// Mapiranje je dokumentirano in deterministično — brez ugibanja med izrisom.
 const PROFILE_COLOR_ID: Record<string, string> = {
   'wpc-deka-140': 'wpc-tikovina',       // tex-wpc-tikovina ↔ WPC tikovina
   'wpc-deka-140-antracit': 'wpc-siva',  // tex-wpc-siva ↔ WPC siva

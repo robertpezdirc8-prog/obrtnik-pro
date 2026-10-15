@@ -2,7 +2,7 @@
 // Pravilo iz zahteve "FOTOZAMENJAVA BREZ AI" (in issue #6): nikoli
 // ne predstavi generičnega nadomestka kot originala, nikoli ne
 // izmisli SKU-ja, teksture ali fotografije. Zato vsak asset nosi:
-//  - origin:      'roksal-original' | 'real-photo' | 'user-upload'
+//  - origin:      'roksal-original' | 'real-photo' | 'user-upload' | 'standard-reference'
 //  - verification: 'verified' | 'unverified' | 'missing'
 // Realne fotografije materialov (public/textures, commit e4c679d —
 // viri Commons/Unsplash/Pexels) so HONESTNO označene kot
@@ -11,7 +11,10 @@
 // ROKSAL knjižnica (#6), so vpisani kot 'missing' (src = null) —
 // izvoz z oznako "original" je dokler gradivo manjka blokiran.
 
-export type AssetOrigin = 'roksal-original' | 'real-photo' | 'user-upload';
+// 'standard-reference' = JAVNI standard (npr. barvna vrednost RAL Classic) —
+// ni fotografija in ni ROKSAL original; izrecna tretja kategorija, da
+// standardne reference ne bi nikoli prirejali 'real-photo' ali 'original'.
+export type AssetOrigin = 'roksal-original' | 'real-photo' | 'user-upload' | 'standard-reference';
 export type AssetVerification = 'verified' | 'unverified' | 'missing';
 
 export interface RoksalAsset {
@@ -143,6 +146,15 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: MISSING_LICENSE, sourceUrl: '', grain: 'none',
     note: 'Čaka original ROKSAL vzorec barve (#6). RAL je sicer gladka barvana kovina — upodobitev z flat barvo je realna, brez teksture.',
   },
+  // ── Standardne reference (javni standardi, NE ROKSAL originali) ─
+  {
+    id: 'tex-ral-7016-standard', kind: 'texture', label: 'RAL 7016 antracit — standardni barvni vzorec (flat)',
+    src: '/textures/ral-7016.png', realCm: 0, origin: 'standard-reference', verification: 'unverified',
+    license: 'Lastna generacija (tests/make-ral-swatch.ts) po javnem standardu RAL Classic',
+    sourceUrl: 'https://en.wikipedia.org/wiki/List_of_RAL_colours',
+    grain: 'none',
+    note: 'Raven barvni vzorec RGB(56,62,66) = #383E42 — vrednost, ki jo DEJANSKO riše vizualizator (viz.ts ral-7016) in Wikipedijina pretvorba (RAL 7016 Anthracite grey). RAL NE objavlja uradne sRGB pretvorbe — objavljene vrednosti variirajo (ralcolorchart.com #3B4044, Wikipedijin stolpec hex #373F43); zaton barve na zaslonu NI dokaz identičnosti. Upodobitev gladke barvane kovine z RAVNO barvo je realna (brez teksture) — profil alu-palice-18. NI original ROKSAL vzorec površine (tex-roksal-ral-7016 še vedno manjka, #6).',
+  },
 ];
 
 // ─── Uporabniški povzpetiki (original support) ───────────────
@@ -245,10 +257,10 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     catalogSku: null,
     plankCm: 1.8, gapCm: 11,
     orientation: 'vertical',
-    textureId: 'tex-roksal-ral-7016',
+    textureId: 'tex-ral-7016-standard',
     postCm: 4,
     pattern: 'vertikalne',
-    note: 'RAL je gladka barvana kovina — upodobitev z flat barvo je realna; original ROKSAL vzorec manjka (#6).',
+    note: 'RAL je gladka barvana kovina — upodobitev z RAVNO standardno barvo je realna (tex-ral-7016-standard); original ROKSAL vzorec površine še vedno manjka (#6).',
   },
   {
     id: 'fasadna-obloga-8',
@@ -314,10 +326,13 @@ export function profileReadiness(p: RoksalProfile): {
   const missing = linked.filter((a) => a.src === null || a.verification === 'missing');
   const canRender = linked.every((a) => a.src !== null);
   const isOriginal = linked.every((a) => a.origin === 'roksal-original' && a.verification === 'verified');
+  const allStandard = linked.length > 0 && linked.every((a) => a.origin === 'standard-reference');
   const honestyLabel = missing.length > 0
     ? `Gradivo manjka: ${missing.map((a) => a.label).join(', ')}`
     : isOriginal
       ? 'Original ROKSAL gradivo'
-      : 'Realna fotografija materiala (ni original ROKSAL posnetek)';
+      : allStandard
+        ? 'Standardna barvna referenca (RAL) — ni original ROKSAL vzorec površine'
+        : 'Realna fotografija materiala (ni original ROKSAL posnetek)';
   return { canRender, isOriginal, missingAssets: missing, honestyLabel };
 }

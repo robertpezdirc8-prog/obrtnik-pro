@@ -775,7 +775,7 @@ export interface ReplaceMetadata {
 }
 
 // tipa kot pri roksal-assets (struktorno, brez uvoza odvisnosti)
-type AssetOriginRef = 'roksal-original' | 'real-photo' | 'user-upload';
+type AssetOriginRef = 'roksal-original' | 'real-photo' | 'user-upload' | 'standard-reference';
 type AssetVerificationRef = 'verified' | 'unverified' | 'missing';
 
 export interface ReplaceMetadataInput {
@@ -828,7 +828,7 @@ export function buildReplaceMetadata(input: ReplaceMetadataInput): ReplaceMetada
     const t = input.texture;
     if (typeof t !== 'object' || typeof t.id !== 'string' || t.id.length === 0 ||
       (t.src !== null && typeof t.src !== 'string') ||
-      (t.origin !== 'roksal-original' && t.origin !== 'real-photo' && t.origin !== 'user-upload') ||
+      (t.origin !== 'roksal-original' && t.origin !== 'real-photo' && t.origin !== 'user-upload' && t.origin !== 'standard-reference') ||
       (t.verification !== 'verified' && t.verification !== 'unverified' && t.verification !== 'missing') ||
       !Number.isFinite(t.realCm)) {
       throw new Error('NEZADOSTNI PODATKI: tekstura ni veljavna.');
