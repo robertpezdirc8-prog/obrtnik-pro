@@ -1521,3 +1521,20 @@ Stage Summary:
 - Raziskava ZAKLJUČENA za zadnja 2 manjkajoča originala (#6): alu palica 18 mm in RAL 7016 vzorec NE obstajata v programu ROKSAL (dokumentirano v note) → mreza-3d-125 upodobljiva s standardno RAL referenco in iskreno oznako (nič več večno blokirano); ostaja 3 missing asseti (alu-palica-profil, ral-7016, polna-100-profil) vsi z "RAZISKAVA 2026" dokumentacijo.
 - Katalog zdaj pokriva CELoten uradni ROKSAL program desk: TERASNA 150×25 (7), KUBO 80/42 (4), POLNA-57/32 (4), POLNA-100 (8), POLNA-128 (6), ROMB-67 (7) = 36 uradnih profilov + 6 generičnih vizualizer privzetkov.
 - Regresija: photo-replace 391/391, VSE 34 testnih skriptov zeleno (exit codes), tsc čist, eslint čist, dev.log čist. Dokazi: tests/e2e-ograje-01…05. Issue #14 NE zaprt.
+
+---
+Task ID: 58
+Agent: Z.ai Code (glavni)
+Task: README na GitHubu repozitorija obrtnik-pro ni obstajal — napisati temeljit, resničen README (slovenščina) in potisniti na origin/main (skupaj s 6 neobject-oddanimi commiti).
+
+Work Log:
+- Ugotovljeno dejansko stanje: origin = github.com/robertpezdirc8-prog/obrtnik-pro, lokalni main 6 commitov PRED origin/main (Tasks 55–57), README NI obstajal ne lokalno ne na origin (git ls-tree potrjeno).
+- Raziskava aplikacije za točnost README: 8 zavihkov app-shell (domov, pametna kamera, nova ponudba, ponudbe, časovnica, dnevnik, katalog, nastavitve), 24 panelov kamere, 10 Prisma modelov, 8 API routes, 34 verify skript, katalog ROKSAL (36 uradnih profilov: KUBO 4, TERASNA 7, POLNA-57/32 4, POLNA-100 8, POLNA-128 6, ROMB-67 7 + 6 generičnih), docs/MEASUREMENT-BASELINE.md.
+- PONOVNO ZAGNAN test pred zapisom številke: bun tests/verify/photo-replace.ts → REZULTAT: 391 OK, 0 NAPAK (številka v README je potrjena ob tem HEAD, ne citirana iz dnevnika).
+- Napisan README.md (277 vrstic): pregled + celotna veriga, funkcije po zavihkih, fotomontaža (tok 1–7, katalog ROKSAL tabela, iskrenost — unverified/blokiran izvoz/žig VIZUALIZACIJA/oznake po položaju), načela (0 AI, iskrenost, dokazno, ročni popravek), tehnološki sklad, lokalni zagon (bun), testi in dokazi (34 verify, E2E konvencija, make-* orodja), struktura projekta, dokumentacija, ZNANE OMEJITVE (3 manjkajoča gradiva, ROMB renderer, blokiran izvoz, tipena privzetki, COLMAP-WASM odprta).
+- Commit 7f7b79e + push origin main (a69f042..7f7b79e) — PRENESENIH 7 commitov (6 prej manjkajočih + README). Ponovni fetch + ls-tree POTRDI: README.md je na origin/main, HEAD origin/main = 7f7b79e.
+
+Stage Summary:
+- Repozitorij obrtnik-pro na GitHubu ima zdaj temeljit README (slovenščina), 100 % resničen — vsaka številka/trditev preverjena z orodji ob HEAD (test zagnan, remote preverjen z ls-tree).
+- origin/main posodobljen iz a69f042 → 7f7b79e ( Tasks 55–57 končno javno dostopni).
+- Issue #14 NE zaprt. 0 AI, 0 novih odvisnosti. 1 nova datoteka (README.md), 0 sprememb aplikacije.
