@@ -813,5 +813,51 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     vizSrc.includes('export function patternPlaneHeightCm') && vizSrc.includes('quadHeightCm?: number'));
 }
 
+// ── Primerjava profilov (korak 6, navdih konkurence D2K/VisualFencePro) ──
+// Ista fotka/ravnina/maska → vse omogočene barve/materiali. Invarianti:
+// 1) vsak ROKSAL profil MORA izračunati veljavno postavitev na standardnem frontalnem
+//    pasu (primerjava računa postavitev PER PROFIL — napaka konfiguracije mora biti
+//    vidna tu, ne šele v brskalniku); 2) PROFILE_COLOR_ID pokrije točno vse profile.
+{
+  const frontalQuad: [number, number][] = [[10, 20], [90, 20], [90, 80], [10, 80]];
+  const plane = { wCm: 200, hCm: 95 };
+  const img = { w: 1280, h: 890 };
+  for (const p of ROKSAL_PROFILES) {
+    const args = {
+      quadPct: frontalQuad, imgSize: img, planeCm: plane,
+      plankCm: p.plankCm, gapCm: p.gapCm, orientation: p.orientation,
+      postCm: p.postCm, postEveryCm: null,
+    };
+    const msg = throwsMsg(() => computePlankLayouts(args));
+    check(`primerjava profilov: postavitev "${p.id}" veljavna na frontalnem pasu 200×95 cm`, msg === '', msg);
+    const lay = computePlankLayouts(args);
+    check(`primerjava profilov: "${p.id}" ima elemente in končno merilo`,
+      lay.planks.length > 0
+      && Number.isFinite(lay.scaleCmPerPxAtQuad.top) && lay.scaleCmPerPxAtQuad.top > 0
+      && Number.isFinite(lay.scaleCmPerPxAtQuad.bottom) && lay.scaleCmPerPxAtQuad.bottom > 0,
+      JSON.stringify({ planks: lay.planks.length, scale: lay.scaleCmPerPxAtQuad }));
+  }
+  // PROFILE_COLOR_ID (foto-replace.tsx) pokrije TOČNO vse profile — brez tihega fallbacka
+  const { readFileSync } = await import('node:fs');
+  const frx = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/components/camera/foto-replace.tsx`));
+  const m = frx.match(/const PROFILE_COLOR_ID: Record<string, string> = \{([\s\S]*?)\};/);
+  const keys = m ? [...m[1].matchAll(/'([^']+)':/g)].map((x) => x[1]) : [];
+  check('PROFILE_COLOR_ID pokrije točno vse ROKSAL profile (brez tihega fallbacka wpc-tikovina)',
+    keys.length === ROKSAL_PROFILES.length && ROKSAL_PROFILES.every((p) => keys.includes(p.id)),
+    JSON.stringify({ keys, profiles: ROKSAL_PROFILES.map((p) => p.id) }));
+  // žičanje UI primerjave (v brskalniku ga preveri E2E; tu je prisotnost v kodi)
+  check('foto-replace: primerjava profilov žičana (fr-compare-all + fr-compare-grid + fr-cmp-<id>)',
+    frx.includes('data-testid="fr-compare-all"')
+    && frx.includes('data-testid="fr-compare-grid"')
+    && frx.includes('fr-cmp-${c.profileId}')
+    && frx.includes('const onCompareProfiles')
+    && frx.includes('const loadComparison'));
+  check('foto-replace: renderForProfile je skupno jedro za Upodobi IN primerjavo (brez podvojenega cevovoda)',
+    frx.includes('const renderForProfile') && frx.includes('renderForProfile(selProfile, layoutInfo.layout'),
+    frx.includes('renderForProfile(selProfile, layoutInfo.layout') ? undefined : 'onRender ne uporablja skupnega jedra');
+  check('foto-replace: namigi za fotkanje (fr-photo-tips) prisotni v koraku 1',
+    frx.includes('fr-photo-tips'));
+}
+
 console.log(`\nREZULTAT: ${pass} OK, ${fail} NAPAK`);
 process.exit(fail > 0 ? 1 : 0);

@@ -49,7 +49,7 @@ import {
   type ReplaceMetadata,
   type XY,
 } from '@/lib/photo-replace-core';
-import { ROKSAL_PROFILES, assetById, profileReadiness } from '@/lib/roksal-assets';
+import { ROKSAL_PROFILES, assetById, profileReadiness, type RoksalProfile } from '@/lib/roksal-assets';
 import {
   defaultParamsForPattern,
   drawLayersOnQuad,
@@ -171,6 +171,16 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 const fmtN = (v: number, d = 2): string =>
   v.toLocaleString('sl-SI', { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/** Mali predogled upodobitve za mrežo primerjave profilov (determinističen, širina ≤ maxW). */
+function thumbDataUrl(c: HTMLCanvasElement, maxW: number): string {
+  const k = Math.min(1, maxW / c.width);
+  const t = document.createElement('canvas');
+  t.width = Math.max(1, Math.round(c.width * k));
+  t.height = Math.max(1, Math.round(c.height * k));
+  t.getContext('2d')!.drawImage(c, 0, 0, t.width, t.height);
+  return t.toDataURL('image/jpeg', 0.8);
+}
+
 // ─── Komponenta ──────────────────────────────────────────────────
 
 export function FotoReplace({ photo, craft }: FotoReplaceProps) {
@@ -225,6 +235,20 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   const [busyInpaint, setBusyInpaint] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [busyRender, setBusyRender] = useState(false);
+
+  // ── Primerjava profilov: ista fotka/ravnina/maska → vse omogočene barve (navdih D2K/VisualFencePro) ──
+  interface ComparisonCard {
+    profileId: string;
+    label: string;
+    honestyLabel: string;
+    canRender: boolean;
+    blockedReason: string | null;
+    thumbUrl: string | null; // mali JPEG — celotni canvas ostane v pomnilniku seje
+  }
+  const [comparisons, setComparisons] = useState<ComparisonCard[] | null>(null);
+  const [busyCompare, setBusyCompare] = useState(false);
+  const compareCanvasRef = useRef<Map<string, { meta: ReplaceMetadata; aux: VersionAux }>>(new Map());
+  const compareCompRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const resultCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [result, setResult] = useState<{
     meta: ReplaceMetadata; aux: VersionAux; dataUrl: string;
@@ -378,18 +402,23 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     return quadMaskCoverage(oldMaskRef.current, quadPx);
   }, [covTick, quadPx]);
 
-  const renderBlocker = useMemo<string | null>(() => {
+  const baseRenderBlocker = useMemo<string | null>(() => {
     if (!imgEl) return 'Najprej naloži fotografijo (korak 1).';
     if (!quadPct || !quadPx) return 'Označi 4 oglišča ravnine stare ograje (korak 2).';
     if (!planeCm) return 'Vnesi realno širino in višino ravnine v cm (korak 2).';
     if (layoutInfo.error) return layoutInfo.error;
     if (!layoutInfo.layout) return 'Postavitev elementov ni izračunana (korak 2).';
     if (!inpaintRes) return 'Zaženi odstranitev stare ograje (korak 4).';
+    return null;
+  }, [imgEl, quadPct, quadPx, planeCm, layoutInfo, inpaintRes]);
+
+  const renderBlocker = useMemo<string | null>(() => {
+    if (baseRenderBlocker) return baseRenderBlocker;
     if (!selProfile) return 'Izberi profil nove ograje (korak 5).';
     const readiness = profileReadiness(selProfile);
     if (!readiness.canRender) return readiness.honestyLabel;
     return null;
-  }, [imgEl, quadPct, quadPx, planeCm, layoutInfo, inpaintRes, selProfile]);
+  }, [baseRenderBlocker, selProfile]);
 
   // ── Vpis koordinat iz pointer dogodkov ──
   const stagePct = (e: { clientX: number; clientY: number }): [number, number] | null => {
@@ -624,41 +653,44 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   };
 
   // ── Korak 6: upodobi fotomontažo (deterministični cevovod) ──
-  const onRender = async () => {
+  // Jedro je ločeno od stanja: renderForProfile(profile, layout, createdAt) vrne artefakt
+  // brez stranskih učinkov na state (isti vhodi → isti piksli; createdAt podan od zunaj) —
+  // isti cevovod uporablja "Upodobi" za izbrani profil IN primerjava vseh profilov na isti fotki.
+  const renderForProfile = async (
+    profile: RoksalProfile,
+    layout: LayoutResult,
+    createdAt: string,
+  ): Promise<{ comp: HTMLCanvasElement; meta: ReplaceMetadata; aux: VersionAux; dataUrl: string }> => {
     const work = workCanvasRef.current;
     const q = quadPx;
     const qp = quadPct;
     const pc = planeCm;
     const d = dims;
-    const layout = layoutInfo.layout;
     const mask = oldMaskRef.current;
-    if (!work || !q || !qp || !pc || !d || !layout || !mask || !selProfile) return;
-    const readiness = profileReadiness(selProfile);
-    if (!readiness.canRender) {
-      toast({ title: 'Upodobitev blokirana', description: readiness.honestyLabel, variant: 'destructive' });
-      return;
-    }
-    setBusyRender(true);
-    try {
+    if (!work || !q || !qp || !pc || !d || !mask) throw new Error('Manjkajo vhodi upodobitve (fotka, ravnina ali maska).');
+    const readiness = profileReadiness(profile);
+    if (!readiness.canRender) throw new Error(readiness.honestyLabel);
+
+    {
       const W = d.w;
       const H = d.h;
 
       // tekstura prednalaganje (viz-textures cache — drawLayersOnQuad jo bere sinhrono)
-      const vizTexId = selProfile.textureId ? vizTextureIdFor(selProfile.textureId) : null;
+      const vizTexId = profile.textureId ? vizTextureIdFor(profile.textureId) : null;
       if (vizTexId) await preloadVizTextures([vizTexId]);
 
       // plast nove ograje iz profila (obstoječi renderer viz.ts izriše deske/reže/teksturo)
       const fenceLayer: VizLayer = {
         id: 'fr-fence',
-        label: `Nova ograja — ${selProfile.label}`,
+        label: `Nova ograja — ${profile.label}`,
         quad: qp,
-        pattern: selProfile.pattern as VizPattern,
-        colorId: PROFILE_COLOR_ID[selProfile.id] ?? 'wpc-tikovina',
+        pattern: profile.pattern as VizPattern,
+        colorId: PROFILE_COLOR_ID[profile.id] ?? 'wpc-tikovina',
         textureId: vizTexId ?? undefined,
         params: {
-          ...defaultParamsForPattern(selProfile.pattern as VizPattern),
-          elementCm: selProfile.plankCm,
-          spacingCm: selProfile.gapCm,
+          ...defaultParamsForPattern(profile.pattern as VizPattern),
+          elementCm: profile.plankCm,
+          spacingCm: profile.gapCm,
           quadWidthCm: pc.wCm, // prava širina ravnine → gostota vzorca v realnem merilu
           quadHeightCm: pc.hCm, // prava višina ravnine → pravo število elementov navpično (skladno s postavitvijo po homografiji)
         },
@@ -765,22 +797,22 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       }
 
       // metapodatki različice (createdAt podan od zunaj — deterministični JSON za enake vhode)
-      const texAsset = assetById(selProfile.textureId);
+      const texAsset = assetById(profile.textureId);
       const warnings = [...layout.warnings];
       if (inpaintRes && inpaintRes.status !== 'ok') warnings.push('Ozadje pod novo ograjo ni v celoti obnovljeno — reže lahko pokažejo staro ograjo.');
       if (!frontUsed) warnings.push('Frontalni okluziji so prazni — nič ni narisano pred novo ograjo.');
       const meta = buildReplaceMetadata({
-        profileId: selProfile.id,
-        profileLabel: selProfile.label,
-        catalogSku: selProfile.catalogSku,
+        profileId: profile.id,
+        profileLabel: profile.label,
+        catalogSku: profile.catalogSku,
         texture: texAsset
           ? { id: texAsset.id, src: texAsset.src, origin: texAsset.origin, verification: texAsset.verification, realCm: texAsset.realCm }
           : null,
         planeCm: pc,
         params: {
-          pattern: selProfile.pattern,
-          elementCm: selProfile.plankCm,
-          spacingCm: selProfile.gapCm,
+          pattern: profile.pattern,
+          elementCm: profile.plankCm,
+          spacingCm: profile.gapCm,
           quadWidthCm: Math.round(pc.wCm),
           postEveryCm: 'null',
           materialHonesty: readiness.honestyLabel, // iskrenost gradiva v metapodatkih (original vs. realna fotka)
@@ -790,12 +822,12 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
         imgSize: { w: W, h: H },
         inpaint: inpaintRes?.status ?? 'ok',
         warnings,
-        createdAt: new Date().toISOString(),
+        createdAt,
       });
 
       const dataUrl = comp.toDataURL('image/jpeg', 0.92);
-      resultCanvasRef.current = comp;
-      setResult({
+      return {
+        comp,
         meta,
         aux: {
           factor: amb.factor,
@@ -807,7 +839,17 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           scaleBottom: layout.scaleCmPerPxAtQuad.bottom,
         },
         dataUrl,
-      });
+      };
+    }
+  };
+
+  const onRender = async () => {
+    if (!selProfile || !layoutInfo.layout) return;
+    setBusyRender(true);
+    try {
+      const art = await renderForProfile(selProfile, layoutInfo.layout, new Date().toISOString());
+      resultCanvasRef.current = art.comp;
+      setResult({ meta: art.meta, aux: art.aux, dataUrl: art.dataUrl });
       setComparePct(100);
       setExportBlocked(null);
     } catch (err) {
@@ -816,6 +858,71 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       setBusyRender(false);
     }
   };
+
+  // ── Korak 6 (priloga): primerjava vseh omogočenih profilov na ISTI fotki/ravnini/maski ──
+  // (navdih konkurenca D2K "generate again with a different material or color to compare
+  // options on the same photo" — pri nas deterministično, 0 AI, z iskrenimi razlogi za blokado)
+  const onCompareProfiles = async () => {
+    if (baseRenderBlocker) return;
+    const d = dims;
+    const qp = quadPct;
+    const pc = planeCm;
+    if (!d || !qp || !pc) return;
+    setBusyCompare(true);
+    try {
+      const now = new Date().toISOString();
+      const cards: ComparisonCard[] = [];
+      compareCanvasRef.current.clear();
+      compareCompRef.current.clear();
+      for (const p of ROKSAL_PROFILES) {
+        const readiness = profileReadiness(p);
+        const blocked = (reason: string): ComparisonCard => ({
+          profileId: p.id, label: p.label, honestyLabel: readiness.honestyLabel,
+          canRender: false, blockedReason: reason, thumbUrl: null,
+        });
+        if (!readiness.canRender) { cards.push(blocked(readiness.honestyLabel)); continue; }
+        let layout: LayoutResult;
+        try {
+          layout = computePlankLayouts({
+            quadPct: qp, imgSize: d, planeCm: pc,
+            plankCm: p.plankCm, gapCm: p.gapCm, orientation: p.orientation,
+            postCm: p.postCm, postEveryCm: null, // iskreno: vmesni stebri niso modelirani
+          });
+        } catch (e) { cards.push(blocked(e instanceof Error ? e.message : String(e))); continue; }
+        try {
+          const art = await renderForProfile(p, layout, now);
+          compareCompRef.current.set(p.id, art.comp);
+          compareCanvasRef.current.set(p.id, { meta: art.meta, aux: art.aux });
+          cards.push({
+            profileId: p.id, label: p.label, honestyLabel: readiness.honestyLabel,
+            canRender: true, blockedReason: null, thumbUrl: thumbDataUrl(art.comp, 440),
+          });
+        } catch (e) { cards.push(blocked(e instanceof Error ? e.message : String(e))); }
+      }
+      setComparisons(cards);
+      const ok = cards.filter((c) => c.canRender).length;
+      toast({ title: 'Primerjava profilov pripravljena ✓', description: `${ok} upodabljanj iz iste fotke, ravnine in maske — klikni za celotni prikaz.` });
+    } finally {
+      setBusyCompare(false);
+    }
+  };
+
+  const loadComparison = (card: ComparisonCard) => {
+    const comp = compareCompRef.current.get(card.profileId);
+    const rec = compareCanvasRef.current.get(card.profileId);
+    if (!comp || !rec) return;
+    resultCanvasRef.current = comp;
+    setResult({ meta: rec.meta, aux: rec.aux, dataUrl: comp.toDataURL('image/jpeg', 0.92) });
+    setProfileId(card.profileId); // korak 5 pokaže isti profil kot pred/po pogled
+    setComparePct(100);
+    setExportBlocked(null);
+  };
+
+  // Primerjava je vezana na TRENUTNO delovno kopijo + vnos — vsak popravek (čopič, kloniranje,
+  // obnova, oglisča, mere, ovire) jo razveljavi (iskrenost: ne prikazujemo zastarelih upodobitev).
+  useEffect(() => {
+    setComparisons(null);
+  }, [workTick, quadPct, wCm, hCm, frontPolys]);
 
   // ── Korak 7: različice + izvoz ──
   const onSaveVersion = () => {
@@ -1015,6 +1122,11 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               <p className="text-xs text-muted-foreground">
                 Delovna kopija: največ 1280 px, JPEG 0,82 (EXIF-varno prevučitev). Original ostane nespremenjen — izvod je samo za izvoz.
               </p>
+              <ul className="list-disc space-y-0.5 pl-4 text-left text-xs text-muted-foreground" data-testid="fr-photo-tips">
+                <li>Fotkaj v dnevni svetlobi, čim bolj čelno od ograje in dovolj odmaknjeno, da je celoten tek vidn.</li>
+                <li>Izogibaj se močnim sencam čez ograjo ter avtom/odpadkom pred njo (ovire označi v koraku 3).</li>
+                <li>Vedno posnameš tudi realno širino in višino ravnine (trak ali laser) — brez mer ni pravega merila (korak 2).</li>
+              </ul>
             </div>
           ) : (
             <div className="space-y-2">
@@ -1397,14 +1509,83 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">6</span>
             Upodobi fotomontažo
           </h3>
-          {renderBlocker ? (
+          {baseRenderBlocker ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900" data-testid="fr-render-blocker">
-              {renderBlocker}
+              {baseRenderBlocker}
             </p>
           ) : (
-            <Button onClick={() => void onRender()} disabled={busyRender} data-testid="fr-render">
-              {busyRender ? 'Upodabljam…' : 'Upodobi'}
-            </Button>
+            <div className="space-y-2">
+              {renderBlocker && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900" data-testid="fr-render-blocker">
+                  {renderBlocker}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {!renderBlocker && (
+                  <Button onClick={() => void onRender()} disabled={busyRender} data-testid="fr-render">
+                    {busyRender ? 'Upodabljam…' : 'Upodobi'}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => void onCompareProfiles()}
+                  disabled={busyCompare || busyRender}
+                  data-testid="fr-compare-all"
+                >
+                  {busyCompare ? 'Primerjam profile…' : 'Primerjaj profile na tej fotki'}
+                </Button>
+                <span className="text-xs text-muted-foreground">Ista ravnina + ista maska → vse omogočene barve/materiali za izbiro stranke.</span>
+              </div>
+            </div>
+          )}
+
+          {comparisons && (
+            <div className="space-y-2" data-testid="fr-compare-grid">
+              <p className="text-xs font-medium">
+                Primerjava profilov ({comparisons.filter((c) => c.canRender).length} upodabljanj iz iste fotke):
+              </p>
+              <div className="grid gap-2 grid-cols-2 md:grid-cols-3">
+                {comparisons.map((c) => (
+                  <button
+                    key={c.profileId}
+                    type="button"
+                    disabled={!c.canRender || !c.thumbUrl}
+                    onClick={() => loadComparison(c)}
+                    data-testid={`fr-cmp-${c.profileId}`}
+                    className={`rounded-lg border p-2 text-left transition-colors ${
+                      c.canRender ? 'hover:border-amber-600 hover:bg-amber-50/50' : 'cursor-not-allowed opacity-60'
+                    }`}
+                  >
+                    {c.thumbUrl ? (
+                      <img src={c.thumbUrl} alt={c.label} className="aspect-[4/3] w-full rounded-md border object-cover" />
+                    ) : (
+                      <span className="flex aspect-[4/3] w-full items-center justify-center rounded-md border bg-stone-100 p-2 text-center text-[10px] text-stone-600">
+                        {c.blockedReason ?? 'blokirano'}
+                      </span>
+                    )}
+                    <span className="mt-1.5 block truncate text-xs font-semibold">{c.label}</span>
+                    <Badge
+                      className={`mt-1 h-auto py-0.5 whitespace-normal break-words text-left text-[10px] ${
+                        c.honestyLabel.startsWith('Gradivo manjka')
+                          ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                          : c.honestyLabel.startsWith('Standardna')
+                            ? 'border-amber-300 bg-amber-100 text-amber-800'
+                            : 'border-green-300 bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {c.honestyLabel}
+                    </Badge>
+                    {c.canRender && (
+                      <span className="mt-1 block text-[10px] text-muted-foreground">klikni → celotni pred/po prikaz</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Celotne upodobitve ostanejo v pomnilniku seje — klik naloži rezultat v pred/po pogled (korak 7). Vsak popravek
+                fotke (čopič, kloniranje, oglisča, mere, ovire) primerjavo prekliče — znova jo pripravi na trenutnem stanju.
+              </p>
+            </div>
           )}
 
           {result && (
