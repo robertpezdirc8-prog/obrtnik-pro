@@ -30,7 +30,7 @@ import {
 } from '../../src/lib/photo-replace-core';
 import { ROKSAL_ASSETS, ROKSAL_PROFILES, assetById, profileReadiness } from '../../src/lib/roksal-assets';
 import { VIZ_TEXTURES } from '../../src/lib/viz-textures';
-import { defaultParamsForPattern } from '../../src/lib/viz';
+import { defaultParamsForPattern, patternPlaneHeightCm } from '../../src/lib/viz';
 
 let pass = 0, fail = 0;
 const check = (name: string, cond: boolean, info?: string) => {
@@ -713,6 +713,104 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     fnv1aHash(rnd) === fnvRef(rnd), `${fnv1aHash(rnd)} vs ${fnvRef(rnd)}`);
   check('determinizem: isti vhod → isti hash',
     fnv1aHash(rnd) === fnv1aHash(rnd) && fnv1aHash(a) === fnv1aHash(a));
+}
+
+// ── 10. FASADNA OBLOGA 8 — peti dokazani profil + popravek anizotropije ─
+{
+  console.log('fasadna-obloga-8 (peti profil) + patternPlaneHeightCm:');
+  const p = ROKSAL_PROFILES.find((x) => x.id === 'fasadna-obloga-8');
+  check('profil fasadna-obloga-8 obstaja', !!p);
+  check('mere: letvica 8 cm, reža 2 cm, VODORAVNO, postCm 6',
+    !!p && p.plankCm === 8 && p.gapCm === 2 && p.orientation === 'horizontal' && p.postCm === 6,
+    JSON.stringify(p ?? null));
+  check('vzorec "horizontalne" + tekstura tex-hrast + catalogSku null',
+    !!p && p.pattern === 'horizontalne' && p.textureId === 'tex-hrast' && p.catalogSku === null);
+  const tex = assetById('tex-hrast');
+  check('tex-hrast: vir, real-photo, unverified, realCm 45, NAVPIČNA žira',
+    !!tex && tex.src === '/textures/hrast.jpg' && tex.origin === 'real-photo'
+    && tex.verification === 'unverified' && tex.realCm === 45 && tex.grain === 'vertical',
+    JSON.stringify(tex ?? null));
+  check('tex-hrast note zanika original ROKSAL',
+    !!tex && !!tex.note && tex.note.includes('NI original ROKSAL posnetek'));
+  const rd = profileReadiness(p!);
+  check('readiness: canRender TRUE, isOriginal FALSE, iskreni label "Realna fotografija materiala"',
+    rd.canRender === true && rd.isOriginal === false && rd.honestyLabel.includes('Realna fotografija materiala'),
+    JSON.stringify(rd));
+  // register ↔ viz-textures konsistenca (isti vir in realCm)
+  const vizTex = VIZ_TEXTURES.find((t) => t.id === 'hrast');
+  check('viz-textures ima "hrast" z ISTIM virom in realCm kot register',
+    !!vizTex && vizTex.src === tex?.src && vizTex.realCm === tex?.realCm,
+    JSON.stringify(vizTex ?? null));
+  // mapiranje barve v komponenti + podaja kalibrirane višine
+  const { readFileSync } = await import('node:fs');
+  const frxSrc = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/components/camera/foto-replace.tsx`));
+  check('foto-replace PROFILE_COLOR_ID: fasadna-obloga-8 → wpc-svetli-les',
+    frxSrc.includes("'fasadna-obloga-8': 'wpc-svetli-les'"));
+  check('foto-replace pošilja quadHeightCm (kalibrirana višina ravnine)',
+    frxSrc.includes('quadHeightCm: pc.hCm'));
+  // privzeti parametri vzorca "horizontalne" se ujemajo s profilom
+  const dp = defaultParamsForPattern('horizontalne');
+  check('defaultParamsForPattern("horizontalne") = element 8 / reža 2 (ujema s profilom)',
+    dp.elementCm === 8 && dp.spacingCm === 2, JSON.stringify({ e: dp.elementCm, s: dp.spacingCm }));
+  // postavitev na DEMO KVADRANTU (isti kot E2E): 12–88 × 48–92 %, ravnina 250×180 → 18 letvic
+  const layout = computePlankLayouts({
+    quadPct: [[12, 48], [88, 48], [88, 92], [12, 92]],
+    imgSize: { w: 1280, h: 890 },
+    planeCm: { wCm: 250, hCm: 180 },
+    plankCm: 8, gapCm: 2,
+    orientation: 'horizontal', postCm: 6, postEveryCm: null,
+  });
+  const expectedLetve = Math.floor((180 + 2) / (8 + 2));
+  check(`postavitev: ${expectedLetve} letvic na ravnini 180 cm (floor((180+2)/10))`,
+    layout.planks.length === expectedLetve, `dejansko ${layout.planks.length}`);
+  // letvice so vodoravni trakovi (širina > višina)
+  const latW = (q: QuadPx): number => Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+  const latH = (q: QuadPx): number => Math.hypot(q.bl.x - q.tl.x, q.bl.y - q.tl.y);
+  check('letvice so vodoravni trakovi (širina > višina)', layout.planks.every((k) => latW(k.quad) > latH(k.quad)));
+  // ANIZOTROPIJA (srž popravka Task 54): demo kvadrant je 972,8×391,6 px za
+  // 250×180 cm → vodoravno merilo 3,891 px/cm, navpično 2,176 px/cm. Stara
+  // pikslna ocena višine bi dala ~100,6 cm (→ ~10 letvic); kalibrirana višina
+  // 180 cm da 18 letvic z navpičnim pitchom 21,76 px — natanko tako, kot jih
+  // riše izris po popravku (potrjeno v E2E z avtokorelacijo: lag 22 + harmonika 44).
+  const topPx = 0.76 * 1280, hPx = 0.44 * 890;
+  const pxPerCmH = topPx / 250;
+  const wrongHCm = patternPlaneHeightCm(undefined, hPx, pxPerCmH);
+  check('stara pikslna ocena višine na anizotropnem kvadrantu ≈ 100,6 cm (dokumentirana napaka)',
+    Math.abs(wrongHCm - 100.63) < 0.5, wrongHCm.toFixed(2));
+  const rightHCm = patternPlaneHeightCm(180, hPx, pxPerCmH);
+  check('kalibrirana višina preglesi pikslni oceni (180 cm)', rightHCm === 180, String(rightHCm));
+  const pitchPx = hPx / 18;
+  const plankHpx = (q: QuadPx): number => ((q.tl.y + q.tr.y) / 2) === (q.bl.y + q.br.y) / 2
+    ? Math.abs(q.bl.y - q.tl.y)
+    : (Math.hypot(q.bl.x - q.tl.x, q.bl.y - q.tl.y) + Math.hypot(q.br.x - q.tr.x, q.br.y - q.tr.y)) / 2;
+  const avgPlankH = layout.planks.reduce((s, k) => s + plankHpx(k.quad), 0) / layout.planks.length;
+  check(`povprečna višina letvice ≈ ${(pitchPx * 0.8).toFixed(2)} px (= 80 % pitcha 8/10) — skladje risbe in postavitve`,
+    Math.abs(avgPlankH - pitchPx * 0.8) < 1.2, `dejansko ${avgPlankH.toFixed(2)} px`);
+  // metapodatki sprejmejo fasadna-obloga-8 z real-photo teksturo + iskren inpaint
+  const maskT = createMask(IMG_W, IMG_H);
+  paintMaskRect(maskT, 30, 30, 209, 149, 255);
+  const metaT = buildReplaceMetadata({
+    profileId: p!.id,
+    profileLabel: p!.label,
+    catalogSku: p!.catalogSku,
+    texture: { id: tex!.id, src: tex!.src, origin: tex!.origin, verification: tex!.verification, realCm: tex!.realCm },
+    planeCm: { wCm: 250, hCm: 180 },
+    params: { plankCm: 8, gapCm: 2 },
+    mask: maskT,
+    layout,
+    imgSize: { w: IMG_W, h: IMG_H },
+    inpaint: 'manual-required',
+    warnings: [],
+    createdAt: '2026-10-15T11:46:00.000Z',
+  });
+  check('metapodatki: fasadna-obloga-8 + tex-hrast real-photo sprejeta',
+    metaT.profileId === 'fasadna-obloga-8' && metaT.texture?.origin === 'real-photo' && metaT.texture.src === '/textures/hrast.jpg');
+  check('metapodatki: iskrenost izvoza (ni original, žig VIZUALIZACIJA)',
+    metaT.exportLabel === EXPORT_LABEL && metaT.exportLabel.includes('VIZUALIZACIJA'));
+  // viz.ts: izvožena čista funkcija + veja tipa
+  const vizSrc = new TextDecoder().decode(readFileSync(`${process.cwd()}/src/lib/viz.ts`));
+  check('viz.ts: izvozi patternPlaneHeightCm + veja quadHeightCm',
+    vizSrc.includes('export function patternPlaneHeightCm') && vizSrc.includes('quadHeightCm?: number'));
 }
 
 console.log(`\nREZULTAT: ${pass} OK, ${fail} NAPAK`);

@@ -227,6 +227,14 @@ export interface VizParams {
   glassAlpha: number;
   /** realna širina štirikotnika v cm (določa gostoto vzorca) */
   quadWidthCm: number;
+  /** realna VIŠINA štirikotnika v cm (iz kalibracije ravnine). Kadar je
+   * podana, vzorec upodobi natanko to materialno višino — sicer se višina
+   * oceni iz pikslov prek VODORAVNEGA merila, kar je pravilno le pri
+   * izotropnem merilu (anizotropna ravnina, npr. 250×180 cm na kvadratu
+   * 972×392 px, bi sicer izrisala 100,6 cm namesto 180 → napačno število
+   * elementov: 10 letvic namesto 18, v nasprotju s postavitvijo
+   * computePlankLayouts, ki gre pravilno po homografiji). */
+  quadHeightCm?: number;
   /** fasadna obloga: navpična smer lamel (privzeto vodoravno) */
   oblogaVert?: boolean;
 }
@@ -978,6 +986,28 @@ function shadePatternPixels(
 }
 
 /**
+ * Realna višina ravnine v cm za vzorec na štirikotniku: KALIBRIRANA
+ * (quadHeightCm), če je podana (> 20 cm — isti prag kot quadWidthCm),
+ * sicer pikslna ocena (srednja višina stranic ÷ VODORAVNO merilo).
+ * Pikslna ocena je pravilna LE pri izotropnem merilu — anizotropen
+ * štirikotnik (npr. ravnina 250×180 cm na kvadratu 972×392 px) bi sicer
+ * izrisal napačno materialno višino (≈ 100,6 cm namesto 180) → napačno
+ * število elementov (10 letvic namesto 18) v nasprotju s postavitvijo
+ * computePlankLayouts, ki gre pravilno po homografiji. Izpostavljeno
+ * kot čista funkcija zaradi preverjanj (bun, brez canvasa).
+ */
+export function patternPlaneHeightCm(
+  quadHeightCm: number | undefined,
+  avgSideHeightPx: number,
+  pxPerCm: number,
+): number {
+  if (quadHeightCm !== undefined && Number.isFinite(quadHeightCm) && quadHeightCm > 20) {
+    return quadHeightCm;
+  }
+  return avgSideHeightPx / pxPerCm;
+}
+
+/**
  * Nariše vzorec na glavni canvas znotraj štirikotnika (v % slike):
  *  1. tekstura v ravnini → 2. homografija → 3. mreža trikotnikov →
  *  4. piksčno senčenje s svetlostjo fotke → 5. kontaktna sence.
@@ -1011,10 +1041,12 @@ export function drawPatternOnQuad(
   const quadWCm = params.quadWidthCm > 20 ? params.quadWidthCm : defaultQuadWidthCm(craft);
   const pxPerCm = avgWpx / Math.max(30, quadWCm);
 
-  // Višina teksture: srednja višina stranic × pxPerCm
+  // Višina teksture: KALIBRIRANA realna višina ravnine (quadHeightCm), kadar
+  // je podana; sicer pikslna ocena prek vodoravnega merila (starejše vedenje —
+  // pravilno le pri izotropnem štirikotniku; glej patternPlaneHeightCm).
   const leftPx = Math.hypot(quadPx[3].x - quadPx[0].x, quadPx[3].y - quadPx[0].y);
   const rightPx = Math.hypot(quadPx[2].x - quadPx[1].x, quadPx[2].y - quadPx[1].y);
-  const quadHCm = ((leftPx + rightPx) / 2) / pxPerCm;
+  const quadHCm = patternPlaneHeightCm(params.quadHeightCm, (leftPx + rightPx) / 2, pxPerCm);
 
   // 1) Tekstura v ravnini (omejena ločljivost za hitrost)
   const texW = Math.min(720, Math.max(180, Math.round(avgWpx * 1.4)));

@@ -660,6 +660,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           elementCm: selProfile.plankCm,
           spacingCm: selProfile.gapCm,
           quadWidthCm: pc.wCm, // prava širina ravnine → gostota vzorca v realnem merilu
+          quadHeightCm: pc.hCm, // prava višina ravnine → pravo število elementov navpično (skladno s postavitvijo po homografiji)
         },
       };
 
