@@ -867,7 +867,16 @@ function drawTriangleTextured(
   ctx.lineTo(C.x, C.y);
   ctx.closePath();
   ctx.clip();
-  ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+  // POZOR na vrstni red argumentov Canvas2D: transform(a, b, c, d, e, f)
+  // pomeni x' = a·x + c·y + e in y' = b·x + d·y + f. affineFrom3 vrne
+  // m = [A, B, C, D, E, F] z x' = A·x + B·y + E in y' = C·x + D·y + F
+  // (Cramer: detA/detB = koeficienta x'!). Zato je klic
+  // transform(A, C, B, D, E, F) — zamenjana člena B in C. Prej je bil
+  // posredovan (A, B, C, D, …) → STRANSKI člen (shear) transponiran:
+  // vsaka celica mreže je njen affine z napačnim stranskim členom
+  // izrisala — palice so se v celici zanašale/kangale in fazno pomikale
+  // (vidno kot »kangave« diagonalne črte v fotomontaži).
+  ctx.transform(m[0], m[2], m[1], m[3], m[4], m[5]);
   ctx.drawImage(tex, 0, 0);
   ctx.restore();
 }
