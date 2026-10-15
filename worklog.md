@@ -1237,3 +1237,25 @@ Stage Summary:
 - Pogodbe iskrenosti: račun z neskladnimi zneski se NE izvozi (409 z razlogom); starejši račun brez snapshotov → izkren »nima postavk«, ne tihe rekonstrukcije; opozorila (IBAN/naslov kupca) ne blokirajo in so vidna kot XML komentar; aplikacija ne trdi oddaje — datoteka gre v UJP/Peppol zunaj.
 - Tehnični zaklad: Prisma schema change zahteva RESTART dev strežnika (stari klient → Unknown field _count); Page.captureScreenshot = { result: { data } }.
 - Naslednje po prednosti: (1) CRM/Stranke (master data strank — centralna funkcija po handwerksblatt; ponudbe/računi/dnevnik/časovnica vezani na ime; e-račun kupcu naslov že razčlenjuje — naravna nadgradnja); (2) Faza 7 živi test + ARCore depth na napravi (monter); (3) ROKSAL gradiva (blokirano); (4) WhatsApp delitev ponudbe z navigator.share (mobile — iz raziskave valoon); (5) materialni seznami (Materialverwaltung) kot nižji ROI.
+
+---
+Task ID: 50
+Agent: Z.ai Code (glavni agent)
+Task: Uporabnikova zahteva (preusmerjena na obrtnik-pro): dokončaj obstoječo fotomontažo ROKSALovih ograj — NE nove aplikacije, NE prepisovanja delujočih funkcij. En primer od začetka do konca, dokazi s slikami, resnično pognani testi, iskrenost o manjkajočem gradivu, brez generativnega AI.
+
+Work Log:
+- Pregled stanja: HEAD 6a55281 (Task 49); fotomontaža od Task 36 (88e25cf): photo-replace-core.ts 872 vrstic + 83/83 testov, foto-replace.tsx 1545 vrstic (7 korakov), roksal-assets.ts iskreni register; issue #14 je v roksal-railing-manager repozitoriju (404, nedostopen) — zahteve izvzete iz uporabnikovega sporočila.
+- Ugotovil ključni primanjkljaj: repozitorij NI imel nobene primerne fotografije ograje (public/crafts/ograje.jpg je strešna vgradnja) — iskreno dokumentirano, dodano demo gradivo brez AI.
+- Demo fotografija: Commons CC BY-SA 4.0, Roman Eisele (Beilstein Holzzaun, 1920×1335) → public/demo/ograja-demo.jpg + README (licenca, vir, oznaka "NI original ROKSAL posnetek", mere ocenjene).
+- E2E agent-browser (celoten tok): nalaganje (delovna kopija 1280×890) → 4 oglisča ravnine (54.7,22.7 / 99.8,1.2 / 99.8,92.8 / 54.7,87.7) → mere 250×180 cm → samodejni predlog maske 67 % → frontalne okluzije trte po detekciji zelenih pikslov (1 %) → klasična obnova ISKRENO odklonjena (> 18 % fotke → 'Zahteva ročni popravek') → kloniranje dokazano (izvor + žigi, kopira ORIGINALNE piksle) → profil wpc-deka-140-antracit → izris → primerjava pred/po → različica (localStorage) → izvoz PNG 2.582.631 B z žigom 'VIZUALIZACIJA ZA PREDSTAVITEV' (blob ujet + dekodiran → tests/izvoz-fotomenjava.png 1280×954).
+- BUG 1 (najden in popravljen): čopič Način gumba (Dodaj/Odstrani) sta vsilila brushTarget='old' → klik 'Dodaj oviro' je onesnažil masko stare ograje; popravljen foto-replace.tsx (cilj ostane, menja se samo način).
+- BUG 2 (najden in popravljen): izris pred/po — efekt originalnega prikaznega canvasa odvisen samo od [imgEl]; ob prvi upodobitvi rezultata stage ni bil v DOM → canvas ostal prazen (desna polovica primerjaveabela); popravljen na [imgEl, result]; potrjeno v živem toku (canvasa 1280×890 z resničnimi piksli).
+- TEKSTURA tex-wpc-siva zamenjana: stara (izrez tal z diagonalnimi režami + zemlja) je pri zrcalnem tlakovanju ustvarila 'duha' stare ograje skozi nove deske; nova: Commons CC BY-SA 4.0 'Weathered wood texture' (Kelsey Todd), čelni posnetek, zasuk 90° (energija gradientov |dx|>|dy| = navpična žira, skladno z registrom); register posodobljen (vir, licenca, opomba).
+- Znane omejitve (iskreno, v poročilu in metapodatkih): pasovna sence stare ograje delno preživi low-pass 1/8 svetlobne karte pri gosto-rebrni stari ograji (izgine po zaključenem ročnem popravku ozadja); originalni ROKSAL posnetki manjkajo (register 'missing' blokira izvoz z oznako original); mere ravnine ocenjene.
+- Testi: photo-replace 83/83; polna regresija 32/32 skriptov (izhodne kode 0); tsc src 0 napak; eslint čist; dev.log čist; mobilni 390 px brez vodoravnega preliva.
+- Commit + dokazne slike: tests/e2e-fotomenjava-01…09, izvoz-zig/detajl, primerjava-75, izvoz-fotomenjava.png.
+
+Stage Summary:
+- Fotomenjava ENEGA primera (WPC deka 140 mm antracit, tekstura wpc-siva) je DOKAZANA od začetka do konca: maske → iskrena zavrnitev samodejne obnove → ročno kloniranje → homografija z realnim merilom → ambient + sence → ohranjena trta (okluzije) → primerjava pred/po → različica → žigosan izvoz.
+- 2 realna buga popravljena v živem E2E; 83/83 + 32/32 testov zelenih; 0 AI, 0 novih odvisnosti.
+- Naslednji koraki po uporabnikovem vrstnem redu: (1) drugi modeli/barve — alu-palice-18 (RAL 7016 flat), piketna-18, wpc-deka-140 tikovina, fasadna-obloga-8; (2) mreza-3d-125 ostaja BLOKIRANA (original RAL vzorec manjka — iskrenost registra); (3) fasade in terase pridejo pozneje; (4) pasovno sencenje (low-pass 1/8) bi bilo vredno izboljšati SAMO po večji količini realnih fotk (tveganje regresije 46 nalog).
