@@ -592,6 +592,119 @@ console.log('7) Statusna pogodba (multi-view)');
 console.log('8) Verzija skripte');
 check('MULTIVIEW_SCRIPT_VERSION neprazen', typeof MULTIVIEW_SCRIPT_VERSION === 'string' && MULTIVIEW_SCRIPT_VERSION.length > 0);
 
+// ─── 9) Faza 4: matchPointOnEpipolar ob VELIKEM premiku (popravek v1.1.0) ──
+// Stara implementacija je iskala v škatli (xA±radius, yA±radius) — pri
+// resničnem premiku kamere (> radius) prava korespondenca ni bila dosegljiva.
+// Ta scena ima premik ~45 px (> radiusPx 20 in > privzetega 24): stara koda
+// bi VSE probes zavrnila, popravljena (iskanje po črti čez B) jih najde.
+console.log('9) Faza 4 — epipolarno iskanje ob velikem premiku (~45 px)');
+{
+  // B = FIZIKALNO prava preslikava A (tekstura, šum in gradient v IZVORNIH
+  // koordinatah) — makePlankImg indeksira šum/gradient po destinaciji, kar pri
+  // velikem premiku uniči fotometrijsko konsistentnost (NCC padne). Ta fixture
+  // je ekvivalent resničnega para fotk: ista scena, drugačka geometrija.
+  const makeShiftImg = (shiftX: number, shiftY: number, rotDeg: number): ImgData => {
+    const w = 240, h = 180;
+    const bands: { y0: number; y1: number; base: number }[] = [];
+    { const rb = lcg(7); let y = 0; while (y < h) { const bw = 10 + Math.floor(rb() * 13); bands.push({ y0: y, y1: y + bw, base: 90 + Math.floor(rb() * 120) }); y += bw; } }
+    const seams: { x: number; dark: number }[] = [];
+    { const rs = lcg(9); let x = 0; while (x < w) { seams.push({ x, dark: -30 - Math.floor(rs() * 40) }); x += 20 + Math.floor(rs() * 25); } }
+    const noise = new Float64Array(w * h);
+    { const rr = lcg(123); for (let i = 0; i < w * h; i++) noise[i] = (rr() - 0.5) * 24; }
+    const grad = (x: number, y: number): number => 30 * Math.sin(x / 37) * Math.cos(y / 23);
+    const srcTex = (sx: number, sy: number): number => {
+      let base = 128;
+      for (const b of bands) if (sy >= b.y0 && sy < b.y1) { base = b.base; break; }
+      let dark = 0;
+      for (const s of seams) if (sx >= s.x && sx < s.x + 2) { dark = s.dark; break; }
+      return base + dark + grad(sx, sy) + noise[Math.round(sy) * w + Math.round(sx)];
+    };
+    const data = new Uint8ClampedArray(w * h * 4);
+    const cosr = Math.cos((rotDeg * Math.PI) / 180);
+    const sinr = Math.sin((rotDeg * Math.PI) / 180);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = x - shiftX - w / 2;
+        const dy = y - shiftY - h / 2;
+        const sx = cosr * dx + sinr * dy + w / 2;
+        const sy = -sinr * dx + cosr * dy + h / 2;
+        const j = (y * w + x) * 4;
+        const val = (sx < 1 || sy < 1 || sx > w - 2 || sy > h - 2) ? 128 : srcTex(Math.round(sx), Math.round(sy));
+        data[j] = val; data[j + 1] = val; data[j + 2] = val; data[j + 3] = 255;
+      }
+    }
+    return { width: w, height: h, data };
+  };
+  const imgA = makeShiftImg(0, 0, 0);
+  const imgB = makeShiftImg(40, 20, 1.5); // A→B: zasuk −1,5° + zamik (40, 20) → premik ~45 px
+  const grayA = toGrayscale(imgA);
+  const grayB = toGrayscale(imgB);
+  const cA = findCorners(grayA, 240, 180);
+  const cB = findCorners(grayB, 240, 180);
+  const dA = buildDescriptors(grayA, 240, 180, cA, 9);
+  const dB = buildDescriptors(grayB, 240, 180, cB, 9);
+  const matches = matchFeatures(cA, dA, cB, dB, { width: 240, height: 180 }, { width: 240, height: 180 }, { maxDisplacementPct: 30 });
+  check('velik premik: ujemanj ≥ 10', matches.length >= 10, String(matches.length));
+  const c15 = Math.cos((1.5 * Math.PI) / 180);
+  const s15 = -Math.sin((1.5 * Math.PI) / 180);
+  const expectedB = (x: number, y: number): XY => ({
+    x: c15 * (x - 120) + s15 * (y - 90) + 120 + 40,
+    y: -s15 * (x - 120) + c15 * (y - 90) + 90 + 20,
+  });
+  const pA = matches.map((m) => ({ x: cA[m.ai].x, y: cA[m.ai].y }));
+  const pB = matches.map((m) => ({ x: cB[m.bi].x, y: cB[m.bi].y }));
+  // F iz ujemanj, ki so skladna z znano afino preslikavo ±3,5 px — robovi
+  // sintetične fotke B (sivi margin) ustvarjajo lažne korespondence, ki bi
+  // kontaminirale F; ta filter je enak vzorcu sekcije 6 (dispOk).
+  const dispOk = matches.filter((m) => {
+    const a = cA[m.ai];
+    const e = expectedB(a.x, a.y);
+    const b = cB[m.bi];
+    return Math.hypot(b.x - e.x, b.y - e.y) < 3.5;
+  });
+  check('velik premik: ≥ 8 pravilnih ujemanj', dispOk.length >= 8, String(dispOk.length));
+  const frP = dispOk.map((m) => ({ x: cA[m.ai].x, y: cA[m.ai].y }));
+  const frQ = dispOk.map((m) => ({ x: cB[m.bi].x, y: cB[m.bi].y }));
+  const fr = estimateFundamental(240, 180, 240, 180, frP, frQ, lcg(42));
+  check('velik premik: F ocenjena', fr !== null);
+  if (fr) {
+    check('velik premik: residuala < 1,5 px', fr.meanResidualPx < 1.5, String(fr.meanResidualPx));
+    // probes: notranje točke, katerih resnica je še v teksturnem delu B
+    // (zamik 40 px + patch 5 px roba → x < 190, y < 150)
+    const probes = frP.filter((p) => p.x > 40 && p.x < 190 && p.y > 30 && p.y < 150).slice(0, 4);
+    check('velik premik: ≥ 3 probe znotraj', probes.length >= 3, String(probes.length));
+    let foundN = 0;
+    for (const p of probes) {
+      const e = expectedB(p.x, p.y);
+      const f = matchPointOnEpipolar(grayA, 240, 180, p.x, p.y, grayB, 240, 180, fr.F, { radiusPx: 20 });
+      if (!f) continue;
+      foundN++;
+      const dTrue = Math.hypot(f.x - e.x, f.y - e.y);
+      const dClick = Math.hypot(f.x - p.x, f.y - p.y);
+      if (foundN === 1) {
+        check('najdena korespondenca ±3 px od resnice', dTrue < 3, `d=${dTrue.toFixed(2)} px`);
+        check('korespondenca je > radius od klika (dokaz popravka)', dClick > 24, `dClick=${dClick.toFixed(1)} px`);
+        check('NCC ≥ 0.8', f.ncc >= 0.8, String(f.ncc));
+      }
+    }
+    check('vse probe najdejo korespondenco (prej: 0/…)', foundN === probes.length, `${foundN}/${probes.length}`);
+    // determinizem
+    const f1 = matchPointOnEpipolar(grayA, 240, 180, probes[0].x, probes[0].y, grayB, 240, 180, fr.F, { radiusPx: 20 });
+    const f2 = matchPointOnEpipolar(grayA, 240, 180, probes[0].x, probes[0].y, grayB, 240, 180, fr.F, { radiusPx: 20 });
+    check('determinizem (identična rezultata)', JSON.stringify(f1) === JSON.stringify(f2));
+    // cap premika: maxDisplacementPct 1 → maxSpan ≈ 21 px < 56 → null
+    const capped = matchPointOnEpipolar(grayA, 240, 180, probes[0].x, probes[0].y, grayB, 240, 180, fr.F, { radiusPx: 20, maxDisplacementPct: 1 });
+    check('cap premika (maxDisplacementPct 1) iskreno zavrne', capped === null);
+    // gladko območje (brez teksture) → null (NCC nedefinirana/low)
+    const flatB = new Float64Array(240 * 180).fill(128);
+    const flat = matchPointOnEpipolar(grayA, 240, 180, probes[0].x, probes[0].y, flatB, 240, 180, fr.F, { radiusPx: 20 });
+    check('brez teksture v B → null', flat === null);
+    // točka izven fotke A → null
+    const out = matchPointOnEpipolar(grayA, 240, 180, 500, 90, grayB, 240, 180, fr.F, { radiusPx: 20 });
+    check('klik izven fotke A → null', out === null);
+  }
+}
+
 // ─── Rezultat ────────────────────────────────────────────────
 console.log(`\nREZULTAT: ${okCount} OK, ${badCount} NAPAK`);
 process.exit(badCount > 0 ? 1 : 0);

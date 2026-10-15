@@ -28,9 +28,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Download, GitMerge, Link2, RotateCcw, Upload } from 'lucide-react';
+import { Download, GitMerge, Link2, ListPlus, RotateCcw, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { fnv1aHash, type ImgData, type XY } from '@/lib/photo-replace-core';
+import { multiViewChainToMeasures, MULTIVIEW_SHEET_NOTE } from '@/lib/multiview-sheet';
+import type { PhotoMeasure } from '@/lib/camera-types';
 import {
   MULTIVIEW_SCRIPT_VERSION,
   buildDescriptors,
@@ -292,7 +294,7 @@ function MvStage({
 
 // ─── Komponenta ──────────────────────────────────────────────────
 
-export function MultiView() {
+export function MultiView({ onAddMeasures }: { onAddMeasures?: (measures: PhotoMeasure[]) => void } = {}) {
   const { toast } = useToast();
 
   // ── Korak 1: fotki + fokus ──
@@ -1071,6 +1073,27 @@ export function MultiView() {
   };
   const activeResult = chainActive ? chainResult : result;
 
+  // ── Faza 4: veriga → merilni list (glavni tok, brez vzporednega jedra) ──
+  const canAddSheet = canExport && chain.length > 0 && mvStatus?.status != null && !!onAddMeasures;
+  const onAddToSheet = () => {
+    if (!canAddSheet || !result || !mvStatus?.status) return;
+    try {
+      const rows = multiViewChainToMeasures({ distancesCm: result.distancesCm ?? [], status: mvStatus.status });
+      if (rows.length === 0) return;
+      onAddMeasures?.(rows);
+      toast({
+        title: `${rows.length} ${rows.length === 1 ? 'meritev dodana' : 'meritve dodane'} v merilni list ✓`,
+        description: `Status ${statusLabel(mvStatus.status)} — pomožna meritev (za proizvodnjo preveri s trakom/laserjem).`,
+      });
+    } catch (err) {
+      toast({
+        title: 'Uvoz ni mogoč',
+        description: err instanceof Error ? err.message : 'Neznana napaka.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const statusBadge = (s: ScaleValidation | null) => {
     const st = s?.status ?? null;
     if (!st) return null;
@@ -1767,10 +1790,22 @@ export function MultiView() {
               <Download className="mr-2 h-4 w-4" />
               Izvozi poročilo (JSON)
             </Button>
+            {onAddMeasures && (
+              <Button onClick={onAddToSheet} disabled={!canAddSheet || busy} variant="outline" data-testid="mv-add-sheet">
+                <ListPlus className="mr-2 h-4 w-4" />
+                Dodaj meritve v merilni list
+              </Button>
+            )}
             <Badge className="border-amber-300 bg-amber-100 text-amber-800 text-[10px]">
               Pomožna meritev — za proizvodnjo preveri s trakom/laserjem.
             </Badge>
           </div>
+          {canAddSheet && (
+            <p className="text-xs text-muted-foreground">
+              Meritve gredo v zavihek Orodja → »Dodane meritve« z oznako statusa ({statusLabel(mvStatus?.status ?? 'AUTO_SUGGESTED')})
+              in naprej v merilni list + kalkulator. {MULTIVIEW_SHEET_NOTE}
+            </p>
+          )}
           {!canExport && (
             <p className="text-xs text-muted-foreground">
               Izvoz se omogoči po uspešno zaključeni referenci (korak 3) — poročilo brez veljavne geometrije ne bi
