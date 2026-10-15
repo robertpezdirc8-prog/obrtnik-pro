@@ -53,8 +53,9 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
   {
     id: 'tex-wpc-siva', kind: 'texture', label: 'WPC siva (tekstura)',
     src: '/textures/wpc-siva.jpg', realCm: 45, origin: 'real-photo', verification: 'unverified',
-    license: COMMONS_LICENSE, sourceUrl: 'https://commons.wikimedia.org', grain: 'vertical',
-    note: 'Izrez tal s fotke verande (ročni obrezan). ' + GENERIC_NOTE,
+    license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:Weathered_wood_texture.jpg',
+    grain: 'vertical',
+    note: 'Vremensko obstal sivi les, čelni posnetek (izrez + zasuk 90° → navpična žira; energija gradientov |dx|>|dy| potrjuje smer). Avtor: Kelsey Todd. ' + GENERIC_NOTE,
   },
   {
     id: 'tex-hrast', kind: 'texture', label: 'Hrast (les) — tekstura',

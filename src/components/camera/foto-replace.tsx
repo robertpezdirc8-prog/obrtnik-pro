@@ -926,13 +926,17 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   };
 
   // ── Izris rezultata na zaslon (pred/po canvasa) ──
+  // `result` v odvisnostih: ko se rezultat prvič upodobi, se mora TUDI
+  // originalni prikazni canvas narisati (do takrat je stage sploh ni v DOM —
+  // efekt ob samem imgEl se ne izvede znova → desna polovica primerjave bi
+  // ostala prazna/abela).
   useEffect(() => {
     const cv = origDispRef.current;
     if (!cv || !imgEl) return;
     cv.width = imgEl.naturalWidth;
     cv.height = imgEl.naturalHeight;
     cv.getContext('2d')!.drawImage(imgEl, 0, 0);
-  }, [imgEl]);
+  }, [imgEl, result]);
 
   useEffect(() => {
     const cv = resDispRef.current;
@@ -1195,7 +1199,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <Button
               size="sm"
               variant={brushMode === 'add' ? 'default' : 'outline'}
-              onClick={() => { setBrushMode('add'); setBrushTarget('old'); setTool('brush'); }}
+              onClick={() => { setBrushMode('add'); setTool('brush'); }} // cilj (stara ograja/ovire) OSTANE kot je
               data-testid="fr-brush-add"
             >
               {brushTarget === 'front' ? 'Dodaj oviro' : 'Dodaj'}
@@ -1203,7 +1207,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <Button
               size="sm"
               variant={brushMode === 'remove' ? 'default' : 'outline'}
-              onClick={() => { setBrushMode('remove'); setTool('brush'); }}
+              onClick={() => { setBrushMode('remove'); setTool('brush'); }} // cilj (stara ograja/ovire) OSTANE kot je
               data-testid="fr-brush-remove"
             >
               {brushTarget === 'front' ? 'Odstrani oviro' : 'Odstrani'}
