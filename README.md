@@ -11,9 +11,9 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 37/37, photo-replace 391/391, E2E celoten tok
+> Zadnja polna preverba: **regresija 38/38, photo-replace 391/391, E2E celoten tok
 > fotomontaže zeleno, mobilni 390 brez prelivanja, 0 konzolnih napak**
-> (Task 59–65, oktober 2026).
+> (Task 59–66, oktober 2026).
 
 ---
 
@@ -109,7 +109,13 @@ Tok (`foto-replace.tsx` + `src/lib/photo-replace-*`):
    inpainting (brez AI) odstrani staro ograjo; neuspešna obnova **ni prikazana
    kot uspeh** (iskren status), ročni popravek je vedno na voljo.
 4. **Izbira profila in barve** — katalog ROKSAL profilov z **originalnimi
-   gradivi** (glej spodaj) + iskrene oznake pripravljenosti.
+   gradivi** (glej spodaj) + iskrene oznake pripravljenosti. Poleg tega
+   **izmeri obstoječo desko na fotki** (2 klika na kalibrirani ravnini,
+   perspektivno popravljeno prek homografije) → predlog najbližjih uradnih
+   profilov z izpisano razliko v cm in % (natančno/blizu/različno; barvne
+   različice istega profila kot EN predlog). Predlog je najbližji po ŠIRINI —
+   enakost mere ne dokazuje istovetnosti (iskrena opomba v UI); klik predloga
+   ga izbere (isti mehanizem kot mreža).
 5. **Upodobitev** — deske z originalno teksturo, pravilna mera/razmak/perspektiva
    (45 cm tile, zrcalno tlakovanje na nivoju rendererja), plasti/okluzije,
    svetlobno ujemanje.
@@ -210,7 +216,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (37)
+### Verifikacijske skripte (38)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):
@@ -219,6 +225,7 @@ brez brskalnika):
 bun tests/verify/photo-replace.ts     # fotomontaža — 391 preveritev
 bun tests/verify/photo-bom.ts         # kosovnica iz fotomontaže — invarianta z upodobitvijo
 bun tests/verify/photo-compare.ts     # izvoz pred/po — postavitev, oznake, iskrenost
+bun tests/verify/photo-profile-suggest.ts  # predlog profila iz izmerjene deske — pragovi, dedup, determinizem
 bun tests/verify/roksal-tiles.ts      # kakovost VSEH 32 dekor tlakov — 199 preveritev
 bun tests/verify/multiview-chain.ts   # veriga fotk / od AB
 bun tests/verify/colmap-model.ts      # SfM/COLMAP
@@ -227,9 +234,10 @@ bun tests/verify/deck-analysis.ts     # analiza dek
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (Task 65): polna regresija **37/37 skript zeleno** (pognano z
+Zadnja preverba (Task 66): polna regresija **38/38 skript zeleno** (pognano z
 izhodnimi kodami, ne citirano), vključno z **photo-replace 391/391**,
-**roksal-tiles 199/199**, **photo-bom 25/25** in **photo-compare 45/45**.
+**roksal-tiles 199/199**, **photo-bom 25/25**, **photo-compare 45/45** in
+**photo-profile-suggest 59/59**.
 
 ### E2E dokazi
 
@@ -245,7 +253,12 @@ primerjava.png … -05-brez-originala.png` (Task 65: PRAVA izvožena datoteka
 ujetá pri palačinki `URL.createObjectURL` in preverjena pikselsko
 (`tests/e2e-compare-check.ts`: levo = original, desno = upodobitev, žig temen,
 ločilo), bajt-identična na namizju in mobilnem 390, blokirana brez gradiva,
-iskrena napaka brez originala v sejanu). Pokrivajo namizni in mobilni prikaz
+iskrena napaka brez originala v sejanu) ter predlog profila `e2e-suggest-01-
+predlogi-panel … -04-mobilni-predlogi.png` (Task 66: izmerjena deska 9,9 cm
+na kalibrirani ravnini 500×180 — ENAKA vrednost kot homografska napoved iz
+fixture, predlogi z razlikami v cm/%, klik predloga izbere profil,
+prikazano do upodobitve z izbranim profilom; namizje + mobilni 390 brez
+vodoravnega prelivanja). Pokrivajo namizni in mobilni prikaz
 (390 px), izvoz z žigom, primerjave profilov in celoten tok fotomontaže.
 
 ### Orodja za gradiva (`tests/make-*`)
@@ -277,7 +290,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (37 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (38 skript), e2e-*.png, make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```

@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
-  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Save, ShoppingCart, Upload, ZoomIn,
+  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Ruler, Save, ShoppingCart, Upload, ZoomIn,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { processImage } from '@/lib/image-quality';
@@ -58,6 +58,13 @@ import {
 } from '@/lib/viz';
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
+import { calibratePlane, planeDistanceCm } from '@/lib/homography';
+import {
+  suggestProfiles,
+  suggestionText,
+  fmtNum,
+  type ProfileSuggestResult,
+} from '@/lib/photo-profile-suggest';
 import {
   buildCompareLabels,
   compareExportFilename,
@@ -259,7 +266,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   // ── Stanje: orodja na prizorišču ──
   const stageRef = useRef<HTMLDivElement>(null);
   const stageCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [tool, setTool] = useState<'corners' | 'brush' | 'clone' | 'none'>('corners');
+  const [tool, setTool] = useState<'corners' | 'brush' | 'clone' | 'measure' | 'none'>('corners');
   const [quadPct, setQuadPct] = useState<[number, number][] | null>(null);
   const [cornerCount, setCornerCount] = useState(0);
   const dragCornerRef = useRef<number | null>(null);
@@ -292,6 +299,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     status: InpaintStatus; coverage: number; repairedPx: number; manualHint: string | null;
   } | null>(null);
   const [busyInpaint, setBusyInpaint] = useState(false);
+
+  // ── Kandidat #3 (Task 66): izmeri obstoječo desko → predlog najbližjega profila ──
+  const [measurePts, setMeasurePts] = useState<[number, number][] | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [busyRender, setBusyRender] = useState(false);
 
@@ -433,6 +443,31 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     () => ROKSAL_PROFILES.find((p) => p.id === profileId) ?? null,
     [profileId],
   );
+
+  // kalibracija ravnine za merjenje (ista homografija kot v jedru — ni duplikata)
+  const measurePlane = useMemo(() => {
+    if (!quadPct || quadPct.length !== 4 || !planeCm || !dims) return null;
+    return calibratePlane(quadPct.map(([x, y]) => ({ x, y })), planeCm.wCm, planeCm.hCm, dims);
+  }, [quadPct, planeCm, dims]);
+
+  // izmerjena deska → najbližji uradni profili (čista knjižnica photo-profile-suggest)
+  const measureSuggest = useMemo<{
+    distanceCm: number | null; error: string | null; suggest: ProfileSuggestResult | null;
+  }>(() => {
+    if (!measurePlane || !dims || !measurePts || measurePts.length !== 2) {
+      return { distanceCm: null, error: null, suggest: null };
+    }
+    const [a, b] = measurePts;
+    const d = planeDistanceCm(measurePlane, { x: a[0], y: a[1] }, { x: b[0], y: b[1] }, dims);
+    if (d === null) {
+      return { distanceCm: null, error: 'Meritve ni bilo mogoče izračunati (degenerirana kalibracija).', suggest: null };
+    }
+    try {
+      return { distanceCm: d, error: null, suggest: suggestProfiles(d) };
+    } catch (e) {
+      return { distanceCm: d, error: e instanceof Error ? e.message : String(e), suggest: null };
+    }
+  }, [measurePlane, dims, measurePts]);
 
   const layoutInfo = useMemo<{ layout: LayoutResult | null; error: string | null }>(() => {
     if (!quadPct || !planeCm || !dims) return { layout: null, error: null };
@@ -577,6 +612,19 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       dragCornerRef.current = handleHitHandle(p);
       return;
     }
+    if (tool === 'measure') {
+      if (!measurePlane) {
+        toast({
+          title: 'Najprej kalibriraj ravnino',
+          description: 'Merjenje po fotki potrebuje oglisča ravnine + realne mere (korak 2) — sicer izmera ne bi bila prava.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      // 1. klik = začetek, 2. = konec meritve; tretji klik začne NOVO meritev
+      setMeasurePts((prev) => (prev && prev.length === 2 ? [p] : [...(prev ?? []), p] as [number, number][]));
+      return;
+    }
     if (tool === 'clone') {
       if (cloneStage === 'source') {
         cloneSrcRef.current = n;
@@ -634,6 +682,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     setQuadPct(null);
     setCornerCount(0);
     setTool('corners');
+    setMeasurePts(null); // kalibracija pade — meritve ni več prava
     dragCornerRef.current = null;
   };
 
@@ -1210,18 +1259,24 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       ? `Klikni ${['zgornji LEVI', 'zgornji DESNI', 'spodnji DESNI', 'spodnji LEVI'][cornerCount] ?? 'oglišče'} kot ravnine (${Math.min(cornerCount + 1, 4)}/4).`
       : tool === 'corners' && quadComplete
         ? 'Oglišča lahko vlečeš za natančnost.'
-        : tool === 'brush'
-          ? brushTarget === 'old'
-            ? `Čopič (stara ograja): ${brushMode === 'add' ? 'dodaja' : 'odstranjuje'} označbo.`
-            : `Čopič (ovire): ${brushMode === 'add' ? 'dodaja' : 'odstranjuje'} frontalne okluzije.`
-          : tool === 'clone'
-            ? cloneStage === 'source'
-              ? 'Klikni izvorno točko na NEOKRNJENEM ozadju.'
-              : 'Klikni ali vleci po cilju — žiga originalne piksle.'
-            : 'Izberi orodje v korakih 2–4.';
+        : tool === 'measure'
+          ? measurePts && measurePts.length === 2
+            ? 'Izmerjeno — klikni še enkrat za novo meritev ali izberi predlog profila (korak 5).'
+            : measurePts && measurePts.length === 1
+              ? 'Klikni drugi rob deske (čez širino ENE deske, ne čez celo polje).'
+              : 'Klikni prvi rob deske, ki jo želiš izmeriti.'
+          : tool === 'brush'
+            ? brushTarget === 'old'
+              ? `Čopič (stara ograja): ${brushMode === 'add' ? 'dodaja' : 'odstranjuje'} označbo.`
+              : `Čopič (ovire): ${brushMode === 'add' ? 'dodaja' : 'odstranjuje'} frontalne okluzije.`
+            : tool === 'clone'
+              ? cloneStage === 'source'
+                ? 'Klikni izvorno točko na NEOKRNJENEM ozadju.'
+                : 'Klikni ali vleci po cilju — žiga originalne piksle.'
+              : 'Izberi orodje v korakih 2–5.';
 
   const cursorCls =
-    tool === 'none' ? 'cursor-default' : tool === 'corners' ? 'cursor-crosshair' : tool === 'clone' ? 'cursor-copy' : 'cursor-cell';
+    tool === 'none' ? 'cursor-default' : tool === 'corners' ? 'cursor-crosshair' : tool === 'measure' ? 'cursor-crosshair' : tool === 'clone' ? 'cursor-copy' : 'cursor-cell';
 
   return (
     <div className="space-y-4" data-testid="foto-replace">
@@ -1298,6 +1353,21 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                   {frontPolys.map((poly, i) => (
                     <polygon key={`fm${i}`} points={poly.map(([x, y]) => `${x},${y}`).join(' ')} fill="rgba(68,64,60,0.55)" stroke="rgba(41,37,36,0.85)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
                   ))}
+                  {/* merjenje deske (kandidat #3): črta + točki */}
+                  {measurePts && measurePts.length >= 1 && (
+                    <g>
+                      {measurePts.map(([x, y], i) => (
+                        <circle key={`mp${i}`} cx={x} cy={y} r={1.2} fill="#16a34a" stroke="white" strokeWidth="0.4" vectorEffect="non-scaling-stroke" />
+                      ))}
+                      {measurePts.length === 2 && (
+                        <line
+                          x1={measurePts[0][0]} y1={measurePts[0][1]}
+                          x2={measurePts[1][0]} y2={measurePts[1][1]}
+                          stroke="#16a34a" strokeWidth="2" vectorEffect="non-scaling-stroke"
+                        />
+                      )}
+                    </g>
+                  )}
                 </svg>
                 {/* ročice oglišč (samo vizualno — klik/vlek lovi prizorišče) */}
                 {quadPct && tool === 'corners' && quadPct.map(([x, y], i) => (
@@ -1591,6 +1661,86 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">5</span>
             Nova ograja iz ROKSAL profilov
           </h3>
+
+          {/* Kandidat #3 (Task 66): izmeri obstoječo desko → predlog najbližjega profila */}
+          <div className="space-y-2 rounded-lg border border-green-200 bg-green-50/60 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant={tool === 'measure' ? 'default' : 'outline'}
+                disabled={!imgEl || !measurePlane}
+                onClick={() => { setTool('measure'); }}
+                data-testid="fr-measure-btn"
+              >
+                <Ruler className="mr-2 h-4 w-4" />
+                Izmeri obstoječo desko na fotki
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Klikni 2 roba ENE deske na kalibrirani ravnini → sistem predlaga najbližje uradne profile.
+              </span>
+            </div>
+            {!imgEl || !measurePlane ? (
+              <p className="text-xs text-amber-900" data-testid="fr-measure-need">
+                Merjenje potrebuje fotografijo + kalibrirano ravnino (korak 2: oglisča + realni meri) — sicer izmera ne bi bila prava.
+              </p>
+            ) : measureSuggest.error ? (
+              <p className="text-xs text-destructive" role="alert" data-testid="fr-measure-error">{measureSuggest.error}</p>
+            ) : measureSuggest.suggest && measureSuggest.distanceCm !== null ? (
+              <div className="space-y-2" data-testid="fr-suggest-panel">
+                <p className="text-xs font-semibold text-green-900" data-testid="fr-measure-result">
+                  Izmerjena širina deske: {fmtNum(measureSuggest.distanceCm, 1)} cm — najbližji profili:
+                </p>
+                {measureSuggest.suggest.warnings.length > 0 && (
+                  <ul className="list-disc space-y-0.5 pl-4 text-xs text-amber-900" data-testid="fr-measure-warnings">
+                    {measureSuggest.suggest.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+                  </ul>
+                )}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {measureSuggest.suggest.suggestions.map((s) => {
+                    const vars = measureSuggest.suggest?.variants[s.profile.id] ?? [];
+                    const r = profileReadiness(s.profile);
+                    return (
+                      <button
+                        key={s.profile.id}
+                        type="button"
+                        disabled={!r.canRender}
+                        onClick={() => { setProfileId(s.profile.id); setTool('corners'); }}
+                        data-testid={`fr-suggest-${s.profile.id}`}
+                        className={`min-w-0 rounded-lg border p-2.5 text-left transition-colors ${
+                          profileId === s.profile.id ? 'border-amber-600 bg-amber-50 ring-1 ring-amber-600' : 'hover:border-amber-600 hover:bg-white'
+                        } ${r.canRender ? '' : 'cursor-not-allowed opacity-60'}`}
+                      >
+                        <span className="block truncate text-xs font-semibold">{s.profile.label}</span>
+                        <Badge
+                          className={`mt-1 h-auto py-0.5 whitespace-normal break-words text-left text-[10px] ${
+                            s.quality === 'exact'
+                              ? 'border-green-300 bg-green-100 text-green-800'
+                              : s.quality === 'close'
+                                ? 'border-amber-300 bg-amber-100 text-amber-800'
+                                : 'border-stone-300 bg-stone-100 text-stone-700'
+                          }`}
+                          data-testid={`fr-suggest-quality-${s.profile.id}`}
+                        >
+                          {suggestionText(s)}
+                        </Badge>
+                        {vars.length > 1 && (
+                          <span className="mt-1 block text-[10px] text-muted-foreground">{vars.length} barvnih različic istega profila</span>
+                        )}
+                        {!r.canRender && (
+                          <span className="mt-1 block text-[10px] text-destructive">{r.honestyLabel}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-muted-foreground" data-testid="fr-suggest-disclaimer">
+                  Predlog je najbližji profil po ŠIRINI — enakost mere NE dokazuje istovetnosti (obstoječa ograja je lahko
+                  druga znamka). Pred zamudno naročilom preveri material, presek in debelino. Klik predloga ga izbere (enako kot mreža spodaj).
+                </p>
+              </div>
+            ) : null}
+          </div>
+
           <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
             {ROKSAL_PROFILES.map((p) => {
               const r = profileReadiness(p);
