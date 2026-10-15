@@ -60,6 +60,7 @@ model Offer {
   items           OfferItem[]
   invoices        Invoice[]
   timeEntries     TimeEntry[]
+  diaryEntries    DiaryEntry[]
 }
 
 // ─── Računi (iz sprejete ponudbe) ───────────────────────
@@ -152,4 +153,29 @@ model TimeEntry {
   /// Referenca obračuna (št. ponudbe ali kratek opis).
   billedRef    String?
   createdAt    DateTime  @default(now())
+}
+
+// ─── Terenski dnevnik (Baustellendokumentation) ────────────
+// Raziskava 2026 (qonto top-11, fuer-gruender 13: baustellendoku)
+// dokazuje: zapisi z datumom + fotke so dokaz izvedenega dela
+// (spori, garancija, Wandelanträge). Vnosi so vezani na dan,
+// ne na točen čas — na objektu se zapisuje po opravljenem delu.
+
+model DiaryEntry {
+  id        String   @id @default(cuid())
+  /// Delovni dan "YYYY-MM-DD" (niz brez časovnih pasov — kot pri časovnici).
+  day       String
+  /// Faza dela: priprava / demontaza / montaza / zakljucek / ostalo.
+  phase     String   @default("ostalo")
+  /// Opis opravljenega dela (0–500 znakov).
+  note      String
+  /// Povezava na ponudbo (opcijsko — ure se pošteva po nalogu).
+  offerId   String?
+  offer     Offer?   @relation(fields: [offerId], references: [id])
+  /// Prosta oznaka objekta, kadar vnos ni vezan na ponudbo.
+  objectLabel String?
+  /// Fotografije: JSON niz [{ dataUrl, thumb, caption }].
+  photos    String   @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

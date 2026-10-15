@@ -66,7 +66,7 @@ export const useDraft = create<DraftState>()(
 
 // ─── Aktivni zavihek aplikacije ─────────────────────────────
 
-export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'ponudbe' | 'katalog' | 'časovnica' | 'nastavitve';
+export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'ponudbe' | 'časovnica' | 'dnevnik' | 'katalog' | 'nastavitve';
 
 interface ViewState {
   view: AppView;

@@ -501,3 +501,20 @@ export async function autoLevel(dataUrl: string, rollDeg: number): Promise<Proce
   final.getContext('2d')!.drawImage(out, 0, 0, fw, fh);
   return { dataUrl: final.toDataURL('image/jpeg', JPEG_QUALITY), width: fw, height: fh };
 }
+
+/**
+ * Male sličice za sezname (dnevnik): slika z dolgo stranjo ≤ `max`
+ * (privzeto 320 px, JPEG 0,7). Uporabno, kadar seznam pokaže veliko
+ * fotografij in polnih 1280 px ni treba prenašati.
+ */
+export async function makeThumbnail(dataUrl: string, max = 320): Promise<string> {
+  const img = await loadImageEl(dataUrl);
+  const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
