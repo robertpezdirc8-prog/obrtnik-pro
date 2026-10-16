@@ -137,7 +137,10 @@ async function main(): Promise<void> {
       if (r.exceptionDetails) throw new Error(`Eval napaka: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
       return r.result?.value;
     };
-    const bodyText = async (): Promise<string> => String(await evaluate('document.body.innerText'));
+    // `document.body` je lahko null, če `next dev` še prevaja prvo stran — takrat
+    // počakaj (prazen string), ne zrni, sicer ves E2E pade na tekmi z gradio.
+    const bodyText = async (): Promise<string> =>
+      String(await evaluate('document.body ? document.body.innerText : ""'));
     const exists = async (sel: string): Promise<boolean> =>
       (await evaluate(`!!document.querySelector(${JSON.stringify(sel)})`)) === true;
     const waitFor = async (sel: string, ms = 30000): Promise<boolean> => {
@@ -234,6 +237,14 @@ async function main(): Promise<void> {
     t = await bodyText();
     check('14 kljub veljavnemu izračunu je 120 cm označen PREŠIROKO (pas odloča o oceni)', /120 cm[^\n]*PREŠIROKO/.test(t), (t.match(/Razmak nosilcev[^\n]*/) ?? ['__none__'])[0]);
     check('15 postavke so še vedno na voljo (1,2 m NI zavrnjen)', (await bodyText()).includes('Dodaj v ponudbo'));
+    // Posnetek TOG stanja je tisti, ki ga monter potrebuje: 1,2 m je na zaslonu,
+    // 15 lm je v računu, kontrola je rdeča »PREŠIROKO« — in ponudba je kljub temu živa.
+    const shot120 = guardOutSideRepo(join(OUT_DIR, 'terasa-input-120-presiroko.png'));
+    {
+      const s = (await cdp.send('Page.captureScreenshot', { format: 'png' })) as { data?: string };
+      if (!s.data) throw new Error('captureScreenshot (stanje 1,2 m) vrnil ni bajtov');
+      writeFileSync(shot120, Buffer.from(s.data, 'base64'));
+    }
 
     // ── 16) 8 m: zunaj okna → ničesar ne zaračuna ──
     check('16 razmak 8 m vpisan', (await setNumber('Razmak nosilcev', '8')) === 'OK', await setNumber('Razmak nosilcev', '8'));
@@ -278,8 +289,10 @@ async function main(): Promise<void> {
     const shot = (await cdp.send('Page.captureScreenshot', { format: 'png' })) as { data?: string };
     if (!shot.data) throw new Error('captureScreenshot vrnil ni bajtov');
     writeFileSync(shotPath, Buffer.from(shot.data, 'base64'));
-    check('35 posnetek napisan na disk', statSync(shotPath).size > 20000, `bajtov ${statSync(shotPath).size}`);
-    console.log(`   posnetek: ${shotPath}`);
+    check('35 oba posnetka napisana na disk (stanje 1,2 m in stanje zavrnitve)',
+      statSync(shotPath).size > 20000 && statSync(shot120).size > 20000,
+      `zavrnitev ${statSync(shotPath).size} B · 1,2 m ${statSync(shot120).size} B`);
+    console.log(`   posnetka: ${shotPath}\n             ${shot120}`);
 
     console.log(`\n${pass}/${pass + fail} e2e preverb ${fail === 0 ? '— VSE SKOZI' : '— ' + fail + ' NAPAK'}`);
     if (fail > 0) process.exitCode = 1;

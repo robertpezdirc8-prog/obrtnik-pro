@@ -154,6 +154,9 @@ export function terasaProblemText(p: TerasaProblem): string {
   const rel = side === 'min'
     ? `premalo za izračun (${nf(typed)} < ${nf(bound.min ?? 0)})`
     : `preveč za izračun (${nf(typed)} > ${nf(bound.max ?? 0)})`;
+  // `why` je v registru pisana z malo (je stavek sredi besedila); tu je prvi stavek
+  // za njim, zato mora začeti z veliko — sicer monter bere »… 0 €/m. cena je tvoja …«.
+  const why = bound.why.charAt(0).toUpperCase() + bound.why.slice(1);
   return `${bound.label} ${nf(typed)} ${bound.unit} je ${rel}; sprejemamo ${windowText(bound)}. ` +
-    `${bound.why}. Izračun ni opravljen — nobena postavka ni obračunana.`;
+    `${why}. Izračun ni opravljen — nobena postavka ni obračunana.`;
 }

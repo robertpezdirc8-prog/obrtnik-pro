@@ -60,6 +60,7 @@ import {
 } from '@/lib/viz';
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
+import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
 import { suggestBandQuadPct, type BandSuggestion } from '@/lib/band-suggest';
 import {
@@ -1251,10 +1252,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     }
     addDraftItems(bom.items);
     toast({
-      title: `Material v ponudbo: ${bom.items.length} ${bom.items.length === 1 ? 'postavka' : 'postavki'} ✓`,
+      title: `Material v ponudbo: ${bom.items.length} ${plural(bom.items.length, ['postavka', 'postavki', 'postavke', 'postavk'])} ✓`,
       description:
-        `${bom.boards} kosov × rez ${Math.round(bom.cutLenCm * 10) / 10} cm (${bom.totalMeters.toFixed(2)} m)` +
-        `${bom.stocks ? ` — ${bom.stocks.count} nabavnih profilov` : ''}. Cene vpiši v ponudbi; stebri in pritrdilni material niso modelirani.`,
+        `${bom.boards} ${plural(bom.boards, ['kos', 'kosa', 'kosi', 'kosov'])} × rez ${Math.round(bom.cutLenCm * 10) / 10} cm (${bom.totalMeters.toFixed(2)} m)` +
+        `${bom.stocks ? ` — ${bom.stocks.count} ${plural(bom.stocks.count, ['nabaven profil', 'nabavna profila', 'nabavni profili', 'nabavnih profilov'])}` : ''}. Cene vpiši v ponudbi; stebri in pritrdilni material niso modelirani.`,
     });
     setActiveCraft(null); // da se pokaže osnutek ponudbe (OfferEditor)
     setView('kalkulatorji');

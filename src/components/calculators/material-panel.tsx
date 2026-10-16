@@ -12,6 +12,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useLeftovers } from '@/lib/store';
 import { matchLeftovers, fmtLen } from '@/lib/leftovers';
+import { plural } from '@/lib/install-plan';
 import type { CheckStatus, InstallPlan } from '@/lib/install-plan';
 
 const STATUS_META: Record<CheckStatus, { icon: React.ElementType; cls: string }> = {
@@ -82,7 +83,7 @@ export function MaterialPanel({ plan, craft }: { plan: InstallPlan; craft: strin
           {warns > 0 && (
             <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
               <AlertTriangle className="h-3 w-3" />
-              {warns} opozoril
+              {warns} {plural(warns, ['opozorilo', 'opozorili', 'opozorila', 'opozoril'])}
             </span>
           )}
         </CardTitle>

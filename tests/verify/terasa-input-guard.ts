@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { calculateWpcTerasa } from '../../src/lib/pricing';
-import { craftInstallPlan } from '../../src/lib/install-plan';
+import { craftInstallPlan, plural } from '../../src/lib/install-plan';
 import {
   TERASA_INPUT_BOUNDS, resolveTerasaInputs, terasaProblemText,
 } from '../../src/lib/terasa-inputs';
@@ -190,6 +190,25 @@ const stopChecks = (i: CraftInputs) =>
     terasaProblemText(resolveTerasaInputs({ ...BASE, boardPricePerM: -3 }).problems[0]!)
       .includes('Cena deske −3 €/m je premalo za izračun (−3 < 0); sprejemamo najmanj 0 €/m') === true,
     terasaProblemText(resolveTerasaInputs({ ...BASE, boardPricePerM: -3 }).problems[0]!));
+  // Razlog `why` je v registru zapisan z malo, ker je stavek sredi besedila. Ko
+  // pride ZA PIKO, mora začeti z veliko — v pridobljenem posnetku je monter
+  // bral »… sprejemamo najmanj 0 €/m. cena je tvoja pogodba z dobaviteljem.«
+  for (const b of TERASA_INPUT_BOUNDS) {
+    const out = b.min !== null ? (b.min ?? 0) - 1 : (b.max ?? 0) + 1;
+    const t = terasaProblemText(resolveTerasaInputs({ ...BASE, [b.field]: out }).problems.find((x) => x.bound.field === b.field)!);
+    const cap = b.why.charAt(0).toUpperCase() + b.why.slice(1);
+    check(`${b.field}: razlog za piko se začne z veliko`, t.includes(`. ${cap}.`), t);
+  }
+  // Števec opozoril v kartici »Material & montaža«: »1 opozoril« je bil viden na
+  // zaslonu. Slovenija ima dvojino, monter pa je prav tam, kjer šteje napake.
+  const OP: [string, string, string, string] = ['opozorilo', 'opozorili', 'opozorila', 'opozoril'];
+  check('1 = opozorilo (ne »1 opozoril«)', plural(1, OP) === 'opozorilo', plural(1, OP));
+  check('2 = opozorili (dvojina)', plural(2, OP) === 'opozorili', plural(2, OP));
+  check('4 = opozorila', plural(4, OP) === 'opozorila', plural(4, OP));
+  check('5 = opozoril', plural(5, OP) === 'opozoril', plural(5, OP));
+  check('kartica materiala USENI sklanja števec opozoril',
+    SRC('src/components/calculators/material-panel.tsx')
+      .includes("{plural(warns, ['opozorilo', 'opozorili', 'opozorila', 'opozoril'])}"));
 }
 
 console.log(`\nREZULTAT: ${pass} OK, ${fail} NAPAK`);

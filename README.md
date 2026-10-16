@@ -104,7 +104,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > po ISTEM resolverju, zato se ne moreta raziti. Posledično je bil aplikacijski privzetek
 > premaknjen z 0,4 m na **0,33 m** (spodnji rob objavljenega pasu — stari privzetek je sam sebi
 > sprožil opozorilo »preširoko«), predlog iz fotografije pa se več ne tipka, ampak se izpelje iz
-> pravila (`JOIST_SUGGEST_M`). Zaklenjeno: `tests/verify/terasa-input-guard.ts` (**72/72**,
+> pravila (`JOIST_SUGGEST_M`). Zaklenjeno: `tests/verify/terasa-input-guard.ts` (**84/84**,
 > vključno z mutacijskim dokazom in pariteto cena ⇄ načrt čez 11 vhodov) in
 > `tests/e2e-terasa-input-ui.ts` (**36/36** v živem brskalniku).
 
@@ -418,19 +418,19 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
 25/25**, **gt-evidence 102/102**, **roksal-span-rules 133/133**, **roksal-board-gap 58/58**,
-**terasa-input-guard 72/72** (Task 83: noben vnos terase se tiho ne useka; cena in montažni načrt
+**terasa-input-guard 84/84** (Task 83: noben vnos terase se tiho ne useka; cena in montažni načrt
 se ravnavata po ISTEM resolverju).
 Assertivnih preverjanj skupaj,
 zdaj IZMERJENO Z ENO STEVLJO in
-ne sešteto iz spomina: **3000 OK / 0 NAPAK** v **44** od **51** `tests/verify/*.ts` skriptov;
+ne sešteto iz spomina: **3012 OK / 0 NAPAK** v **44** od **51** `tests/verify/*.ts` skriptov;
 sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
 `quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
 `bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
 zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
 **20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
 obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
-seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2928 → **3000** = +72
-(`terasa-input-guard` je nov s 72 preverjanji), nič se ni izgubilo.
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2928 → **3012** = +84
+(`terasa-input-guard` je nov s 84 preverjanji), nič se ni izgubilo.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
