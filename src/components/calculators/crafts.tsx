@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { CraftCalculator, NumField, SelField, BoolField } from './shared';
 import { calculateOgraje, calculateStopnice, calculateKeramika, calculateWpcTerasa, calculateOknaVrata, calculateNadstresek, calculateFasada } from '@/lib/pricing';
 import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
+import { inputWindowHint } from '@/lib/craft-inputs';
 import { useView } from '@/lib/store';
 import type { CraftId, CraftInputs } from '@/lib/types';
 
@@ -30,7 +31,7 @@ export function OgrajeCalc() {
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Dolžina ograje" unit="m" value={inputs.length ?? 0} onChange={(v) => setInputs({ length: v })} />
-        <NumField label="Višina ograje" unit="m" value={inputs.height ?? 1} onChange={(v) => setInputs({ height: v })} step={0.05} min={0.9} />
+        <NumField label="Višina ograje" unit="m" value={inputs.height ?? 1} onChange={(v) => setInputs({ height: v })} step={0.05} hint={inputWindowHint('ograje', 'height')} />
       </div>
       <SelField
         label="Material ograje"

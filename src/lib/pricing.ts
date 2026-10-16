@@ -1,5 +1,7 @@
 import type { CalcResult, CraftInputs, CraftId } from './types';
 import { resolveTerasaInputs, terasaProblemShort } from './terasa-inputs';
+import { craftProblemShort, resolveCraftInputs } from './craft-inputs';
+import { formatNum } from './format';
 
 // ─── Izračunski pogon ───────────────────────────────────────
 // Čiste funkcije za odmerek po posameznih dejavnostih.
@@ -7,14 +9,26 @@ import { resolveTerasaInputs, terasaProblemShort } from './terasa-inputs';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const ceil = Math.ceil;
+/** Monter bere decimalno VEJICO. V stolpcih cen in povzetku je ena sama oblika. */
+const nf = (n: number) => formatNum(n, 2);
 
 /** Ograje – balkonske in vrtne ograje ter pragovi.
- *  Stebri na vsakih ~1,5 m + vogali; material na meter; steklo po m². */
+ *  Stebri na vsakih ~1,5 m + vogali; material na meter; steklo po m².
+ *  Vpisana višina se NE sme več usekati: `Math.max(0.9, višina)` je iz 0,5 m
+ *  naredilo 0,9 m obračuna, monter pa je na zaslonu videl svojo mero. Zunaj
+ *  okna vnosa (`craft-inputs.ts`) izračun vrne razlog in ne zaračuna ničesar. */
 export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResult {
-  const length = Math.max(0, input.length ?? 0);
-  const height = Math.max(0.9, input.height ?? 1.0);
+  const inp = resolveCraftInputs('ograje', input);
+  if (!inp.ok) {
+    return {
+      lines: [],
+      summary: [{ label: 'Izračun ni opravljen', value: inp.problems.map(craftProblemShort).join(' · ') }],
+    };
+  }
+  const length = inp.v.length;
+  const height = inp.v.height;
+  const gates = inp.v.gates;
   const material = input.material ?? 'alu';
-  const gates = Math.max(0, input.gates ?? 0);
 
   if (length <= 0) {
     return { lines: [], summary: [{ label: 'Dolžina', value: '0 m' }] };
@@ -25,7 +39,7 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
   const lines = [
     {
       name: material === 'steklo' ? 'Steklena ograja (kaljeno 10 mm)' : material === 'inox' ? 'Inox ograja (cev 42,4 mm)' : 'Aluminijasta ograja',
-      description: `Višina ${r2(height)} m, dolžina ${r2(length)} m`,
+      description: `Višina ${nf(height)} m, dolžina ${nf(length)} m`,
       quantity: r2(length),
       unit: 'm',
       unitPrice: material === 'steklo' ? 240 : material === 'inox' ? 165 : 145,
@@ -56,7 +70,7 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
   if (material === 'steklo') {
     lines.splice(1, 0, {
       name: 'Steklene plošče',
-      description: `Kaljeno steklo 10 mm, ${r2(length)} m × ${r2(height)} m`,
+      description: `Kaljeno steklo 10 mm, ${nf(length)} m × ${nf(height)} m`,
       quantity: r2(length * height),
       unit: 'm²',
       unitPrice: 130,
@@ -76,10 +90,10 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
   return {
     lines,
     summary: [
-      { label: 'Dolžina ograje', value: `${r2(length)} m` },
-      { label: 'Višina', value: `${r2(height)} m` },
+      { label: 'Dolžina ograje', value: `${nf(length)} m` },
+      { label: 'Višina', value: `${nf(height)} m` },
       { label: 'Št. stebrov', value: `${posts} + ${gates} prehodov` },
-      { label: 'Montaža (ocena)', value: `${r2(length * 0.5)} h` },
+      { label: 'Montaža (ocena)', value: `${nf(length * 0.5)} h` },
     ],
   };
 }

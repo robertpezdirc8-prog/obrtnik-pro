@@ -1,17 +1,17 @@
 // E2E: kalkulator WPC terase NE SME TIHO POPRAVITI vpisanega razmika (Task 83).
 //
-// ZAKAJ ŠE ENA E2E DATOTEKA, ko `terasa-input-guard.ts` pove 72/72: napaka je
-// BILA V ZAMLČANJU med zaslonom in računom. Drsnik je dovolil 8 m, koder pa je
+// ZAKAJ ŠE ENA E2E DATOTEKA, ko `terasa-input-guard.ts` pove 84/84: napaka je
+// BILA V ZAMOLČANJU med zaslonom in računom. Drsnik je dovolil 8 m, koder pa je
 // računal pri 0,6 m. Enotski testi aritmetiko poznajo, ne morejo pa pokazati,
 // KAJ JE MONTER VIDEL in kaj je bilo zaračunano — to je UI-vedenje, enako kot
 // pri `e2e-span-rule-ui.ts` in `e2e-band-ui.ts`.
 //
 // KAJPRIKAŽE V PRAVEM BRSKALNIKU:
 //  a) privzeta vrednost je 0,33 m (ROKSALov spodnji rob pasu), NE več 0,4 m,
-//     ki je samokrito sprožilo opozorilo »preširoko«;
+//     ki je samo sprožilo lastno opozorilo »preširoko«;
 //  b) 1,2 m je IZRAČUNANO (odmerek se spremeni) in hkrati pošteno označeno
 //     kot PREŠIROKO — starejša koda bi številko usekla na 0,6 m;
-//  c) 8 m NECA ni zaračunano: kartice s postavkami ni, gumba za dodajanje v
+//  c) pri 8 m NIČ ni zaračunano: kartice s postavkami ni, gumba za dodajanje v
 //     ponudbo ni, razlog pa na zaslonu nosi VPISANO vrednost;
 //  d) po vrnitvi na 0,33 m je vsota ISTA kot na začetku (determinističen
 //     krog — zavračanje ne pusti sledi v računu);

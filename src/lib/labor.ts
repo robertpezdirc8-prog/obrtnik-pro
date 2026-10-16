@@ -1,3 +1,5 @@
+import { formatNum } from './format';
+import { resolveCraftInputs } from './craft-inputs';
 import type { CraftId, CraftInputs } from './types';
 
 // ─── Ocena trajanja montaže — deterministični normativi ─────
@@ -37,6 +39,8 @@ export interface DurationEstimate {
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
+/** Man-ure se pišejo z vejico: 7,2 ne 7.2. */
+const nf = (n: number) => formatNum(n, 1);
 
 /** Ocena trajanja iz vnesenih mer — ista geometrija kot kalkulator. */
 export function estimateDuration(craft: CraftId, inputs: CraftInputs): DurationEstimate | null {
@@ -45,9 +49,15 @@ export function estimateDuration(craft: CraftId, inputs: CraftInputs): DurationE
 
   let units = 0;
   switch (craft) {
-    case 'ograje':
-      units = Math.max(0, inputs.length ?? 0);
+    case 'ograje': {
+      // Trije bralci istega vnosa (cena, načrt, norma) morajo zavrniti skupaj.
+      // Sicer bi vrstica »Trajanje montaže« načrtovala termine po meritvi, ki
+      // je ponudba že zavrnila.
+      const inp = resolveCraftInputs('ograje', inputs);
+      if (!inp.ok) return null;
+      units = inp.v.length;
       break;
+    }
     case 'stopnice':
       units = Math.max(0, inputs.steps ?? 0);
       break;
@@ -84,11 +94,6 @@ export function estimateDuration(craft: CraftId, inputs: CraftInputs): DurationE
     manHours,
     days,
     crew,
-    summary: `≈ ${days} ${days === 1 ? 'delovni dan' : days === 2 ? 'delovna dneva' : 'delovne dni'} (${manHours} man-ur, ekipa ${crew} monterja)`,
+    summary: `≈ ${days} ${days === 1 ? 'delovni dan' : days === 2 ? 'delovna dneva' : 'delovne dni'} (${nf(manHours)} man-ur, ekipa ${crew} monterja)`,
   };
-}
-
-/** Samostojen delovni dan = 8 ur; za prikaz obsega: "16 man-ur". */
-export function formatManHours(h: number): string {
-  return `${r1(h)} man-ur`;
 }

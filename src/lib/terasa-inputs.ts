@@ -1,6 +1,9 @@
 import type { CraftInputs } from './types';
 import { CRAFT_INPUT_DEFAULTS } from './defaults';
-import { formatNum } from './format';
+import {
+  craftProblemShort, craftProblemText, resolveInputBounds,
+  type InputBound, type InputProblem,
+} from './craft-inputs';
 
 // ─── Vnosna okna kalkulatorja WPC terase ────────────────────
 //
@@ -28,17 +31,7 @@ export type TerasaField =
   | 'deckLength' | 'deckWidth' | 'joistSpacing'
   | 'boardLengthM' | 'sideGapMm' | 'endGapMm' | 'boardPricePerM';
 
-export interface TerasaInputBound {
-  field: TerasaField;
-  /** Ime, kot ga vidi monter na zaslonu. */
-  label: string;
-  unit: string;
-  /** Spodnji ali zgornji rob okna; `null` = ta smer ni omejena. */
-  min: number | null;
-  max: number | null;
-  /** Zakaj prav TA rob — okno vnosa mora biti utemeljeno, ne poljubno. */
-  why: string;
-}
+export type TerasaInputBound = InputBound;
 
 export const TERASA_INPUT_BOUNDS: readonly TerasaInputBound[] = [
   {
@@ -82,13 +75,12 @@ const TERASA_DEFAULTS: Record<TerasaField, number> = {
   boardPricePerM: CRAFT_INPUT_DEFAULTS.boardPricePerM ?? 12.5,
 };
 
-export interface TerasaProblem {
-  bound: TerasaInputBound;
-  /** Kar je monter dejansko vpisal (nikoli ne priredimo). */
-  typed: number;
-  side: 'min' | 'max' | 'nan';
-}
+export type TerasaProblem = InputProblem;
 
+/**
+ * Vsi trdi, ki jih calculator uporabi. `TerasaResolved` je ožji zapis istih
+ * polj, da cen in načrtov ne rabajo indeksnega dostopa.
+ */
 export interface TerasaResolved {
   deckLength: number;
   deckWidth: number;
@@ -104,59 +96,13 @@ export type TerasaInput =
   | { ok: false; v: null; problems: TerasaProblem[] };
 
 export function resolveTerasaInputs(input: CraftInputs): TerasaInput {
-  const problems: TerasaProblem[] = [];
-  const values = {} as TerasaResolved;
-
-  for (const bound of TERASA_INPUT_BOUNDS) {
-    const raw = input[bound.field];
-    const given = raw === undefined || Number.isNaN(raw) ? null : Number(raw);
-    const value = given === null ? TERASA_DEFAULTS[bound.field] : given;
-    values[bound.field] = value;
-    if (given === null && raw !== undefined) {
-      problems.push({ bound, typed: raw, side: 'nan' });
-    } else if (bound.min !== null && value < bound.min) {
-      problems.push({ bound, typed: value, side: 'min' });
-    } else if (bound.max !== null && value > bound.max) {
-      problems.push({ bound, typed: value, side: 'max' });
-    }
-  }
-
-  if (problems.length > 0) return { ok: false, v: null, problems };
-  return { ok: true, v: values, problems: [] };
+  const r = resolveInputBounds(TERASA_INPUT_BOUNDS, TERASA_DEFAULTS, input);
+  if (!r.ok) return { ok: false, v: null, problems: r.problems };
+  return { ok: true, v: r.v as unknown as TerasaResolved, problems: [] };
 }
 
-/** Decimalno vejica, kot jo monter bere na zaslonu. */
-const nf = (n: number) => formatNum(n, 2);
+/** Kratka oblika za povzetek kalkulatorja — skupen stroj z ostalimi dejavnostmi. */
+export const terasaProblemShort = craftProblemShort;
 
-function windowText(b: TerasaInputBound): string {
-  if (b.min !== null && b.max !== null) return `${nf(b.min)}–${nf(b.max)} ${b.unit}`;
-  if (b.min !== null) return `najmanj ${nf(b.min)} ${b.unit}`;
-  if (b.max !== null) return `največ ${nf(b.max)} ${b.unit}`;
-  return 'kar je vpisano';
-}
-
-/** Kratka oblika za povzetek kalkulatorja (zelo ozek prostor): samo kaj in koliko. */
-export function terasaProblemShort(p: TerasaProblem): string {
-  if (p.side === 'nan') return `${p.bound.label}: vnos ni število`;
-  return `${p.bound.label} ${nf(p.typed)} ${p.bound.unit}`;
-}
-
-/**
- * Eno samo besedilo za oba uporabnika (cena in načrt), da se ne moreta
- * raziti. Navede VPISANO vrednost, ne popravljene — to je bistvo popravka.
- */
-export function terasaProblemText(p: TerasaProblem): string {
-  const { bound, typed, side } = p;
-  if (side === 'nan') {
-    return `${bound.label}: vnos ni število. Sprejemamo ${windowText(bound)}. ` +
-      'Izračun ni opravljen — nobena postavka ni obračunana.';
-  }
-  const rel = side === 'min'
-    ? `premalo za izračun (${nf(typed)} < ${nf(bound.min ?? 0)})`
-    : `preveč za izračun (${nf(typed)} > ${nf(bound.max ?? 0)})`;
-  // `why` je v registru pisana z malo (je stavek sredi besedila); tu je prvi stavek
-  // za njim, zato mora začeti z veliko — sicer monter bere »… 0 €/m. cena je tvoja …«.
-  const why = bound.why.charAt(0).toUpperCase() + bound.why.slice(1);
-  return `${bound.label} ${nf(typed)} ${bound.unit} je ${rel}; sprejemamo ${windowText(bound)}. ` +
-    `${why}. Izračun ni opravljen — nobena postavka ni obračunana.`;
-}
+/** Dolga oblika za načrt montaže — skupen stroj z ostalimi dejavnostmi. */
+export const terasaProblemText = craftProblemText;

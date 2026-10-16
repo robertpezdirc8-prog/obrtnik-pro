@@ -44,7 +44,8 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 | Stopnice — profil/Blondel | `src/lib/stair-profile.ts` | `tests/verify/stair-profile.ts` 15/15 |
 | Keramika — vzorec/formati | `src/lib/tile-grid.ts` (36-kotna projekcija + Pearson ACF) | `tests/verify/tile-grid.ts` 41/41 |
 | WPC terasa — deske/nosilci | `src/lib/deck-analysis.ts` (`JOIST_SUGGEST_M` je izpeljen iz ROKSALovega pravila, ne vtipkan; isti predlog za ravno in diagonalno) | `tests/verify/deck-analysis.ts` 53/53 |
-| WPC terasa — meja vnosa (Task 83) | `src/lib/terasa-inputs.ts` — enoten resolver za ceno IN načrt montaže; znotraj okna se vpisano uporabi TOČNO, zunaj se izračun ZAVRNE z razlogom, ki imenuje vpisano vrednost (`Math.min`/`Math.max` usekov ni več) | `tests/verify/terasa-input-guard.ts` 84/84 (mutacija + pariteta čez 11 vhodov); `tests/e2e-terasa-input-ui.ts` 36/36 v živem brskalniku |
+| WPC terasa — meja vnosa (Task 83) | `src/lib/terasa-inputs.ts` (od Task 84 sta register in resolver skupna v `src/lib/craft-inputs.ts`) — enoten resolver za ceno IN načrt montaže; znotraj okna se vpisano uporabi TOČNO, zunaj se izračun ZAVRNE z razlogom, ki imenuje vpisano vrednost (`Math.min`/`Math.max` usekov ni več) | `tests/verify/terasa-input-guard.ts` 84/84 (mutacija + pariteta čez 11 vhodov); `tests/e2e-terasa-input-ui.ts` 36/36 v živem brskalniku |
+| Balkonske ograje — meja vnosa (Task 84) | `src/lib/craft-inputs.ts` — skupni register in resolver, ki ga uporabita terasa in ograje; cena, načrt montaže IN norma za trajanje berejo isti rezultat (noben `Math.max(rob, vnos)` več) | `tests/verify/ograje-input-guard.ts` 75/75 (izvor brez useka + pariteta treh bralcev); `tests/e2e-ograje-input-ui.ts` 42/42 v živem brskalniku |
 | Okna/vrata — popis odprtin | `src/lib/opening-schedule.ts` | `tests/verify/opening-schedule.ts` 50/50 |
 | Nadstreški — 2 fotki (fronta+stran) | `src/lib/canopy-analysis.ts` | `tests/verify/canopy-analysis.ts` 52/52 |
 | Fasada — obloga + stena − odprtine | `src/lib/fasada-analysis.ts` (Radon, Sutherland–Hodgman rez) | `tests/verify/fasada-analysis.ts` 33/33 |
@@ -129,7 +130,7 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 > ni posledica kode. **Od Task 71 teh petih ni več rdečih**: izhodna mapa je
 > `os.tmpdir()/obrtnik-pro-verify`, fiksna slika pa je odvedena iz `import.meta.url`.) `photo-replace` ima **391** preverjanj, ne 152.
 
-- `measurement-status` 90/90 · `multiview` 104/104 · `multiview-chain` 66/66 · `multiview-sfm` 122/122 · `multiview-sheet` 20/20 · `photo-replace` 391/391 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `accuracy-test` 35/35 · `measure-report` 48/48 · `laser-protocols` 72/72 · `offer-pipeline` 56/56 · `payment-tracking` 77/77 · `time-tracking` 74/74 · `ar-depth` 32/32 · `colmap-model` 44/44 · `site-diary` 57/57 · `eslog` 101/101 · **FAZA-8 nove: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26** · **F3: `render-promise` 25/25** · **Task 71: `portable-paths` 28/28** · **FAZA-9: `band-suggest` 54/54 · `suggest-gate` 21/21** · **Task 74: `band-ui-contract` 54/54** · **Task 75: `gt-evidence` 102/102** · **Task 80: `roksal-span-rules` 74/74, od Task 81 130/130, od Task 82 133/133** · **Task 82: `roksal-board-gap` 58/58** · **Task 83: `terasa-input-guard` 84/84** · `scale-suggestions` ✓ · `scene-classify` ✓ — vsi assertivni skripti v tests/verify izhod 0 (**51/51**, kar velja od Task 83; 50/50 od Task 82; 49/49 od Task 80; 48/48 od Task 75; 47/47 od Task 74; 44/44 od Task 71, prej 38/43 zaradi petih okoljskih poti)
+- `measurement-status` 90/90 · `multiview` 104/104 · `multiview-chain` 66/66 · `multiview-sfm` 122/122 · `multiview-sheet` 20/20 · `photo-replace` 391/391 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `accuracy-test` 35/35 · `measure-report` 48/48 · `laser-protocols` 72/72 · `offer-pipeline` 56/56 · `payment-tracking` 77/77 · `time-tracking` 74/74 · `ar-depth` 32/32 · `colmap-model` 44/44 · `site-diary` 57/57 · `eslog` 101/101 · **FAZA-8 nove: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26** · **F3: `render-promise` 25/25** · **Task 71: `portable-paths` 28/28** · **FAZA-9: `band-suggest` 54/54 · `suggest-gate` 21/21** · **Task 74: `band-ui-contract` 54/54** · **Task 75: `gt-evidence` 102/102** · **Task 80: `roksal-span-rules` 74/74, od Task 81 130/130, od Task 82 133/133** · **Task 82: `roksal-board-gap` 58/58** · **Task 83: `terasa-input-guard` 84/84** · **Task 84: `ograje-input-guard` 75/75** · `scale-suggestions` ✓ · `scene-classify` ✓ — vsi assertivni skripti v tests/verify izhod 0 (**52/52**, kar velja od Task 84; 51/51 od Task 83; 50/50 od Task 82; 49/49 od Task 80; 48/48 od Task 75; 47/47 od Task 74; 44/44 od Task 71, prej 38/43 zaradi petih okoljskih poti)
 - Poslovni moduli (deterministično, 0 AI, pogodbe iskrenosti kot pri merjenju): sledenje ponudbam (`offer-pipeline.ts` — win-rate < 3 odločenih = brez trditev), terjatve/Mahnwesen (`payment-tracking.ts` — povprečje < 3 plačanih = null), časovnica (`time-tracking.ts` — obračun na 0,25 h izrecno izpisan, povprečje < 3 dni = null), terenski dnevnik (`site-diary.ts` — ure iz časovnice samo za vnos s ponudbo, brez vnosov span = null, nič tihih »0 h«), e-račun (`eslog.ts` — račun z neskladnimi zneski ali brez postavk se NE izvozi (iskrena vrata 409); snapshot postavk ob izdaji računa (InvoiceItem) — zgodovina ne sledi spremembam ponudbe; opozorila (manjka IBAN/naslov kupca) NE blokirajo in so izpisana kot XML komentar)
 - `tsc --noEmit` **PONOVLJENO 2026-10-16 po FAZA-8** (izmerjeno, ne iz spomina): izhodna koda 1, 5 napak v 5 vrsticah, **0 vrstic se začne na `src/`** (`grep -c '^src/'` = 0). Napake so izven aplikacije: `examples/websocket/frontend.tsx(4,20)` in `examples/websocket/server.ts(2,24)` TS2307, `tests/e2e-compare-fixture.ts(69,7)/(129,7)/(130,7)` TS2867. Zavestno NE popravljene: popravek = nova odvisnost (`@types/bun`, `socket.io`), nobena pa ni na fotomontažni poti.
 - `tsc --noEmit` **PONOVLJENO ŠE 2026-10-16 po Task 71**: ISTIH 5 vrstic (primerjano z `cmp`, izpis identičen), pri `tests/e2e-compare-fixture.ts` so vrste zamaknjene na (79,7)/(139,7)/(140,7), ker je Task 71 vanj vstavil 10 vrstic prehodnega uvoza — ne nove napake. Opomba o kodi: en zagon vrne 2 ob identičnem izpisu, ponovna zagona stabilno 1; zapisana je koda 1, vir resnice je izpis.
@@ -177,7 +178,39 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
   seštevanje pogoltnilo oba, agregator pa upošteva zadnjo vrsto. Posledično je bila tudi
   `scale-suggestions.ts` brez števila preverb (izpisala je samo `VSE OK ✓`); zdaj izpiše
   `REZULTAT: 17 OK, 0 NAPAK` in je štet.
-- **Ponovljeno 2026-10-16 (Task 83):** `bun tests/verify-counts.ts` → **3012 OK / 0 NAPAK** v
+- **Ponovljeno 2026-10-16 (Task 84):** `bun tests/verify-counts.ts` → **3087 OK / 0 NAPAK** v
+  **45** od **52** skriptov (brez brojača je istih sedem). Delta glede na Task 83 je **+75** in je
+  v celoti nov `ograje-input-guard` (75/75); nobeno preverjanje ni izginilo, `terasa-input-guard`
+  ostaja **84/84** kljub temu, da je njegov mehanizem preseljen v skupni modul. `tsc --noEmit`
+  izhodna koda 0, `eslint . --ignore-pattern '.next*/**'` izhodna koda 0 brez zapisov.
+  Nov `tests/e2e-ograje-input-ui.ts` **42/42** v živem brskalniku, ponovljenem po zadnji
+  besedilni spremembi v načrtu.
+  **Kaj je bilo najdeno:** pri ograjah je bil isti koren, a z dvema dodatnima zapletoma.
+  Prvo: cena je računala `Math.max(0.9, višina)`, načrt montaže pa je bral `i.height ?? 1`
+  neposredno — dva bralca ISTEGA polja, ki se lahko ne strinjata. Drugo: tretji bralec istega
+  vnosa je bila norma za trajanje montaže (`src/lib/labor.ts`), ki je iz nje računala man-ure in
+  dneve tudi takrat, ko je bila mera že zavržena — torej bi termine načrtovala po številki, ki je
+  ponudba ne sprejme. Tretje: polje je imelo DOM mejo `min={0.9}`, ki je obljubljala predpis,
+  in je načrt trdil »predpis zahteva ≥ 1,0 m«, vira pa aplikacija nima.
+  **Popravek:** mehanizem iz `terasa-inputs.ts` je prenesen v `src/lib/craft-inputs.ts` (register
+  meja, resolver, kratko in dolgo besedilo zavrnitve), terasa ga zdaj samo še uvaža — razhajanje
+  v formulaciji je strukturno nemogoče. `calculateOgraje`, `ograjePlan` in `estimateDuration` vsi
+  hodijo čez `resolveCraftInputs('ograje', …)`. Okno: dolžina 0–2000 m, višina 0,2–4 m, prehodi
+  0–200 kos, vsak rob z razlogom, ki NE citira ROKSALA (okno vnosa ni inženirski predpis).
+  `min={0.9}` je zamenjan z namigom, ki številke vzame IZ REGISTRA. Višinski nasvet je zdaj
+  »priporočilo iz prakse, ne citiran predpis«, pod 0,9 m pa načrt reče, da zahteve preveriti ne
+  more. Man-ure in višine v opisih se izpisujejo z vejico (`formatNum`), nepoklican
+  `formatManHours` (ki je številke še tiskal s piko) je izbrisan.
+  **Kaj je sledilo:** ob končnem pregledu razlike so komentarji v `labor.ts` in
+  `install-plan.ts` vsebovali pokvarjeno slovenščino, pas med priporočilom in mejo vnosa
+  (0,9–1,0 m) pa ni imel nobenega preverjanja — zato je bilo dodanih dve preverjanji (0,95 m je
+  OPOZORILO in aplikacija v razlogu pove, da lokalne zahteve po predpisu same preveriti ne more),
+  besedila pa so bila popravljena. Številka preizkusov je zato 75, ne 73, in je vzeta IZ
+  IZMERJENEGA izpisa agregatorja.
+  **Pouk o lastnih pričakovanjih:** štiri pričakovanja v prvem naborju preizkusov so bila napačna,
+  ne koda — prazna dolžina vrne `Dolžina: 0 m` (ne zavrnitve), `craftProblemText` začne razlog z
+  veliko začetnico, kratki povzetek ne vsebuje besede »preveč«, `formatNum` pa tiska »0,2« in
+  »4«, ne »0,20« / »4,00«. Vsa štiri so bila popravljena proti IZMERJENEMU izpisu, nobeno proti kodi.
   **44** od **51** skriptov (brez brojača je istih sedem; število skriptov je zrastelo za eno —
   nov `terasa-input-guard`). Delta glede na Task 82 je **+84** in je v celoti ta nov skript
   (84/84); nobeno preverjanje ni izginilo, `deck-analysis` ostaja 53/53 kljub trem novim

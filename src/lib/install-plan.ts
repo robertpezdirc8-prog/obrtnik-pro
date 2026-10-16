@@ -1,6 +1,7 @@
 import type { CraftId, CraftInputs } from './types';
 import { maxAllowedSpan, profileLabel } from './roksal-span-rules';
 import { resolveTerasaInputs, terasaProblemText } from './terasa-inputs';
+import { craftProblemText, resolveCraftInputs } from './craft-inputs';
 
 // ─── Material & montaža — čiste deterministične skripte ─────
 // Brez AI: geometrija, enakomerni razmaki, 1D rezalni načrt
@@ -178,8 +179,17 @@ const JOIST_STOCK_M = 4;   // nabavna dolžina nosilcev WPC
 const TILE_BOX_M2 = 1.44;  // m² na škatlo ploščic
 
 function ograjePlan(i: CraftInputs): InstallPlan {
-  const L = Math.max(0, i.length ?? 0);
-  const H = i.height ?? 1;
+  const inp = resolveCraftInputs('ograje', i);
+  if (!inp.ok) {
+    return {
+      buys: [],
+      cuts: [],
+      checks: inp.problems.map((p) => ({ label: 'Izračun ni opravljen', detail: craftProblemText(p), status: 'bad' as const })),
+    };
+  }
+  const L = inp.v.length;
+  const H = inp.v.height;
+  const gates = inp.v.gates;
   if (L <= 0) return { buys: [], cuts: [], checks: [] };
 
   const posts = evenPosts(L, 1.5);
@@ -206,11 +216,14 @@ function ograjePlan(i: CraftInputs): InstallPlan {
       },
     ],
     checks: [
+      // 1,0 m in 0,9 m STA PRIPOROČILI iz prakse, ne citiran predpis — aplikacija
+      // vira nima in lokalne zahteve preveriti ne more. Besedilo to pove eksplicitno,
+      // sicer bi monter bral pravno trditev, je pa aplikacija ne more dokazati.
       H >= 1.0
-        ? { label: 'Višina ograje', detail: `${nf.format(H)} m — skladno s priporočilom (≥ 1,0 m, kjer nivoja razlikujeta > 45 cm)`, status: 'ok' }
+        ? { label: 'Višina ograje', detail: `${nf.format(H)} m — nad priporočilom 1,0 m (priporočilo iz prakse, ne citiran predpis)`, status: 'ok' }
         : H >= 0.9
-          ? { label: 'Višina ograje', detail: `${nf.format(H)} m — pod priporočilom 1,0 m; preveri lokalne predpise`, status: 'warn' }
-          : { label: 'Višina ograje', detail: `${nf.format(H)} m — prenizko; predpis zahteva ≥ 1,0 m`, status: 'bad' },
+          ? { label: 'Višina ograje', detail: `${nf.format(H)} m — pod priporočilom 1,0 m; lokalne zahteve po predpisu aplikacija ne more preveriti`, status: 'warn' }
+          : { label: 'Višina ograje', detail: `${nf.format(H)} m — pod 0,9 m; zahtevo po predpisu preveri sam (vira ni v aplikaciji)`, status: 'bad' },
       { label: 'Razmak palic (vertikalno polnilo)', detail: 'največ 11 cm — kontrola pri montaži z merilnim vložkom 11 cm (varnostna praksa, ROKSAL tega ne objavlja)', status: 'info' },
       postsOverFloor
         ? {
@@ -227,8 +240,8 @@ function ograjePlan(i: CraftInputs): InstallPlan {
             }`,
             status: 'ok',
           },
-      ...(i.gates ?? 0) > 0
-        ? [{ label: 'Vgrajeni prehodi', detail: `${i.gates} × prehod 0,9 m — pusti montažni tlak 1–2 cm na stran`, status: 'info' as const }]
+      ...(gates > 0)
+        ? [{ label: 'Vgrajeni prehodi', detail: `${gates} × prehod 0,9 m — pusti montažni tlak 1–2 cm na stran`, status: 'info' as const }]
         : [],
     ],
   };

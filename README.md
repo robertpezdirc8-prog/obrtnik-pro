@@ -107,6 +107,21 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > pravila (`JOIST_SUGGEST_M`). Zaklenjeno: `tests/verify/terasa-input-guard.ts` (**84/84**,
 > vključno z mutacijskim dokazom in pariteto cena ⇄ načrt čez 11 vhodov) in
 > `tests/e2e-terasa-input-ui.ts` (**36/36** v živem brskalniku).
+> **Isti pogon je zdaj tudi pri ograjah (Task 84, 2026-10-16).** Tam je bil usek še hujši: cena
+> je računala `Math.max(0.9, višina)`, načrt montaže pa je bral vpisano višino neposredno — dva
+> bralca istega polja sta si lahko nasprotovala. Monter je vpisal 0,5 m, na zaslonu videl 0,5 m,
+> ponudba pa je tekla pri 0,9 m. Mehanizem je iz terase prenesen v `src/lib/craft-inputs.ts`
+> (register meja + resolver + besedilo zavrnitve), `terasa-inputs.ts` ga zdaj samo še uporablja,
+> zato se formulaciji ne moreta raziti. `src/lib/pricing.ts` in `src/lib/install-plan.ts` oba
+> hodita čez `resolveCraftInputs('ograje', …)`. Tretji bralec istega vnosa — norma za trajanje
+> montaže (`src/lib/labor.ts`) — se ustavi SKUPAJ s ponudbo: sicer bi termine načrtoval po
+> meritvi, ki jo je ponudba že zavrnila. Poleg tega je bila zaslonska meja `min={0.9}` (ki je
+> obljubljala poseg v vnos) zamenjana z namigom, vzetim IZ REGISTRA, trditev »predpis
+> zahteva ≥ 1,0 m«, ki ni imela vira, pa je zdaj označena kot priporočilo iz prakse. Številke v
+> opisih in man-ure se izpisujejo z vejico (`formatNum`), kot jih bere monter. Zaklenjeno:
+> `tests/verify/ograje-input-guard.ts` (**75/75**, vključno s srednjim pasom 0,9–1,0 m, ki ga
+> prej ni pokrilo nobeno preverjanje) in `tests/e2e-ograje-input-ui.ts`
+> (**42/42** v živem brskalniku, z dvema posnetkoma na disku).
 
 ---
 
@@ -419,18 +434,20 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
 25/25**, **gt-evidence 102/102**, **roksal-span-rules 133/133**, **roksal-board-gap 58/58**,
 **terasa-input-guard 84/84** (Task 83: noben vnos terase se tiho ne useka; cena in montažni načrt
-se ravnavata po ISTEM resolverju).
+se ravnavata po ISTEM resolverju),
+**ograje-input-guard 75/75** (Task 84: isti pogon pri ograjah — cena, načrt IN norma za trajanje
+berejo vpisano višino dobesedno ali pa jo vsi trije zavrnejo).
 Assertivnih preverjanj skupaj,
 zdaj IZMERJENO Z ENO STEVLJO in
-ne sešteto iz spomina: **3012 OK / 0 NAPAK** v **44** od **51** `tests/verify/*.ts` skriptov;
+ne sešteto iz spomina: **3087 OK / 0 NAPAK** v **45** od **52** `tests/verify/*.ts` skriptov;
 sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
 `quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
 `bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
 zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
 **20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
 obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
-seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2928 → **3012** = +84
-(`terasa-input-guard` je nov s 84 preverjanji), nič se ni izgubilo.
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 3012 → **3087** = +75
+(`ograje-input-guard` je nov s 75 preverjanji), nič se ni izgubilo.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
@@ -449,6 +466,13 @@ označen PREŠIROKO in je še vedno ponudben; 8 m se ZAVRNE z »Izračun ni opra
 8 m, izprazni postavke in gumb »Dodaj v ponudbo«, vnosa ne popravi in isto zaustavitev javi tudi v
 načrtu montaže; vrnitev na 0,33 m da POVEČ ISTO vsoto; 12 mm reže ostane 12 mm; 0 €/m ostane 0,00 €;
 −3 €/m je zavrnjen po imenu; posnetek `terasa-input-ui.png` preverjen po velikosti na disku),
+`e2e-ograje-input-ui.ts` **42/42** (Task 84: ograje v živem brskalniku — DOM meja `min={0.9}` je
+izginila, namig pod poljem vzame ISTE robove kot resolver; 0,5 m se izračuna in v OPISU POSTAVKE
+piše 0,5 m, ne 0,9 m, kontrola pa je pošteno označena in pravi, da predpisa aplikacija ne more
+preveriti; 5 m in 300 prehodov se ZAVRNETA, postavke, gumb in tudi norma za trajanje montaže
+izginejo, vpisana številka pa ostane na zaslonu; vrnitev na 1,1 m da POVEČ ISTO vsoto; 7,2 man-ur
+je zapisana z vejico; oba posnetka — sprejeta 0,5 m in zavrnjen 5 m — preverjena po velikosti NA
+DISKU),
 `e2e-colmap-cdp.ts` 36/36.
 
 ### E2E dokazi
@@ -547,13 +571,20 @@ worklog.md        # delovni dnevnik razvoja (po Task ID)
   ozadje) — dokumentirano v opombi profila.
 - **Izvoz z oznako „original“ je blokiran** dokler gradiva niso osebno overjena
   (fizični vzorci); vsi izvozi nosijo žig „VIZUALIZACIJA ZA PREDSTAVITEV“.
-- **Številke, ki jih ROKSAL ne objavlja, a vplivajo na rezultat (odprto po Task 83):**
+- **Številke, ki jih ROKSAL ne objavlja, a vplivajo na rezultat (odprto po Task 84):**
   enotne cene materiala so pogodba z dobaviteljem in so zato samo preverjene proti
   negativnosti; spodnje/zgornje meje drsnikov v vizualizaciji; računski razpored stebrov
-  dopušča 60–300 cm; trditev o zakonski najmanjši višini ograje ≥ 1,0 m; „maks. 3 m za
-  običajno kritino«; pragovi 5/7/10°; usek rezerve `Math.min(30, …)`; useki pri dolžini in
-  položu stopnic; odstotki kapare. Nobena od teh še nima preverljive podlage in je še vedno
-  v kodi kot samoumevna — to je naslednji kup del, ne ta.
+  dopušča 60–300 cm; „maks. 3 m za običajno kritino«; pragovi 5/7/10°; odstotki kapare.
+  **Od Task 84 naprej v istem kupu:** tihi useki, ki so jih prenesle še preostalih pet
+  dejavnosti (`Math.max(0.6, širina stopnic)`, `Math.max(1, cena ploščic)` in
+  `Math.min(30, rezerva)`, `Math.max(0.5, velikost okna)`, `Math.max(2, št. stebrov nadstreška)`,
+  neto površina fasade) — mehanizem je zdaj skupen, zato je za vsak naslednji kalkulator treba
+  napisati samo register meja; ter decimalne PIKE v opisih cen ostalih dejavnosti (ograje in
+  norma zdaj pišeta z vejico, ostale dejavnosti še ne). Nobena od teh številk še nima
+  preverljive podlage in je še vedno v kodi kot samoumevna — to je naslednji kup del, ne ta.
+  **Iz te liste je izpadla** trditev o zakonski najmanjši višini ograje ≥ 1,0 m: Task 84 jo je
+  preimenoval v »priporočilo iz prakse, ne citiran predpis« in načrt zdaj eksplicitno pravi, da
+  lokalne zahteve preveriti ne more (`src/lib/install-plan.ts`).
 - Trditve o ROKSALovih mejah in režah so zdaj vezane na objavljene citate
   (`src/lib/roksal-span-rules.ts`); kjer objave ni, UI reče »ROKSAL tega ne objavlja« in
   pokaže samo vrednost, jasno označeno kot računski privzetek (`realCm` je tak privzetek).

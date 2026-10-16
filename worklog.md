@@ -2194,7 +2194,7 @@ Stage Summary:
 - POPRAVEK LASTNEGA BESEDILA: v tem poročilu so bile tri pokvarjene besede, ki jih je posnel šele
   pregled (»računalna pa je«, »ISTEMGA resolverja«, »živevem brskalniku«), in pet cirilčnih
   podobnic (a, e, o, ...) v `src/` in `tests/`, ena od njih UPORABNIKU VIDNA (beseda »Obe« v nadstrešku je bila napisana s cirilko).
-  Pregled `grep -rn "[a-яA-ЯёЁ]" src/ tests/` je zdaj prazen.
+  Pregled `grep -rn "[а-яА-ЯёЁ]" src/ tests/` je zdaj prazen.
 
 Stage Summary:
 - To, kar Robert vidi: v kalkulatorju WPC terase sme vpisati katerokoli številko in aplikacija je
@@ -2231,9 +2231,64 @@ ne pa noben številčni preizkus:
   vzorcu `[а-яА-ЯёЁ]` (orodje, ne besedilo) in v citatih pokvarjenih besed.
 - IZMERJENO: `terasa-input-guard` **84 OK / 0 NAPAK**; `e2e-terasa-input-ui` **36/36** (oba
   posnetka preverjena po velikosti na disku); sweep **3012 OK / 0 NAPAK** v 44/51 skriptih
-  (+84, nič ni izginilo); `tsc` 0 napak; `eslint` 0 zapisov; `grep -rn "[a-яA-ЯёЁ]" src/ tests/`
+  (+84, nič ni izginilo); `tsc` 0 napak; `eslint` 0 zapisov; `grep -rn "[а-яА-ЯёЁ]" src/ tests/`
   prazen.
 - POUK: številčni preizkusi varujejo račun, ne pa besede. Uporabniku viden okvarek v slovnici je
   bil v kodi dva commita star, ker ga noben preizkus ni bral — zato so zdaj besede (sklon, velika
   začetnica) zapisane kot trditve v preizkusu, ne samo v dokumentaciji.
+- Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
+
+## Task 84 — ISTI POGON PRI OGRAJAH: cena, načrt in norma berejo isti vnos (2026-10-16)
+
+Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v hujši obliki.
+
+- **KAJ JE BILO NAPAČNO.** Cena je računala `Math.max(0.9, input.height ?? 1.0)`, načrt montaže
+  pa isto višino bral neposredno (`i.height ?? 1`). Monter je vpisal 0,5 m, na zaslonu videl
+  0,5 m, ponudba pa je tekla pri 0,9 m — in noben napis ga ni na to opozil. Dva bralca istega
+  polja sta si lahko svobodno nasprotovala, ker nobenega skupnega vira ni bilo.
+- **TRETJI BRALEC, KI GA NIHČE NI UJEL.** Norma za trajanje montaže (`src/lib/labor.ts`) je iz
+  istih mer računala man-ure in dneve tudi takrat, ko je bila mera že zunaj okna. Zavrnjen
+  izračun torej ni dal ponudbe, je pa dal termin — obrnljen vrstni red zaupanja. Zdaj vsi trije
+  (cena, načrt, norma) hodijo čez `resolveCraftInputs('ograje', …)` in zavrnejo skupaj.
+- **SKUPEN MEHANIZEM.** Register meja, resolver in oboje besedilo zavrnitve so preneseni iz
+  `terasa-inputs.ts` v nov `src/lib/craft-inputs.ts`; terasa jih zdaj samo še uvaža. Razhajanje
+  v formulaciji med dvema kalkulatorjema je s tem strukturno nemogoče, naslednji kalkulator pa
+  potrebuje samo svoj niz meja.
+- **OKNO VNOSA NI PREDPIS.** Za ograje: dolžina 0–2000 m, višina 0,2–4 m, prehodi 0–200 kos.
+  Vsak rob nosi razlog, ki pravi, kaj aplikacija še ZNA izračunati — ne sklicuje se na ROKSAL in
+  ne na predpis. Namenoma: ROKSALov pas (razmiki, reže) znotraj okna samo OCENJUJE vpisane
+  vrednosti, okno pa jih sprejme ali zavrne.
+- **DOM MEJA JE OBLJUBA.** `min={0.9}` na vnosnem polju je obljubljala poseg v vnos in ga je
+  tudi držala. Odstranjena je, namesto nje je namig, ki številke vzame IZ REGISTRA (`inputWindowHint`),
+  zato beseda pod poljem in zavrnitev v ponudbi ne moreta zletiti narazen.
+- **TRDITEV BREZ VIRA.** Načrt je pisal »predpis zahteva ≥ 1,0 m«. Aplikacija vira nima in
+  lokalne zahteve preveriti ne more, zato je številka zdaj označena kot »priporočilo iz prakse,
+  ne citiran predpis«, pod 0,9 m pa stavek eksplicitno pravi, da mora monter zahtevo preveriti
+  sam. To je edini pošten zapis, dokler vira ni.
+- **VEJICA, NE PIKA.** `formatNum` je bil v kodi že prisoten, a so ga opisi cen brali samo delno:
+  »Višina 0.5 m« in »7.2 man-ur«. Ograje in norma zdaj pišeta z vejico; ostalih pet
+  dejavnosti čaka v istem kupu. Nepoklican `formatManHours` (ki je številke tiskal s piko) je
+  izbrisan, ne prepisan.
+- IZMERJENO: nov `tests/verify/ograje-input-guard.ts` **75 OK / 0 NAPAK** (pregled vira,
+  da useka ni več; dobesedna uporaba vpisane višine v ceni IN načrtu, prazna dolžina, devet zavrnitev
+  zunaj okna, pariteta obeh uporabnikov čez pet vhodov, determinističen krog, register, namig,
+  besedilo (sklon in velika začetnica), zavrnjen srednji pas 0,9–1,0 m in norma); nov
+  `tests/e2e-ograje-input-ui.ts` **42/42** v živem brskalniku, z
+  dvema posnetkoma preverjenima po velikosti NA DISKU; `terasa-input-guard` po preselitvi
+  mehanizma ostane **84/84** in `e2e-terasa-input-ui` **36/36**; sweep **3087 OK / 0 NAPAK** v
+  45/52 skriptih (+75, nič ni izginilo); `tsc` 0 napak; `eslint` 0 zapisov; cirilčni pregled
+  vseh spremenjenih datotek prazen.
+- ZADNJI POPRAVEK (ob pregledu razlike, ne ob prvem naboru): komentarja v `labor.ts` in
+  `install-plan.ts` sta bila zapisana s pokvarjeno slovenščino, besedilo v srednjem pasu pa
+  »predpisa lokalne zahteve aplikacija ne more preveriti« je bilo napačno sestavljeno. Vsa tri
+  so popravljena, pas 0,9–1,0 m pa je dobil DVE novi preverjanji, ker prej ni bil zaklenjen nihče:
+  zdaj 0,95 m vrne OPOZORILO (ne napake) in v razlogu pove, da aplikacija lokalne zahteve po
+  predpisu same preveriti ne more. E2E je bil po besedilni spremembi ponovljen in ostane 42/42.
+- POUK O TESTIH: štirje prvotno rdeči preizkusi so bili napaka pričakovanja, ne kode — prazna
+  dolžina vrne `Dolžina: 0 m` in ne zavrnitve, `craftProblemText` dvigne `why` šele ob izpisu
+  (»Pod 20 cm …«), kratki povzetek vsebuje samo ime in vrednost, `formatNum` pa tiska »0,2« in
+  »4«, ne »0,20« / »4,00«. Popravljena je bila pričakovanja, ne koda.
+- POUK O DOKAZIH: E2E je bil enkrat rdeč zaradi znaka, ki ga v kodi ni mogoče napisati —
+  `formatEUR` je `Intl.NumberFormat` in med številko ter € da nepretržen presledek (U+00A0).
+  Primerjava »1342,00 €« zato ne more biti dobesedna; normalizira se, preden se preveri.
 - Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
