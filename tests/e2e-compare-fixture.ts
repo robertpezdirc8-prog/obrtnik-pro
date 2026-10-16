@@ -76,7 +76,7 @@ const newBuf = renderRaw(newPixel);
 
 // PRED: PNG (za nalaganje skozi realni processImage pipeline v brskalniku)
 const beforePng = await sharp(oldBuf, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
-await Bun.write(TMP('e2e-compare-before.b64'), beforePng.toString('base64'));
+await __vfyFs.promises.writeFile(TMP('e2e-compare-before.b64'), beforePng.toString('base64'));
 
 // PO: JPEG 0,92 (enako kot app: comp.toDataURL('image/jpeg', 0.92)) → dataUrl
 const afterJpeg = await sharp(newBuf, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 92 }).toBuffer(); // ≈ canvas toDataURL('image/jpeg', 0.92)
@@ -136,6 +136,6 @@ const versions = [
   { id: 'e2e-compare-1', createdAt: CREATED_AT, profileLabel: metaOk.profileLabel, meta: metaOk, aux, dataUrl: afterDataUrl },
   { id: 'e2e-compare-2', createdAt: CREATED_AT, profileLabel: metaBrezTeksture.profileLabel, meta: metaBrezTeksture, aux, dataUrl: afterDataUrl },
 ];
-await Bun.write(TMP('e2e-compare-versions.json'), JSON.stringify(versions));
-await Bun.write(TMP('e2e-compare-ref.json'), JSON.stringify({ oldQuadAvg, newQuadAvg, W, H, created: CREATED_AT }));
+await __vfyFs.promises.writeFile(TMP('e2e-compare-versions.json'), JSON.stringify(versions));
+await __vfyFs.promises.writeFile(TMP('e2e-compare-ref.json'), JSON.stringify({ oldQuadAvg, newQuadAvg, W, H, created: CREATED_AT }));
 console.log(`fixture zapisan: ${versions.length} različici (v1 overjena → izvoz, v2 brez teksture → blokada), PNG ${(beforePng.length / 1024).toFixed(0)} KB, JSON ${(JSON.stringify(versions).length / 1024).toFixed(0)} KB`);

@@ -11,15 +11,16 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 48/48 skript zeleno** (pet, ki je bilo doslej rdečih, je
+> Zadnja polna preverba: **regresija 49/49 skript zeleno** (pet, ki je bilo doslej rdečih, je
 > padalo samo zaradi poti, vezanih na razvojni stroj — `/tmp/*.png` in ena absolutna
 > kontejnerska pot; odpravljeno 2026-10-16, Task 71, z novim varovalnim skriptom
 > `portable-paths`), **photo-replace 391/391, assertion 119/119**
 > (FAZA-8, oktober 2026). **PONOVLJENO PO FAZA-8 (2026-10-16, `node_modules` nameščeni):**
-> `tsc --noEmit` — v `src/` **0 napak**; preostane 5 napak IZVEN aplikacije (`examples/websocket/`
-> ×2 manjkata `socket.io`/`socket.io-client`, `tests/e2e-compare-fixture.ts` ×3 manjka
-> `@types/bun`) — zavestno NE popravljene, ker bi popravek pomenil novo odvisnost, in nobena
-> ni na merilni ali fotomontažni poti. `eslint .` izhod 0. E2E v brskalniku: mobilni 390×844 in
+> `tsc --noEmit` — **0 napak v celotnem repozitoriju** (Task 79: `tests/e2e-compare-fixture.ts`
+> je prešel z `Bun.write` na `node:fs.promises.writeFile`, `examples/websocket/` pa je iz
+> `tsconfig` izključen, ker rabita `socket.io`/`socket.io-client`, ki ju zavestno NE nameščamo —
+> primera nista del aplikacije in njuna tipizacija ne more pokriti napake v `src/`).
+> `eslint .` izhod 0. E2E v brskalniku: mobilni 390×844 in
 > namizni 1280, **0 konzolnih napak**, brez vodoravnega drsenja, dokazana FAZA-8 veja (širina
 > pusta ⇒ značka »Širina ravnine NI izmerjena«, izris odprt, naročilnica zaprta z razlogom,
 > merjenje onemogočeno). E2E je našel in odpravil DVA resnična UI problema, ki ju 391 statičnih
@@ -47,6 +48,18 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > z jedrom ujamata na **0,00 %** na istih bajtih. Pri tem je UI-plast našla napako, je jedro
 > ne more: potrjen predlog brez mere je krivil oglišča namesto manjkajoče mere (popravljeno v
 > `foto-replace.tsx`, zaklenjeno v `band-ui-contract.ts` in v E2E).
+> **OBJAVLJENE MERE namesto ugibanja (Task 80, 2026-10-16):** številka razmika med stebrički
+> v razporedu stebrov doslej ni bila podatek — bil je privzetek kode (`150`). Zdaj je to
+> modul `src/lib/roksal-span-rules.ts` (**74/74**), ki hrani 16 ROKSALovih pravil **iz besede v
+> besedo** (navedeno + URL `roksal.com`), vsako razvrščeno kot `DIRECT` (gre za ta element) ali
+> `ADJACENT` (sistemski namig iz DRUGEGA elementa — NIKOLI ne postane meja, samo opombo),
+> pas (npr. 133–140 cm) pa je vedno rešen z SPODNJIM robom. Monterjev vmesnik zdaj pokaže
+> »Največ 150 cm po ROKSALovih navodilih (roksal.com/…montaza-wpc-deske/) — „…»« in OPOZORI,
+> če je izbrana meja nad objavljeno; proizvajalčeva lastna RAZHAJANJA (150 proti 180 cm pri
+> nizki ograji) javi in vzame NIŽJO, ne tiho reši. Dokaz v brskalniku: `tests/e2e-span-rule-ui.ts`
+> (**20/20**) z `span-rule-ui.png` na disku, panel je zdaj viden tudi BREZ fotke (nov vnos v
+> zavihku Pripomočki). Računski razpored (`planPostLayout`) se ni spremenil — pravila svetujejo,
+> ne vsiljujejo, zato uporabnikova izbira ostane veljavna in je jasno označena kot nad mejo.
 
 ---
 
@@ -184,6 +197,34 @@ in deterministično obdelani (`tests/make-*-fetch.ts` prek CDP,
 **36 uradnih profilov** + 6 generičnih vizualizer privzetkov. Gradiva so v
 `public/roksal/` (lestvice, preseki, vgradnje, dekor tile-i 256×256).
 
+### Objavljena montažna pravila (`src/lib/roksal-span-rules.ts`)
+
+Dokler je bila meja razmika med stebrički samo privzetek kode (`150`), je aplikacija
+monterju prodajala številko, ki je ni znala utemeljiti. Zdaj je 16 ROKSALovih pravil za
+razmike shranjenih **iz besede v besedo**, vsako s svojim virom:
+
+| Polje | Pomeni |
+|---|---|
+| `quote` / `source` | dobesedni citat z roksal.com in URL strani, od kod je vzet |
+| `basis` | `DIRECT` (citat govori O TEM elementu) / `ADJACENT` (sistemski namig IZ DRUGEGA elementa) |
+| `kind` | `limit` (merjena meja) / `consequence` («pri ≥ 180 cm dodaj še en stebriček» — NI meja) |
+| `bandCm` | objavljen pas (133–140, 133–145, 70–80) → vedno velja **SPODNJI** rob |
+
+Pravila, ki jih iz tega izpelje `maxAllowedSpan`: meja je **najnižja** med uporabnimi
+`DIRECT` pravili; `ADJACENT` pravili (100 cm nosilci, 120 cm KUBO lemnice) NIKOLI ne
+vežeta — dasta samo opombo, ker citat ne govori o stebričkih; kjer se proizvajalec SAM
+protislovi (150 cm »ne glede na višino« proti 180 cm pri nizki ograji), se razhajanje
+**izpiše** in vzame NIŽJA meja, ne tiho izbere. Kjer podatka ni (npr. profil ni znan), je
+odgovor iskreno `UNKNOWN` z mejo `0`, ne ugibanje.
+
+V monterjevem vmesniku (`post-layout-panel`) to pomeni: pri razporedu je vedno izpisana
+objavljena meja z citatom in virom — »Največ 150 cm: „Maksimalni razmak med stebrički je
+150 cm ne glede na višino ograje." « (roksal.com/woodcore-wpc-deske/montaza-wpc-deske/).
+Če monter izbere višjo mejo, se pojavi OPOZORILO, razpored pa še vedno računa z izbrano
+mero — pravila svetujejo, ne prevzemajo odločitve namesto človeka.
+Pokrito z `tests/verify/roksal-span-rules.ts` (**74/74**) in
+`tests/e2e-span-rule-ui.ts` (**20/20**).
+
 ### Iskrenost fotomontaže (pomembno)
 
 - Gradiva z viri roksal.com so označena `roksal-original` + **`unverified`**
@@ -249,7 +290,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (48)
+### Verifikacijske skripte (49)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):
@@ -271,11 +312,12 @@ bun tests/verify/band-suggest.ts    # FAZA-9: dvotapni pas — pragovi, plateau,
 bun tests/verify/suggest-gate.ts    # FAZA-9: vrata predloga (SUGGESTED ne odpre izrisa/naročilnice)
 bun tests/verify/band-ui-contract.ts # FAZA-9: vir-gledni zaklep UI vrat (kar brskalnik ne more)
 bun tests/verify/gt-evidence.ts     # Task 75: dokazna gradiva sonde so še na mestu in se ujemajo z dokumenti
+bun tests/verify/roksal-span-rules.ts # Task 80: 16 objavlenih ROKSAL pravil — citat, vir, pas, razhajanje
 # … (celoten seznam: tests/verify/)
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75): **48 skript, 48 z izhodno kodo 0**.
+Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75 + Task 80): **49 skript, 49 z izhodno kodo 0**.
 Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
 `stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
 `import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
@@ -285,15 +327,24 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
-25/25**, **gt-evidence 102/102**. Assertivnih preverjanj skupaj: **2753** = 2024 (izmerjeni baseline,
-`../baseline/BASELINE-2026-10-15.md`) + 251 (štiri NOVE FAZA-8 skripte: 119 + 56 + 50 + 26) + 25
-(render-promise, F3) + 194 (pet doslej rdečih, izmerjenih na tej stroji po Task 71) + 28
-(`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) + 58 (`band-ui-contract`, Task 78: +4)
-+ 102 (`gt-evidence`, Task 75) = **2757**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
+25/25**, **gt-evidence 102/102**, **roksal-span-rules 74/74**. Assertivnih preverjanj skupaj,
+zdaj IZMERJENO Z ENO STEVLJO in
+ne sešteto iz spomina: **2811 OK / 0 NAPAK** v **42** od **49** `tests/verify/*.ts` skriptov;
+sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
+`quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
+`bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
+zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
+**20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
+obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2737 → **2811** = +74
+(`roksal-span-rules`), nič se ni izgubilo.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
 zažene se SAMO z argu­mentom fotokorpusa, ker fotk ni v repozitoriju),
+`e2e-span-rule-ui.ts` **20/20** (Task 80: citirana meja, vir, opozorilo nad mejo in razhajanje
+150/180 v živem vmesniku; posnetek `span-rule-ui.png` preverjen po velikosti NA DISKU, zapisnik
+pa gre skozi `guardOutSideRepo`, ki ZAVRŽE zapis v repozitorij),
 `e2e-colmap-cdp.ts` 36/36.
 
 ### E2E dokazi
@@ -364,7 +415,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (48 skript), gt/ (sonde + zamrznjeni izpisi), e2e-*.png, e2e-*.ts (CDP), make-* orodja
+tests/            # verify/ (49 skript), gt/ (sonde + zamrznjeni izpisi), e2e-*.png, e2e-*.ts (CDP), make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```

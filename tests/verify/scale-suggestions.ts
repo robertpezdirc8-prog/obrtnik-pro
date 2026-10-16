@@ -11,9 +11,11 @@ import { analyzePhotoImage, fuseScaleAgreement, type RgbaImage } from '../../src
 import type { ScaleSuggestion } from '../../src/lib/camera-types';
 
 let fails = 0;
+let passes = 0;
 const check = (cond: boolean, msg: string) => {
   console.log((cond ? '  ✓ ' : '  ✗ ') + msg);
-  if (!cond) fails++;
+  if (cond) passes++;
+  else fails++;
 };
 
 // ── Sintetična fasada ────────────────────────────────────────
@@ -123,4 +125,7 @@ for (const f of ['okna-vrata.jpg', 'ograje.jpg', 'fasada.jpg']) {
 }
 
 console.log(`\n${fails === 0 ? 'VSE OK ✓' : `NEUSPEŠNIH: ${fails}`}`);
+// Številka preverb mora biti v standardni obliki, sicer je ta skript pri
+// seštevanju vseh preverb neviden (`tests/verify-counts.ts`).
+console.log(`REZULTAT: ${passes} OK, ${fails} NAPAK`);
 process.exit(fails === 0 ? 0 : 1);

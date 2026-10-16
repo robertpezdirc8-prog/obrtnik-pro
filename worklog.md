@@ -1973,3 +1973,52 @@ Stage Summary:
 - Prava fotka je prvič popravila UI, ne samo potrdila kode: vrata so krivila oglišča namesto manjkajoče mere. Tak razred napak se pojavi samo v stanjih, ki jih sintetični testi ne obiščejo.
 - Nič pushano. Lokalni commit: ta. Na Robertu ostaja: ročne meritve s trakom (`04..08` + ≥5 parov), katere fotke smejo v repozitorij, katalogske višine in lestvica dekorja (`realCm: 45` je ugibanje), pravilo 11, pet `tsc` napak zunaj `src/`.
 - 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega; `src/` spremenjen v ENI sami veji sporočila (en zgodnji return), vse ostalo zunaj aplikacijske kode.
+
+---
+
+Task ID: 79
+Agent: Qoder (glavni agent, očiščen `tsc` + merljiv seštevek preverb)
+Task: Robert: »ti vse delaj imas vsa orodja znanje splet brez mene ker jaz nevem«. Izbrani sta bili dve luknji, ki sta bili v dokumentih zapisani kot »Robertova odločitev«, v resnici pa sta bili moji: (1) `tsc --noEmit` je vračal izhodno kodo 1 zaradi petih vrstic IZVEN aplikacije, torej noben prihodnji izpis ni imel ničelne reference; (2) seštevek assertivnih preverjanj (»2757«) je bil napisan iz SPOMINA in ne izmerjen z enim ukazom. NIČ pusha, 0 AI, 0 novih odvisnosti.
+
+Work Log:
+- `tests/e2e-compare-fixture.ts`: trije `Bun.write` → `node:fs.promises.writeFile`. Skript je `node:fs` že uvažal, zato je bil to samo prevod API-ja in ne nova odvisnost; izvedba ponovno potrjena (izhodna koda 0, izpis »fixture zapisan: 2 različici«).
+- `examples/websocket/` (`server.ts` + `frontend.tsx`) rabita `socket.io` in `socket.io-client`, ki ju zavestno NE nameščamo. Dodani sta v `tsconfig.exclude` — primera sta učna, ne del aplikacije, in njuna tipizacija ne more pokazati napake v `src/`.
+- IZMERJENO: `tsc --noEmit` zdaj **0 vrstic, izhodna koda 0** v celem repozitoriju; `eslint .` izhod 0.
+- NOV AGREGATOR `tests/verify-counts.ts`: zažene vseh 48 `tests/verify/*.ts`, razčleni njihov zadnji povzetek in sešteje. Formatov povzetkov je bilo SEDEM (`REZULTAT: N OK, M NAPAK`, `ime: N OK, M NAPAK`, `N/M`, `N uspešnih, M neuspešnih`, …), zato ima pravila po meri za posamezno obliko in ne enega regexa.
+- POGUM AGREGATORJA (to je glavna najdba): če skript nima prepoznanega povzetka, aggregator vrne izhodno kodo 1 in ne tihe ničle. Nova oblika izpisa torej takoj pade ven in ne more ostati nešteta.
+- PRVI IZMERJENI SEŠTEVEK: **2737 OK / 0 NAPAK** v **41** štetih skriptih; **7** datotek je raziskovalnih izpisov brez brojača (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`, `quality-calibrate`, `scene-classify`) in so zapisane kot izjeme z razlogom.
+- MOJA LASTNA NAPAKA, ki jo je razkril aggregator: doslej zapisana številka **2757 je bila za 20 previsoka**. `eslog.ts` v izpisu vrne DVE zaporedni števili (72 in 101); ročno seštevanje jima je prisluhnilo obema, aggregator pa upošteva samo zadnjo vrsto (101). Posledično `scale-suggestions.ts` sploh ni bil štet — izpisal je samo `VSE OK ✓` brez števila; zdaj izpiše `REZULTAT: 17 OK, 0 NAPAK`.
+- DOKUMENTACIJA: README (glava »Stanje« + poglavje Testi in dokazi) in `docs/MEASUREMENT-BASELINE.md` §5 — številka 2757 je nadomeščena z izmerjeno 2737, razlika je zapisana z razlogom in ne pobrisana.
+- ČESA NI (iskreno): aggregator zna prebrati samo zadnjo vrsto povzetka, zato skript, ki izpiše dve, ostane delno prebran. `examples/` ostaja v repozitoriju; ali naj gre ven, je odločitev samo za Roberta.
+
+Stage Summary:
+- Referenčna točka je zdaj res nična: `tsc --noEmit` in `eslint .` oba izhod 0 BREZ nove odvisnosti, torej vsak prihodnji izpis napake pomeni NOVO napako in ne šum.
+- Skupno število preverjanj ni več zapis iz spomina, ampak izmerjen izpis enega ukaza (`bun tests/verify-counts.ts`).
+- Nič pushano. Lokalni commit: ta (skupaj s Task 80, ker spadata v isti zapis).
+
+---
+
+Task ID: 80
+Agent: Qoder (glavni agent, ROKSALova pravila razmika namesto privzetka kode)
+Task: Robertova smernica: »analiziraj roksal kranj imas vse podatke nadaljuj po logiki da lahko ko poslikam hiso z ograjo vstavim fotomotaza ali rocno ograjo roksala« + pooblastilo »ti vse delaj … brez mene ker jaz nevem«. Izbrana je bila luknja, ki so jo kazale tri prejšnje številke: aplikacija je montažni razmik prodajala kot dejstvo (`maxSpan = 150`), tega podatka pa nikoli ni imela — bil je privzetek kode. NIČ pusha, 0 AI, 0 novih odvisnosti, 0 mrežnih klicev iz aplikacije.
+
+Work Log:
+- NOV MODUL `src/lib/roksal-span-rules.ts`: 16 pravil, pobranih z javnih strani roksal.com (samo dva izvora: `…/woodcore-wpc-deske/montaza-wpc-deske/` in `…/ograje/`), vsako z dobesednim `quote` in `source`. Tri iskrenostne lastnosti: `basis` (`DIRECT` = citat govori o tem elementu, `ADJACENT` = sistemski namig iz drugega elementa), `kind` (`limit` ali `consequence`), `bandCm` (objavljen pas se reši izključno s SPODNJIM robom).
+- POPRAVK MOJE PRVE VERZIJE (v2) — 4 modelarske napake, ki sem jih izmeril s testi: (a) pas 133–140 je bil vzet Z ZGORNJIM robom, opomba pa je trdila spodnjega → zdaj `limitCm = bandCm[0]`; (b) stavek »pri ≥ 180 cm dodaj še en stebriček« je bil vpisan kot lažna meja `limit 179,9` → zdaj `kind: 'consequence'` s `firesAtSpacingCm`, ki nikoli ne more biti meja; (c) KUBO 120 cm in 260 cm sta lahko delovala sočasno → zdaj se izključujeta prek pogojev `kuboNoInsert` / `kuboAluInsert`; (d) stanje `assurance: 'PARTIAL'` je bilo nedosegljivo → odstranjeno, `ADJACENT` pravila nudijo samo opombo in nikoli ne vežejo.
+- RAZHAJANJE PROIZVAJALCA JE JAVLJENO, NE REŠENO TIHO: 150 cm »ne glede na višino ograje« proti 180 cm pri nizki ograji. `maxAllowedSpan` vrne `conflicts` in vzame NIŽJO meja; za 180 cm mora potrditi dobavitelj.
+- `UNKNOWN` je smiseln odgovor (npr. KUBO lemnica brez znanega profila → meja `0` in ne ugibanje).
+- NOV SKRIPT `tests/verify/roksal-span-rules.ts` **74/74**: citati in ID-ji so zamrznjeni (množica ID-jev je točno določena), dovoljeni sta samo dve izvorni domeni, vsak citat je slovenski in ne angleški, pas nikoli ne vrže zgornjega roba, `consequence` nima `limitCm`, `ADJACENT` nikoli ne veže, tabela min-of-applicable (150 / 133 / 133 / 150 in ne 200 / 145 / 110), KUBO izključnost, mutacijski pregledi IN VIR-GLEDNA POGODBA panela: `planPostLayout` mora dobiti `maxSpanCm: maxSpan` (uporabnikova izbira) in NE `maxSpanCm: spanRule.maxSpanCm` — sicer bi pravila tiho prevzela odločitev.
+- DVE LASTNI NAPAKI v testu, popravljeni pred števkama: (a) preizkus »je slovenski« je bil `[čšž]`, kar je zavrnilo upravičen citat brez šumnikov → slovenščina je zdaj prepoznana po slovenskih predlogih in po tem, da angleških besed NI; (b) trditev »vse meje so med 60 in 300 cm« je padla na 50 cm (vijaki za ročaje) in 70 cm (letve) → trditev je pošteno zožana na `context === 'posts' && basis === 'DIRECT'`, dodan pa je POZITIVEN pregled, da take izven-pasovne meje obstajajo in v račun razmika NE smejo.
+- UI (`post-layout-panel.tsx`): ob izbrani meji je zdaj izpisano »Največ 150 cm po ROKSALovih navodilih (vir) — „…»«; izbira nad objavljeno mejo je AMBER OPOZORILO in ne tiho sprejeta odločitev; izračun razporeda se NI spremenil. Seznam možnosti dobi objavljeno mejo, če je že ni v naboru.
+- DOSTOPNOST BREZ FOTKE: `PostLayoutPanel` je od tega uokvirjen tudi v zavihku **Pripomočki** (`camera-view.tsx`), da je razpored skupaj z objavljeno mejo viden takoj, brez fotografije hiše.
+- NOV E2E `tests/e2e-span-rule-ui.ts` **20/20** (port 9346, CDP + globalni `WebSocket`, brez paketa `ws` — `ws` ni odvisnost in bi podrl `tsc`): čez resnični UI (`/` → Pametna kamera → Pripomočki), laserska mera 640 cm brez fotke, nato izbira 2,50 m ⇒ OPOZORILO in razmak 2,13 m v povzetku, nato višina 140 cm ⇒ razhajanje 150/180 in še vedno veljavna NIŽJA meja, na koncu mutacija (1,00 m ⇒ opozorilo izgine, citat ostane). Posnetek `span-rule-ui.png` (velikost preverjena) je zapisan v začasno mapo skozi `guardOutSideRepo`, ki ZAVRNE zapis v repozitorij.
+- TRI LASTNE UČNE URICE pri tem E2E: (a) `/` je pristopna stran, zavihki kamere tam NE obstajajo, in prvi klik je vrnil `NOT_FOUND`, dokler ni bil dodan `waitForText` — hidracija ni takojšnja; (b) CDP se je najprej pripel na ozadjsko stran Edge razširitve (brez DOM-ja) → cilje je treba filtrirati po `type === 'page'` in zavreči `chrome-extension:`; (c) `next dev` (turbopack) je strežla ZASTAREL bundle — `tsc` in `eslint` čista, elementa pa v DOM-u ni. Ukrep: ustavljen je bil TOČNO določen PID (preverjen z `Get-CimInstance Win32_Process`, da gre za `next/dist/server/lib/start-server.js`), pobrisan `.next/dev` in ponovno zagnan `bun run dev`. Noben `node` proces ni bil ustavljen po imenu.
+- IZMERE TEH SKLOPOV: `roksal-span-rules` **74/74**, sweep **49/49**, `bun tests/verify-counts.ts` → **2811 OK / 0 NAPAK** v **42** od **49** skriptov (razlika glede na Task 79 = +74, nič ni izginilo), `tsc --noEmit` izhodna koda 0, `eslint .` izhod 0, `e2e-span-rule-ui.ts` 20/20.
+- DOKUMENTACIJA: README (glava »Stanje«, novo poglavje »Objavljena montažna pravila«, poglavje Testi in dokazi: 49/49, 2811, novi E2E), `docs/MEASUREMENT-BASELINE.md` (nova vrstica FAZA-8 katalogski RAZMIKI, razširjena vrstica o katalogskih VIŠINAH, §5 seznam skriptov, §6 NOVO pravilo 15).
+- ČESA NI (iskreno): (1) citati so PREBRANI z javnih strani, dobavitelj jih ni potrdil — razhajanje 150/180 mora razrešiti ROKSAL; (2) pravila pokrivajo WPC/composite in KUBO sistem, za druge je odgovor `UNKNOWN` in ne tiho raztezanje; (3) KUBO 260 cm je bilo brano iz istega stavka kot 120 cm (pogoj: vstavljena alu cev 20 × 60 × 2 mm) — v UI-ju nastopa samo kot opomba, ne kot meja; (4) višine ograje SO ŠE vedno neobjavljene, zato pravilo §8.2 ostane zapisano in ne gumb.
+
+Stage Summary:
+- To, kar Robert vidi v brskalniku: ob razporedu stebrov stojita citirana meja in vir, izbira nad mejo pa ima jasno opozorilo. Številka 150 ni več privzetek, je naveden stavek z roksal.com.
+- Prava omejitev, izrečena z besedami: proizvajalec si sam nasprotuje (150 proti 180). Aplikacija tega ne reši tiho — pove ga in vzame nižjo mejo; razrešitev lahko da samo dobavitelj.
+- Nič pushano. Lokalni commit: ta. Na Robertu ostaja: ročne meritve s trakom (`04..08` + ≥5 parov), katere fotke smejo v repozitorij, katalogske višine in lestvica dekorja (`realCm: 45` je ugibanje), pravilo 11, `examples/`.
+- 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega; `src/` spremenjen v treh krajih (nov modul, svetovalni blok v panelu, nov vnos v zavihku Pripomočki).

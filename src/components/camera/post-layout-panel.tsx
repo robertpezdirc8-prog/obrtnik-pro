@@ -20,6 +20,7 @@ import {
   planPostLayout, formatLayoutText, downloadLayoutCsv,
   type LayoutMode, type PostLayoutResult,
 } from '@/lib/post-layout';
+import { maxAllowedSpan } from '@/lib/roksal-span-rules';
 import { formatCm } from '@/lib/measure-geometry';
 
 const MAX_SPANS = [100, 125, 150, 175, 200, 250];
@@ -59,6 +60,18 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
 
   // učinkoviti vir: izbrani, sicer prvi (verige imajo prednost — glej layoutSources)
   const src = sources.find((s) => s.id === srcId) ?? sources[0] ?? null;
+
+  // Objavljena meja razmika (ROKSALova navodila montaže). Do sedaj je bil 150
+  // privzetek v kodi; zdaj je številka citirana in monter vidi, od kod je — in
+  // kdaj je njegova izbira nad njo. Kadar meja ni utemeljena, UI je ne kaže.
+  const spanRule = useMemo(() => maxAllowedSpan({ context: 'posts', panelHeightCm: panelH }), [panelH]);
+  const spanOptions = useMemo(
+    () => (spanRule.assurance === 'SOURCED' && !MAX_SPANS.includes(spanRule.maxSpanCm)
+      ? [...MAX_SPANS, spanRule.maxSpanCm].sort((a, b) => a - b)
+      : MAX_SPANS),
+    [spanRule],
+  );
+
   const layout: PostLayoutResult | null = useMemo(() => {
     if (!src) return null;
     const { segRunCm, segDropCm } = profileOf(src);
@@ -125,13 +138,44 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MAX_SPANS.map((s) => (
+              {spanOptions.map((s) => (
                 <SelectItem key={s} value={String(s)}>{(s / 100).toFixed(2).replace('.', ',')} m</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </label>
       </div>
+
+      {/* Objavljena meja razmika — vir namesto privzetka (Task 24) */}
+      {spanRule.binding ? (
+        <p
+          className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] ${
+            maxSpan > spanRule.maxSpanCm
+              ? 'border-amber-300/60 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300'
+              : 'border-transparent bg-secondary/50 text-muted-foreground'
+          }`}
+          data-testid="post-layout-span-rule"
+        >
+          {maxSpan > spanRule.maxSpanCm
+            ? <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            : <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+          <span className="space-y-0.5">
+            <span className="block">
+              <b>Največ {spanRule.maxSpanCm} cm</b> po ROKSALovih navodilih ({spanRule.binding.source})
+              — „{spanRule.binding.quote}“
+            </span>
+            {maxSpan > spanRule.maxSpanCm && (
+              <span className="block">
+                Izbrana meja {(maxSpan / 100).toFixed(2).replace('.', ',')} m je NAD objavljeno — razmiki med
+                stebri so lahko predolgi.
+              </span>
+            )}
+            {spanRule.conflicts.map((c) => <span key={c} className="block">{c}</span>)}
+            {spanRule.notes.filter((n) => /Orientacija|Višina polnila/.test(n))
+              .map((n) => <span key={n} className="block">{n}</span>)}
+          </span>
+        </p>
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">
         {/* Način montaže */}

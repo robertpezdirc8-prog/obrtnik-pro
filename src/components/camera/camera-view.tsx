@@ -1302,6 +1302,29 @@ export function CameraView() {
             </Card>
           )}
 
+          {/* Razpored stebrov je orodje, ne korak fotomontaže: monter brez fotke
+              (samo laser, mera 6,40 m) mora načrtovati razpored enako kot monter
+              s fotko. V analizi živi isti panel za isto meritvijo. */}
+          {allMeasures.length > 0 && (
+            <Card>
+              <CardContent className="p-4 sm:p-5">
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-bold">
+                      <Columns3 className="h-4 w-4 text-primary" />
+                      Razpored stebrov iz teh meritev
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Enaka skripta kot v analizi: število stebrov, enakomerni razmak, dvigi po
+                      celotah in razrez polnil — skupaj z objavljeno ROKSALovo mejo razmika.
+                    </p>
+                  </div>
+                  <PostLayoutPanel measures={allMeasures} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex flex-col items-start justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-3 sm:flex-row sm:items-center">
             <p className="text-sm text-muted-foreground">
               {allMeasures.length > 0
