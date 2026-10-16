@@ -1,4 +1,5 @@
-// E2E: objavljena MEJA RAZMIKA v vmesniku razporeda stebrov (Task 24 → 25).
+// E2E: objavljena MEJA RAZMIKA in objavljena REŽA v vmesniku razporeda stebrov
+// (Task 24 → 25 → 26).
 //
 // ZAKAJ ŠE ENA E2E DATOTEKA, ko jedrni skript že pove 129/129: meja je bila
 // doslej PRIVZETEK v kodi (150), monter je izbiral razmak iz nabora in ni mu
@@ -19,7 +20,7 @@
 // Pripomočki → panel. Dokaže tudi to, da je razpored orodje in ne korak
 // fotomontaže (panel je zdaj priklopjen na obeh mestih).
 //
-// Zagon: bun tests/e2e-span-rule-ui.ts   (zahtevá `next dev`; privzeto :3000,
+// Zagon: bun tests/e2e-span-rule-ui.ts   (zahteva `next dev`; privzeto :3000,
 // zamenljiv s `APP_URL=http://localhost:3001/` — (:3000 lahko zasede tuj proces))
 // Artefakti: samo v os.tmpdir(), NIKOLI v repozitoriju (fotke in posnetki).
 
@@ -349,6 +350,32 @@ async function main(): Promise<void> {
     check('41 meja 110 cm ima SVOJ citat (133–140 in 200 se ne mešata vanj)',
       p128.includes('vodoravno postavitev desk morajo biti na maksimalni razdalji 110 cm'), p128.slice(0, 320));
     check('42 nobeno stanje ne javi razhajanja (v1 ga je izmislila)', !p128.includes('razhajata'), p128.slice(0, 200));
+
+    // ── 10) REŽA med deskami: objava ali njena ODSOTNOST (Task 26 / 82) ──
+    // Ista vrsta napake kot meja: katalog je trdil „uradni obseg 0,2–3 cm“,
+    // ki ga nobena stran ne objavlja. Panel sme pokazati samo tisto, kar je
+    // objavljeno POD PROFIL, ki ga je monter izbral — in mora reči, da nič
+    // ni, namesto da bi njegov privzetek prikazal kot ROKSALovo zahtevo.
+    const p128Gap = await txt('[data-testid="post-layout-board-gap"]');
+    check('43 profil 128 → reža je pokazana KOT OBJAVLJEN PAS 0,5–3 cm',
+      p128Gap.includes('Reža po ROKSALu: 0,5–3 cm'), p128Gap.slice(0, 300));
+    check('44 pas je javljen kot priporočilo in ima VIR na zaslonu',
+      p128Gap.includes('priporočen pas, ne meja') && p128Gap.includes('roksal.com'), p128Gap.slice(0, 300));
+    check('45 decimalke so z vejico (0.5 bi bil tuji zapis)', !p128Gap.includes('0.5'), p128Gap.slice(0, 200));
+    check('46 ista objava pokriva profil 100 (naslov imenuje oba)',
+      (await pick('[aria-label="Profil polnila"]', 'POLNA DESKA 100')) === 'OK' &&
+        (await txt('[data-testid="post-layout-board-gap"]')).includes('0,5–3 cm'),
+      await txt('[data-testid="post-layout-board-gap"]'));
+    await sleep(300);
+    check('47 profil 57-32 → panel JAVE, da reže ni, in kje številka velja',
+      (await pick('[aria-label="Profil polnila"]', 'POLNA DESKA 57-32')) === 'OK' &&
+        (await txt('[data-testid="post-layout-board-gap"]')).includes('Reže ROKSAL za ta izdelek ne objavlja') &&
+        /velja samo za POLNA DESKA 100 \/ POLNA DESKA 128/.test(await txt('[data-testid="post-layout-board-gap"]')),
+      await txt('[data-testid="post-layout-board-gap"]'));
+    check('48 brez profila ni pokazane NOBE številke reže',
+      (await pick('[aria-label="Profil polnila"]', 'profil ni izbran')) === 'OK' &&
+        !/Reža po ROKSALu: [0-9]/.test(await txt('[data-testid="post-layout-board-gap-headline"]')),
+      await txt('[data-testid="post-layout-board-gap-headline"]'));
 
     console.log(`\n${pass}/${pass + fail} e2e preverb ${fail === 0 ? '— VSE SKOZI' : '— ' + fail + ' NAPAK'}`);
     if (fail > 0) process.exitCode = 1;

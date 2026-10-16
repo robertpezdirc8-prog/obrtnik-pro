@@ -1,8 +1,9 @@
 // ─── ROKSALova pravila razmikov (iz javnih navodil montaže) ────────────────
-// ČISTO, brez domnev: vsako pravilo spodaj dobesedno citira eno od treh
-// objavljenih strani (prebrano 2026-10-16):
+// ČISTO, brez domnev: vsako pravilo spodaj dobesedno citira eno od štirih
+// objavljenih strani (prebrane 2026-10-16):
 //   `roksal.com/woodcore-wpc-deske/montaza-wpc-deske/`
 //   `roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/`
+//   `roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/`
 //   `roksal.com/pogosta-vprasanja-wpc/`
 //
 // Zakaj sploh obstaja: `post-layout.ts` je do danes `maxSpanCm` samo PREVERIL
@@ -26,6 +27,21 @@
 //  3. pas (133–140) sme vplivati na mejo samo s SPODNJIM robom; zgornji rob
 //     pasu je informacija, ne dovoljenje.
 //  4. `family` — številka velja samo za izdelek, pod katerim je bila objavljena.
+//
+// POPRAVEK PROTI DRUGI VERZIJI (Task 82, 2026-10-16): ista vrsta napake je
+// živela pri REŽI med deskami. Katalog je trdil „uradni FAQ obseg 0,2–3 cm“,
+// take razsežnosti pa nobena stran ne objavlja. V resnici sta dve LOČENI
+// trditvi pod ločenimi naslovi: pas 0,5–3 cm spada k ograji (naslov imenuje
+// profil 100 IN 128), 2 mm pa je odgovor na vprašanje o FASADI. Iz teh dveh
+// seštevana „0,2–3“ številka bi bila izmišljena. Zato modul pozna še tipe
+// objav, ki številke NE dajo in je zato ne smejo ustvariti:
+//  5. `typical` — objavljena OBČAJNA vrednost, brez zgornje ali spodnje meje.
+//  6. `free` — ROKSAL izrecno objavi, da je razmik POLJUBEN.
+//  7. `deferred` — ROKSAL številke ne objavi in napoti na navodila stroke.
+//  8. `qualitative` — objavljena je samo posledica, brez številke.
+//  9. `profiles` — OR množica: citat pod naslovom, ki imenuje dva profila,
+//     velja za oba; posamezen `profile=` pogoj ga ne more izraziti, ker se
+//     pogoji ANDajo.
 
 /** Izdelek, za katerega je bilo pravilo objavljeno. */
 export type RoksalFamily =
@@ -99,6 +115,13 @@ interface SpanRuleBase {
   /** številko je potrdila še druga stran — navedeno, a ne podvoji meje */
   alsoSeenAt?: string;
   appliesTo?: SpanCondition | readonly SpanCondition[];
+  /**
+   * OR množica profilov: citat pod naslovom, ki imenuje več profilov, velja za
+   * katerega koli od njih. Posamezen `profile=` pogoj tega ne more izraziti,
+   * ker se pogoji ANDajo. Če profil NI izrečen, takšno pravilo ostane vidno —
+   * gre za nasvet, ne za mejo, pa bi sicer številka kar izginila.
+   */
+  profiles?: readonly RoksalProfileKind[];
 }
 
 /** Zgornja meja. Za pasove je `limitCm` VEDNO SPODNJI rob pasu — ne zgornji. */
@@ -123,10 +146,53 @@ export interface SpanConsequenceRule extends SpanRuleBase {
   advice: string;
 }
 
-export type SpanRule = SpanLimitRule | SpanRangeRule | SpanConsequenceRule;
+/**
+ * Objavljena OBIČAJNA vrednost brez meja (npr. fasadna reža 2 mm). Ni pas in ni
+ * meja: monter vidi, kaj dobavitelj navaja kot običajno, aplikacija pa iz tega
+ * NE sme narediti dovoljenega obsega.
+ */
+export interface SpanTypicalRule extends SpanRuleBase {
+  kind: 'typical';
+  typicalCm: number;
+}
+
+/** Izrecna objava, da je razmik POLJUBEN — številke ni in je ni treba iskati. */
+export interface SpanFreeRule extends SpanRuleBase {
+  kind: 'free';
+}
+
+/**
+ * ROKSAL številke NE objavi in napoti drugam (»navodila stroke«). To ni
+ * molkanje: je objavljena odločitev, da o številki odloča nekdo drug — UI to
+ * pove, namesto da bi izpraznil prostor z ugibano mejo.
+ */
+export interface SpanDeferredRule extends SpanRuleBase {
+  kind: 'deferred';
+  advice: string;
+}
+
+/** Samo kakovostna posledica brez številke (npr. »večji razmak ⇒ viden klip«). */
+export interface SpanQualitativeRule extends SpanRuleBase {
+  kind: 'qualitative';
+  advice: string;
+}
+
+export type SpanRule =
+  | SpanLimitRule
+  | SpanRangeRule
+  | SpanConsequenceRule
+  | SpanTypicalRule
+  | SpanFreeRule
+  | SpanDeferredRule
+  | SpanQualitativeRule;
+
+export const SPAN_RULE_KINDS = [
+  'limit', 'range', 'consequence', 'typical', 'free', 'deferred', 'qualitative',
+] as const;
 
 const URL_MONTAZA = 'roksal.com/woodcore-wpc-deske/montaza-wpc-deske/';
 const URL_OGRAJE = 'roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/';
+const URL_POKONCNA = 'roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/';
 const URL_FAQ = 'roksal.com/pogosta-vprasanja-wpc/';
 
 /** Dobesedni naslovi odsekov, kot jih ima stran. */
@@ -144,6 +210,16 @@ export const SPAN_HEADINGS = {
   faqFasade: 'FASADE (pogosta vprašanja)',
   faqPregrade: 'PREGRADNE STENE (pogosta vprašanja)',
   faqRazmak: 'Kakšen je maksimalen razmak med stebri?',
+  faqZvijanje: 'Ali se WPC deske pri ograji zvijajo?',
+  /** ista trditev na PODABNI strani izdelka (naslov brez besede „pokončne“) */
+  polna100128Produkt: 'Montaža ograje - profil POLNA DESKA-100 in POLNA DESKA-128',
+  /**
+   * V FAQ so pod enim naslovom odgovori na VEČ vprašanj, vzorčenih enako
+   * („Polna deska 100: …“, „Romb: …“, „Kubo: …“) — brez samega vprašanja ni
+   * vedeti, ali številka spada k razmaku morali ali k reži. Zato ta oznaka
+   * nosi naslov in vprašanje skupaj.
+   */
+  faqFasadeReza: 'FASADE (pogosta vprašanja) — „Pri pokončni fasadi bi imel večji razmak kot imate prikazano. Kako to dosežem?“',
 } as const;
 
 /**
@@ -407,6 +483,8 @@ export const SPAN_RULES: SpanRule[] = [
   },
   // ── REŽA MED DESKAMI (pas, ne meja) ────────────────────────────────────
   {
+    // Naslov imenuje DVA profila, zato `profiles` in ne `appliesTo`: sicer bi
+    // 128 ostal brez objavljenega pasu, kljub temu da je številka zanj.
     id: 'ograja-polna100128-board-gap-range',
     kind: 'range',
     basis: 'DIRECT',
@@ -414,9 +492,10 @@ export const SPAN_RULES: SpanRule[] = [
     family: 'ograja',
     heading: SPAN_HEADINGS.polna100128,
     rangeCm: [0.5, 3],
-    appliesTo: 'profile=polna-100',
+    profiles: ['polna-100', 'polna-128'],
     quote: 'Priporočen razmak med deskami je od 0,5cm do 3cm.',
     source: URL_MONTAZA,
+    alsoSeenAt: URL_POKONCNA,
   },
   {
     // ADJACENT: številka stoji v samem VPRAŠANJU, ne v odgovoru — sme se
@@ -430,6 +509,77 @@ export const SPAN_RULES: SpanRule[] = [
     rangeCm: [0.5, 0.6],
     quote: 'Med deskami je razmak 5-6mm kako potem čistite umazanijo, ki se nabira spodaj?',
     source: URL_FAQ,
+  },
+  // ── REŽA NA FASADI — tri LOČENE objave, nobena ni meja ─────────────────
+  {
+    // „običajno 2mm“ NI pas in NI meja: iz njiju ne sme nastati „0,2–3 cm“,
+    // kar pa je katalog trdil (»uradni FAQ obseg«). Odgovor velja samo profilu,
+    // ki ga imenuje, in samo fasadi.
+    id: 'fasada-polna100-board-gap-typical-02',
+    kind: 'typical',
+    basis: 'DIRECT',
+    context: 'board-gap',
+    family: 'fasada',
+    heading: SPAN_HEADINGS.faqFasadeReza,
+    typicalCm: 0.2,
+    profiles: ['polna-100'],
+    quote: 'Polna deska 100: razmak med deskami je običajno 2mm.',
+    source: URL_FAQ,
+  },
+  {
+    id: 'fasada-kubo-board-gap-free',
+    kind: 'free',
+    basis: 'DIRECT',
+    context: 'board-gap',
+    family: 'fasada',
+    heading: SPAN_HEADINGS.faqFasadeReza,
+    profiles: ['kubo-80-42'],
+    quote: 'Kubo: razmak med deskami poljuben, tudi profil obračate po želji.',
+    source: URL_FAQ,
+  },
+  {
+    // Številke ni — je pa objavljena posledica. UI jo pove in NE išče meje.
+    id: 'fasada-romb-board-gap-clips',
+    kind: 'qualitative',
+    basis: 'DIRECT',
+    context: 'board-gap',
+    family: 'fasada',
+    heading: SPAN_HEADINGS.faqFasadeReza,
+    profiles: ['romb-67'],
+    advice: 'ROKSAL za ROMB na fasadi ne objavlja številke: pri večjem razmaku je viden pritrdilni material (fasadni klipi).',
+    quote: 'Romb: v primeru večjega razmaka viden pritrdilni material (fasadni klipi).',
+    source: URL_FAQ,
+  },
+  // ── NOSILCI, KJER ROKSAL NAMERNO NE OBJAVLJA ŠTEVILKE ──────────────────
+  {
+    // Pod naslovom „POLNA DESKA-100 in POLNA DESKA-128“ je objavljena meja za
+    // STEBRIČKE (180/150), za NOSILCE pa ne — stran napoti na navodila stroke.
+    // To je razlog, zakaj katalog ne sme trditi „max razmak nosilcev 80 cm“.
+    id: 'ograja-polna100128-bearers-deferred',
+    kind: 'deferred',
+    basis: 'DIRECT',
+    context: 'bearers',
+    family: 'ograja',
+    heading: SPAN_HEADINGS.polna100128Produkt,
+    profiles: ['polna-100', 'polna-128'],
+    advice: 'Za profila 100 in 128 ROKSAL razmika nosilcev NE objavi — konstrukcijo mora preveriti po navodilih stroke.',
+    quote: 'Pri izdelavi konstrukcije upoštevajte navodila stroke za nosilnost konstrukcije.',
+    source: URL_POKONCNA,
+  },
+  {
+    // Splošna trditev na strani za ograje: nosilci so predpisani PO PROFILIH,
+    // stran samega razmika ne napiše. Navedena kot utemeljitev, zakaj je
+    // odgovor lahko samo UNKNOWN.
+    id: 'ograja-bearers-per-profile',
+    kind: 'deferred',
+    basis: 'ADJACENT',
+    context: 'bearers',
+    family: 'ograja',
+    heading: SPAN_HEADINGS.faqZvijanje,
+    advice: 'Vsak profil ima predpisano maksimalno razdaljo med nosilci; pri večjem razmaku deska nima dovolj opore in se lahko zvije.',
+    quote: 'razmak med nosilci – vsak profil ima predpisane maksimalne razdalje med nosilci; ' +
+      'pri večjem razmaku deska nima dovolj opore in se lahko zvije.',
+    source: URL_OGRAJE,
   },
 ];
 
@@ -469,6 +619,14 @@ export interface MaxSpanVerdict {
   consequences: SpanConsequenceRule[];
   /** veljavni priporočeni pasovi (reža) — nikoli ne vežejo kot meja */
   ranges: SpanRangeRule[];
+  /** objavljena OBIČAJNA vrednost — številka brez pasu in brez meje */
+  typicals: SpanTypicalRule[];
+  /** objave, da je razmik poljuben — številke ni in je ni treba iskati */
+  freeStatements: SpanFreeRule[];
+  /** objave, ki številko namerno prepustijo drugim (navodila stroke) */
+  deferrals: SpanDeferredRule[];
+  /** objavljena je samo posledica, brez številke */
+  qualitatives: SpanQualitativeRule[];
   /** citati o drugem elementu, ki so na voljo a NISO uporabljene meje */
   analogies: SpanLimitRule[];
   /** kadar meja obstaja, a profil ni izbran — tabela mej po profilih */
@@ -525,7 +683,21 @@ function conditionHolds(cond: SpanCondition, input: MaxSpanInput): boolean {
 }
 
 function ruleApplies(rule: SpanRule, input: MaxSpanInput): boolean {
+  // OR množica iz naslova, ki imenuje več profilov: izključi samo takrat, ko je
+  // profil izrečen in ga v množici ni. Brez izrečenega profila nasvet ostane
+  // viden — meje tu ni, zato ni kaj zažgati.
+  if (rule.profiles && input.profile && !rule.profiles.includes(input.profile)) return false;
   return conditionsOf(rule).every((c) => conditionHolds(c, input));
+}
+
+/** Kateri profili so pod pravilom navedeni (appliesTo IN/OR `profiles`). */
+function profilesOf(rule: SpanRule): RoksalProfileKind[] {
+  const out: RoksalProfileKind[] = [];
+  if (rule.profiles) out.push(...rule.profiles);
+  for (const c of conditionsOf(rule)) {
+    if (c.startsWith('profile=')) out.push(c.slice('profile='.length) as RoksalProfileKind);
+  }
+  return out;
 }
 
 const PROFILE_LABELS: Record<RoksalProfileKind, string> = {
@@ -623,7 +795,7 @@ interface ProfileRows {
 }
 
 /**
- * Tabela mej po profilih za dano družino in kontekst — uporabí se, kadar
+ * Tabela mej po profilih za dano družino in kontekst — uporabi se, kadar
  * klicatelj profila še ni izrekel: številka obstaja, a je odvisna, zato ne sme
  * biti prikazana kot ena sama meja.
  */
@@ -649,7 +821,7 @@ function profileRows(input: MaxSpanInput): ProfileRows {
       continue;
     }
     // Kateri pogoji so zavrnili samo zaradi neznanega vhoda?
-    const profiled = limits.filter((r) => conditionsOf(r).includes(`profile=${profile}` as SpanCondition));
+    const profiled = limits.filter((r) => profilesOf(r).includes(profile));
     const missing = profiled.length
       ? [...new Set(profiled.flatMap((r) => missingInputs(conditionsOf(r), probe)))]
       : [];
@@ -671,11 +843,22 @@ export function maxAllowedSpan(input: MaxSpanInput): MaxSpanVerdict {
   const limits = matched.filter((r): r is SpanLimitRule => r.kind === 'limit');
   const consequences = matched.filter((r): r is SpanConsequenceRule => r.kind === 'consequence');
   const ranges = matched.filter((r): r is SpanRangeRule => r.kind === 'range');
+  const typicals = matched.filter((r): r is SpanTypicalRule => r.kind === 'typical');
+  const freeStatements = matched.filter((r): r is SpanFreeRule => r.kind === 'free');
+  const deferrals = matched.filter((r): r is SpanDeferredRule => r.kind === 'deferred');
+  const qualitatives = matched.filter((r): r is SpanQualitativeRule => r.kind === 'qualitative');
   const applicable = limits.filter((r) => r.basis === 'DIRECT').sort((a, b) => a.limitCm - b.limitCm);
   const analogies = limits.filter((r) => r.basis === 'ADJACENT').sort((a, b) => a.limitCm - b.limitCm);
   const binding = applicable[0] ?? null;
   const rows = input.profile ? { rows: [] as ProfileLimitRow[], unresolved: [] } : profileRows(input);
   const profileFloorCm = rows.rows.length > 0 ? rows.rows[0].limitCm : null;
+  /**
+   * Katera koli objava BREZ številke (pas, običajna vrednost, „poljuben“,
+   * napotitev, posledica) je odgovor: trditev „ROKSAL tega ne objavlja“ bi bila
+   * napačna, če je stran o razmiku kaj rekla — samo ne v obliki meje.
+   */
+  const published = ranges.length + typicals.length + freeStatements.length +
+    deferrals.filter((d) => d.basis === 'DIRECT').length + qualitatives.length;
 
   if (!binding) {
     const notes: string[] = [];
@@ -703,16 +886,38 @@ export function maxAllowedSpan(input: MaxSpanInput): MaxSpanVerdict {
           `manjka: ${pending.join(', ')} (številka zato NI prikazana).`,
       );
     }
-    if (rows.rows.length === 0 && rows.unresolved.length === 0 && pending.length === 0) {
+    if (rows.rows.length === 0 && rows.unresolved.length === 0 && pending.length === 0 && published === 0) {
       notes.push(
-        ranges.length > 0
-          ? `ROKSAL za „${input.family} / ${context}“ objavlja samo priporočen pas, ne zgornje meje — meja kot številka ne bi bila utemeljena.`
-          : `ROKSAL za izdelek „${input.family}“ in kontekst „${context}“ ne objavlja omejitve razmika — številka ne bi bila utemeljena.`,
+        `ROKSAL za izdelek „${input.family}“ in kontekst „${context}“ ne objavlja omejitve razmika — številka ne bi bila utemeljena.`,
       );
     }
     for (const r of ranges) {
       notes.push(
-        `Priporočen pas za „${context}“ je ${r.rangeCm[0]}–${r.rangeCm[1]} cm (${r.source}) — pas ne veže kot meja.`,
+        `Priporočen pas za „${context}“ je ${fmtCm(r.rangeCm[0])}–${fmtCm(r.rangeCm[1])} cm (${r.source}) — pas ne veže kot meja.`,
+      );
+    }
+    // Objave brez številke (običajna vrednost, „poljuben“, posledica,
+    // napotitev) povedo monterju, ZAKAJ številke ni — in da je ni treba ugibati.
+    for (const r of typicals) {
+      notes.push(
+        `Za „${context}“ ROKSAL objavlja OBIČAJNO vrednost ${fmtCm(r.typicalCm)} cm (${r.source}) — to ni meja ` +
+          `in ne pas: dovoljenega obsega iz nje ne delamo.`,
+      );
+    }
+    for (const r of freeStatements) {
+      notes.push(
+        `ROKSAL za „${context}“ objavlja, da je razmik POLJUBEN (${r.source}) — številke ni treba iskati.`,
+      );
+    }
+    for (const r of qualitatives) {
+      notes.push(`Za „${context}“ številka ni objavljena, je pa posledica: ${r.advice}`);
+    }
+    for (const r of deferrals) {
+      notes.push(
+        r.basis === 'DIRECT'
+          ? `ROKSAL za „${context}“ zavestno NE objavi številke in napoti na navodila stroke (${r.source}) — ` +
+            `meje, ki bi bila utemeljena, tu ni.`
+          : `Citat pravi, da ima vsak profil svojo mejo za „${context}“, a je ne poimenuje (${r.source}) — zato ni uporabljene meje.`,
       );
     }
     return {
@@ -723,6 +928,10 @@ export function maxAllowedSpan(input: MaxSpanInput): MaxSpanVerdict {
       applicable: [],
       consequences,
       ranges,
+      typicals,
+      freeStatements,
+      deferrals,
+      qualitatives,
       analogies,
       byProfile: rows.rows,
       profileFloorCm,
@@ -748,7 +957,7 @@ export function maxAllowedSpan(input: MaxSpanInput): MaxSpanVerdict {
   }
   for (const r of ranges) {
     notes.push(
-      `Priporočen pas za „${context}“ je ${r.rangeCm[0]}–${r.rangeCm[1]} cm (${r.source}) — pas ne veže kot meja.`,
+      `Priporočen pas za „${context}“ je ${fmtCm(r.rangeCm[0])}–${fmtCm(r.rangeCm[1])} cm (${r.source}) — pas ne veže kot meja.`,
     );
   }
   // Razhajanje je samo med ENAKO splošnimi citati. Splošen citat proti
@@ -797,6 +1006,10 @@ export function maxAllowedSpan(input: MaxSpanInput): MaxSpanVerdict {
     applicable,
     consequences,
     ranges,
+    typicals,
+    freeStatements,
+    deferrals,
+    qualitatives,
     analogies,
     byProfile: rows.rows,
     profileFloorCm,
@@ -848,4 +1061,212 @@ export function spanAdvice(input: MaxSpanInput): string | null {
   const b = v.binding;
   const why = b.bandCm ? `objavljeno kot pas ${b.bandCm[0]}–${b.bandCm[1]} cm` : `vir: ${b.source}`;
   return `Največ ${b.limitCm} cm (${why}).`;
+}
+
+// ─── REŽA MED DESKAMI ───────────────────────────────────────────────────────
+// Ločen izvod istih pravil, ker reža NIMA meje: edina poštena vprašanja sta
+// „kaj je objavljeno“ in „za kateri izdelek“. Do danes je aplikacija imela samo
+// `gapCm` kot PRIVZETEK in je v katalogu trdila „uradni obseg 0,2–3 cm“ —
+// številko, ki je nobena stran ne objavlja (Task 82).
+
+export type BoardGapState =
+  /** ROKSAL za ta izdelek objavi pas ali OBIČAJNO vrednost */
+  | 'SOURCED'
+  /** ROKSAL izrecno objavi, da je razmik poljuben — številke ni treba iskati */
+  | 'PUBLISHED_FREE'
+  /** zanj ni objavljeno nič: UI sme reči samo to, ne sme pokazati številke */
+  | 'UNKNOWN';
+
+export interface BoardGapVerdict {
+  family: RoksalFamily;
+  profile: RoksalProfileKind | null;
+  state: BoardGapState;
+  /** objavljen pas (samo kadar ga je ROKSAL objavil kot pas) */
+  bandCm: [number, number] | null;
+  /** objavljena OBIČAJNA vrednost, kadar pasu ni */
+  typicalCm: number | null;
+  /** dobesedni citati, ki so odločili */
+  quotes: string[];
+  /** kje so objavljene — UI mora pokazati vsakega naštetega vira */
+  sources: string[];
+  /** kaj monitor vidi, kadar številke ni */
+  notes: string[];
+  /** ali je bil profil sploh izrečen (brez njega številka ne sme biti pokazana) */
+  profileMissing: boolean;
+}
+
+/** Reža med deskami po objavljenih navodilih — brez izmišljenega obsega. */
+export function boardGap(input: MaxSpanInput): BoardGapVerdict {
+  const profile = input.profile ?? null;
+  const matchedAll = SPAN_RULES.filter(
+    (r) => r.context === 'board-gap' && r.family === input.family && ruleApplies(r, input),
+  );
+  // Brez izrečenega profila je NE SME biti pokazana številka, ki je objavljena
+  // POD profilom — sicer bi kartica trdila splošnost, ki je ROKSAL ni napisal
+  // (ista vrsta napake kot pri meji, Task 81).
+  const matched = profile === null ? matchedAll.filter((r) => profilesOf(r).length === 0) : matchedAll;
+  const direct = matched.filter((r) => r.basis === 'DIRECT');
+  const notes: string[] = [];
+  const quotes = matched.map((r) => r.quote);
+  const sources = [...new Set(matched.flatMap((r) => [r.source, r.alsoSeenAt ?? ''].filter(Boolean)))];
+
+  const ranges = direct.filter((r): r is SpanRangeRule => r.kind === 'range');
+  const typicals = direct.filter((r): r is SpanTypicalRule => r.kind === 'typical');
+  const frees = direct.filter((r): r is SpanFreeRule => r.kind === 'free');
+  const quals = direct.filter((r): r is SpanQualitativeRule => r.kind === 'qualitative');
+
+  for (const r of matched.filter((x) => x.basis === 'ADJACENT')) {
+    notes.push(
+      `Številka ${fmtRange(r)} se pojavlja samo v VPRAŠANJU, ne v odgovoru (${r.source}) — ne sme se uporabiti kot predpis.`,
+    );
+  }
+
+  if (ranges.length > 0) {
+    const r = ranges[0];
+    if (ranges.length > 1) {
+      notes.push(`Objavljena sta več pasov — prikazan je prvi (${fmtCm(r.rangeCm[0])}–${fmtCm(r.rangeCm[1])} cm).`);
+    }
+    return {
+      family: input.family, profile, state: 'SOURCED',
+      bandCm: r.rangeCm, typicalCm: null, quotes, sources,
+      notes: [
+        `ROKSAL priporoča razmik ${fmtCm(r.rangeCm[0])}–${fmtCm(r.rangeCm[1])} cm (${r.source}).`,
+        ...notes,
+      ],
+      profileMissing: profile === null,
+    };
+  }
+  if (typicals.length > 0) {
+    const r = typicals[0];
+    return {
+      family: input.family, profile, state: 'SOURCED',
+      bandCm: null, typicalCm: r.typicalCm, quotes, sources,
+      notes: [
+        `ROKSAL navaja OBIČAJNO razmik ${fmtCm(r.typicalCm)} cm (${r.source}) — objavljen je samo običaj, ` +
+          `ne pa dovoljenega obsega, zato aplikacija iz njega meje ne dela.`,
+        ...notes,
+      ],
+      profileMissing: profile === null,
+    };
+  }
+  if (frees.length > 0) {
+    return {
+      family: input.family, profile, state: 'PUBLISHED_FREE',
+      bandCm: null, typicalCm: null, quotes, sources,
+      notes: [
+        `ROKSAL objavlja, da je razmik poljuben (${frees[0].source}) — monter ga izbere sam.`,
+        ...notes,
+      ],
+      profileMissing: profile === null,
+    };
+  }
+  for (const r of quals) notes.push(`Številke ni, je pa objavljena posledica: ${r.advice}`);
+
+  // Kje pa JE številka objavljena — da monter ve, da ne manjka podatek, ampak
+  // ga za njegov profil preprosto ni.
+  const elsewhere = SPAN_RULES.filter(
+    (r) => r.context === 'board-gap' && r.family === input.family && r.basis === 'DIRECT' &&
+      (r.kind === 'range' || r.kind === 'typical') && profilesOf(r).length > 0,
+  );
+  if (elsewhere.length > 0 && profile !== null) {
+    const own = profileLabel(profile);
+    const covers = [...new Set(elsewhere.flatMap((r) => profilesOf(r).map(profileLabel)))].filter(
+      (label) => label !== own,
+    );
+    if (covers.length > 0) {
+      notes.push(
+        `Za „${profileLabel(profile)}“ reže ni objavljene; številka velja samo za ${covers.join(' / ')} — ` +
+          `ne sme se prenesti.`,
+      );
+    }
+  }
+  if (profile === null) {
+    notes.push('Profil ni izbran — reža je objavljena samo pod določenimi profili, zato je ni pokazati.');
+  }
+  return {
+    family: input.family, profile, state: 'UNKNOWN',
+    bandCm: null, typicalCm: null, quotes, sources,
+    notes, profileMissing: profile === null,
+  };
+}
+
+function fmtRange(rule: SpanRule): string {
+  return rule.kind === 'range' ? `${fmtCm(rule.rangeCm[0])}–${fmtCm(rule.rangeCm[1])} cm`
+    : rule.kind === 'typical' ? `${fmtCm(rule.typicalCm)} cm`
+      : 'brez številke';
+}
+
+/** Slovenija piše decimalno vejico — številke iz Pravil gredo v uporabnikov tekst. */
+export function formatSpanCm(cm: number): string {
+  return String(cm).replace('.', ',');
+}
+
+/** @internal — kratko ime za notranjo rabo modula. */
+const fmtCm = formatSpanCm;
+
+// ── REŽA NA PRODUKTNI KARTICI ─────────────────────────────────────────────
+// Kartica še ne ve, v katero družino bo monter desko vgradil, sme pa prikazati
+// samo to, kar je zares objavljeno — zato ima vsaka številka reže na kartici
+// žig: ali jo je objavil ROKSAL (in kje) ali je privzetek izračuna. (Task 82:
+// katalog je brez žiga trdil „uradni FAQ obseg 0,2–3 cm“, česar ni nobena stran.)
+
+/** Vse družine, ki jih Pravila poznajo. */
+export const ROKSAL_FAMILIES: readonly RoksalFamily[] = [
+  'ograja', 'terasa', 'fasada', 'pregrada', 'rocaj', 'korito',
+];
+
+const FAMILY_LOCATIVE: Record<RoksalFamily, string> = {
+  ograja: 'na ograji', terasa: 'na terasi', fasada: 'na fasadi',
+  pregrada: 'na pregradi', rocaj: 'na ročaju', korito: 'na koritu',
+};
+
+/**
+ * Katalogski id → ROKSALov profil, na katerega se objave sklicujejo.
+ * Različice »-dekor-N« delijo osnovni profil; id-ji, ki nimajo ROKSALovega
+ * para (wpc-deka-140, alu-palice …), vrnejo null — zanje ni nič objavljenega.
+ */
+const CATALOG_BASE_PROFILE: Record<string, RoksalProfileKind> = {
+  'polna-57-32': 'polna-57-32',
+  'polna-100': 'polna-100',
+  'polna-128': 'polna-128',
+  'romb-67': 'romb-67',
+  'kubo-80-42': 'kubo-80-42',
+  'roksal-deka-150': 'terasna-150',
+};
+
+export function profileKindForCatalog(catalogId: string): RoksalProfileKind | null {
+  const base = catalogId.replace(/-dekor-\d+$/, '');
+  return CATALOG_BASE_PROFILE[base] ?? null;
+}
+
+export interface CatalogGapStamp {
+  /** ali je številka kje objavljena (sicer je privzetek izračuna) */
+  published: boolean;
+  /** kratek žig za kartico; vir (URL) ostane v panelu razporeda */
+  stamp: string;
+}
+
+/** Od kod je številka reže na produktni kartici. */
+export function boardGapStamp(catalogId: string): CatalogGapStamp {
+  const profile = profileKindForCatalog(catalogId);
+  if (profile === null) return { published: false, stamp: 'privzetek izračuna' };
+  const published = ROKSAL_FAMILIES.map((family) => boardGap({ family, profile }))
+    .filter((v) => v.state !== 'UNKNOWN');
+  const band = published.find((v) => v.bandCm !== null);
+  if (band?.bandCm) {
+    return {
+      published: true,
+      stamp: `ROKSAL objavlja ${fmtCm(band.bandCm[0])}–${fmtCm(band.bandCm[1])} cm ${FAMILY_LOCATIVE[band.family]}`,
+    };
+  }
+  const typical = published.find((v) => v.typicalCm !== null);
+  if (typical !== undefined && typical.typicalCm !== null) {
+    return {
+      published: true,
+      stamp: `ROKSAL navaja običajno ${fmtCm(typical.typicalCm)} cm ${FAMILY_LOCATIVE[typical.family]}`,
+    };
+  }
+  const free = published.find((v) => v.state === 'PUBLISHED_FREE');
+  if (free) return { published: true, stamp: `ROKSAL: razmik poljuben ${FAMILY_LOCATIVE[free.family]}` };
+  return { published: false, stamp: 'privzetek izračuna — ROKSAL je ne objavlja' };
 }

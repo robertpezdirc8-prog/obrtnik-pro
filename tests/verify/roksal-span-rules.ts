@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import {
   SPAN_RULES, SPAN_HEADINGS, maxAllowedSpan, checkSpan, spanAdvice, profileLabel,
   type MaxSpanInput, type RoksalFamily, type SpanContext, type SpanLimitRule, type SpanRule,
+  type SpanTypicalRule,
 } from '../../src/lib/roksal-span-rules';
 
 let pass = 0, fail = 0;
@@ -54,6 +55,9 @@ console.log('1. vsaka pravila imajo citat, naslov, družino, vir in stabilen id:
     'fasada-romb-battens-80', 'fasada-kubo-rails-100', 'terasa-battens-33',
     'terasa-steel-substructure-33', 'pregrada-kubo-rails-120', 'pregrada-kubo-rails-260-alu',
     'ograja-polna100128-board-gap-range', 'terasa-board-gap-5-6mm',
+    'fasada-polna100-board-gap-typical-02', 'fasada-kubo-board-gap-free',
+    'fasada-romb-board-gap-clips', 'ograja-polna100128-bearers-deferred',
+    'ograja-bearers-per-profile',
   ];
   check('množica id-jev je zamrznjena (nobeno pravilo ne more tiho izginiti)',
     ids.length === FROZEN.length && FROZEN.every((i) => ids.includes(i)),
@@ -67,28 +71,45 @@ console.log('1. vsaka pravila imajo citat, naslov, družino, vir in stabilen id:
     SPAN_RULES.filter((r) => !HEADINGS.includes(r.heading)).map((r) => r.id).join(','));
   check('vsaka družina je ena od šestih objavljenih', FAMILIES.every((f) => SPAN_RULES.some((r) => r.family === f)),
     FAMILIES.filter((f) => !SPAN_RULES.some((r) => r.family === f)).join(','));
-  check('vsak citat vsebuje centimetre ali milimetre',
-    SPAN_RULES.every((r) => /\d+(?:[.,]\d+)?\s*(?:cm|mm)/.test(r.quote)));
+  const numbered = SPAN_RULES.filter((r) => r.kind === 'limit' || r.kind === 'range' ||
+    r.kind === 'typical' || r.kind === 'consequence');
+  check('vsak citat, ki naj bi nosil številko, jo vsebuje v cm ali mm',
+    numbered.every((r) => /\d+(?:[.,]\d+)?\s*(?:cm|mm)/.test(r.quote)),
+    numbered.filter((r) => !/\d+(?:[.,]\d+)?\s*(?:cm|mm)/.test(r.quote)).map((r) => r.id).join(','));
+  const numberless = SPAN_RULES.filter((r) => r.kind === 'free' || r.kind === 'deferred' || r.kind === 'qualitative');
+  const adviceOf = (r: (typeof numberless)[number]): string => ('advice' in r ? r.advice : '');
+  check('pravila brez številke ne morejo tajno prinesti mere (advice nima cm/mm)',
+    numberless.every((r) => !/\d+(?:[.,]\d+)?\s*(?:cm|mm)/.test(adviceOf(r))),
+    numberless.filter((r) => /\d+(?:[.,]\d+)?\s*(?:cm|mm)/.test(adviceOf(r))).map((r) => r.id).join(','));
   check('vsak citat je v slovenščini (vezniki, brez angleških besed za razmik)',
     SPAN_RULES.every((r) => /\b(je|se|na|za|med|do|pri|ki|v)\b/.test(r.quote) &&
       !/\b(spacing|maximum|distance|posts|rails|brackets?)\b/i.test(r.quote)),
     SPAN_RULES.filter((r) => !/\b(je|se|na|za|med|do|pri|ki|v)\b/.test(r.quote)).map((r) => r.id).join(','));
   const URLS = new Set(['roksal.com/woodcore-wpc-deske/montaza-wpc-deske/',
     'roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/',
+    'roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
     'roksal.com/pogosta-vprasanja-wpc/']);
-  check('vir je ena od TREH objavljenih strani (nič tretjega)',
+  check('vir je ena od ŠTIRIH objavljenih strani (nič petega)',
     SPAN_RULES.every((r) => URLS.has(r.source)),
     [...new Set(SPAN_RULES.map((r) => r.source))].join(' | '));
-  check('tudi alsoSeenAt je ena od istih treh strani',
+  check('tudi alsoSeenAt je ena od istih štirih strani',
     SPAN_RULES.every((r) => !r.alsoSeenAt || URLS.has(r.alsoSeenAt)));
   check('nobo pravilo nima praznega id-ja ali citata',
     SPAN_RULES.every((r) => r.id.length > 4 && r.quote.length > 30));
   // BISTVO: številka, ki jo modul izroči monterju, mora biti v citatu tudi
   // NAPISANA. Brez tega bi bil citat lahko škatla za poljubno številko.
   const exempt = SPAN_RULES.filter((r) => r.basis === 'ADJACENT');
-  check('izjeme pri preizkusu številke so samo ADJACENT (milimetri v vprašanju)',
-    exempt.every((r) => r.kind === 'range' && r.basis === 'ADJACENT') && exempt.length === 1,
-    exempt.map((r) => r.id).join(','));
+  check('izjeme pri preizkusu številke so samo ADJACENT (milimetri v vprašanju ali napotitev)',
+    exempt.every((r) => r.kind === 'range' || r.kind === 'deferred') && exempt.length === 2,
+    exempt.map((r) => `${r.id}:${r.kind}`).join(','));
+  const directTypicals = SPAN_RULES.filter((r): r is SpanTypicalRule => r.kind === 'typical' && r.basis === 'DIRECT');
+  const typicalFails = directTypicals.filter((r) => {
+    const cm = String(r.typicalCm).replace('.', ',');
+    const mm = String(Math.round(r.typicalCm * 10));
+    return !(new RegExp(`${cm}\\s*(?:cm|mm)`).test(r.quote) || new RegExp(`${mm}\\s*mm`).test(r.quote));
+  });
+  check('vsak DIRECT typical ima svojo vrednost dobesedno v citatu (cm ALI mm)',
+    typicalFails.length === 0, typicalFails.map((r) => r.id).join(','));
   check('vsaka NEPOSREDNA meja ima svojo številko dobesedno v citatu',
     limitRules.filter((r) => r.basis === 'DIRECT').every((r) => quotedNumber(r.limitCm, r.quote)),
     limitRules.filter((r) => r.basis === 'DIRECT' && !quotedNumber(r.limitCm, r.quote)).map((r) => r.id).join(','));
@@ -104,7 +125,7 @@ console.log('1. vsaka pravila imajo citat, naslov, družino, vir in stabilen id:
 }
 
 // ── 2. Obseg: pravilo velja SAMO za izdelek, pod katerim je objavljeno ──
-console.log('2. disciplína obsega (razlog, da je obstala prva verzija):');
+console.log('2. disciplina obsega (razlog, da je obstala prva verzija):');
 {
   const terasa = maxAllowedSpan({ family: 'terasa', context: 'battens' });
   const fasada = maxAllowedSpan({ family: 'fasada', context: 'battens' });
@@ -301,8 +322,12 @@ console.log('6. pas / posledica / ADJACENT ne morejo postati meja:');
     limitRules.filter((r) => r.bandCm).map((r) => r.id).sort().join(',') ===
     'fasada-battens-70,ograja-deska150-posts-horizontal-band,ograja-posts-cross-133,terasa-battens-33,terasa-steel-substructure-33',
     limitRules.filter((r) => r.bandCm).map((r) => r.id).sort().join(','));
-  check('reža med deskama je PAS (range), ne meja',
-    SPAN_RULES.filter((r) => r.context === 'board-gap').every((r) => r.kind === 'range' && !('limitCm' in r)));
+  check('reža med deskama nima in ne more imeti meje (noben board-gap pravila ni limit)',
+    SPAN_RULES.filter((r) => r.context === 'board-gap').every((r) => !('limitCm' in r)),
+    SPAN_RULES.filter((r) => r.context === 'board-gap' && 'limitCm' in r).map((r) => r.id).join(','));
+  check(' reža je lahko samo pas, običajna vrednost, „poljuben“ ali posledica — ne meja',
+    SPAN_RULES.filter((r) => r.context === 'board-gap')
+      .every((r) => r.kind === 'range' || r.kind === 'typical' || r.kind === 'free' || r.kind === 'qualitative'));
   check(' noben pas ne more biti vezalo (binding je vedno limit)',
     FAMILIES.every((f) => (['posts', 'bearers', 'battens', 'kubo-rails', 'handle-screws', 'board-gap'] as SpanContext[])
       .every((c) => {
@@ -436,7 +461,7 @@ console.log('12. vir-gledna pogodba (post-layout-panel.tsx):');
   const ROOT = fileURLToPath(new URL('../..', import.meta.url));
   const panel = readFileSync(join(ROOT, 'src/components/camera/post-layout-panel.tsx'), 'utf-8');
   check('panel uvozi maxAllowedSpan in profileLabel iz modula Pravil',
-    /import\s*\{\s*maxAllowedSpan,\s*profileLabel/.test(panel) && /from '@\/lib\/roksal-span-rules'/.test(panel));
+    /import\s*\{[^}]*\bmaxAllowedSpan\b[^}]*\bprofileLabel\b[^}]*\}\s*from '@\/lib\/roksal-span-rules'/.test(panel));
   check('panel IZREČE družino (ograja) in kontekst (posts) — brez tega meja ne obstaja',
     /maxAllowedSpan\(\{ family: 'ograja', context: 'posts'/.test(panel));
   check('panel vpraša po PROFILU (in ima izrecno možnost „ni izbran“) — meja je odvisna od njega',

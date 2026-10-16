@@ -316,9 +316,22 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
   //  - ROMB DESKA-67: 67 × 26 × 5800 mm Z ALU CEVJO v sredini (obvezna,
   //    vključena v ceno), "sedmimi barvami" → BARVNA_LESTVICA_3-rombi4
   //    (TOČNO 7 krogov).
-  //  - Priporočen razmak med deskami: 0,2–3 cm (uradni FAQ); max razmak
-  //    nosilcev: POLNA-100 80 cm, POLNA-57/32 + POLNA-128 100 cm,
-  //    ROMB 110 cm (pokončno) / 145 cm z L-kotniki (prečno).
+  //  - REŽA med deskami je objavljena SAMO za profila 100 in 128 in samo kot
+  //    priporočen pas 0,5–3 cm ("Priporočen razmak med deskami je od 0,5cm do
+  //    3cm.", naslov "Montaža pokončne ograje - profil POLNA DESKA-100 in
+  //    POLNA DESKA-128"). ZA 57/32 IN ROMB-67 stran reže NE objavlja — prejšnja
+  //    različica tega komentarja je zato trdila napačen „uradni obseg 0,2–3 cm“,
+  //    seštete iz dveh LOČENIH objav: pasu 0,5–3 cm (ograja) in odgovora „2mm“
+  //    (FAQ, vprašanje o FASADI). `boardGap()` v roksal-span-rules.ts je edini
+  //    kraj, kjer je ta razlika zapisana enkrat.
+  //  - NOSILCI: 100 cm je objavljeno SAMO za profil 57/32. Za 100/128 stran
+  //    številke NE objavi („Pri izdelavi konstrukcije upoštevajte navodila
+  //    stroke za nosilnost konstrukcije.“). Prejšnja različica je zapisala
+  //    „POLNA-100 80 cm“ — te meje ni v nobeni objavi.
+  //  - STEBRIČKI (pokončno): 150 cm (57/32); 180 cm do 150 cm višine oziroma
+  //    150 cm nad njo (100/128); ROMB-67 145 cm samo z L-kotnikoma na obeh
+  //    straneh stebra, 180 cm ali več pa zahteva dodaten stebriček. Pri 128
+  //    PREČNO (DESKA-128) je meja 110 cm — številka torej ni ROMBOVA.
   //  - Uradni preseki: POLNA-57/32 ✓, POLNA-128 ✓ (polna-deska-nova2021
   //    — po vrstnem redu slike na strani 'Elementi'), ROMB-67 ✓;
   //    POLNA-100 preseka stran NE objavlja (razdelek 'Elementi' brez
@@ -749,7 +762,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-roksal-kubo-dekor-2',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Uradne mere profila: vidna širina 80 mm (ali 42 mm — druga vgradnja), WPC z alu cevjo, skrito vijačenje (roksal.com). PRIVZETI dekor = 2/4 (svetli zlati — najbolj podoben dekorju na uradni fotki profila). gapCm 0,5 in postCm 6 sta tipena privzetka ocenjena z uradne fotke vgradnje — čakata katalog (#6).',
+    note: 'Uradne mere profila: vidna širina 80 mm (ali 42 mm — druga vgradnja), WPC z alu cevjo, skrito vijačenje (roksal.com). PRIVZETI dekor = 2/4 (svetli zlati — najbolj podoben dekorju na uradni fotki profila). gapCm 0,5 je privzetek izračuna: ROKSAL za KUBO izrecno objavi, da je „razmak med deskami poljuben“ (pogosta vprašanja, FASADE) — številke torej ni treba iskati, aplikacija pa je ne more prikazati kot ROKSALov predpis. postCm 6 je privzetek izračuna, ocenjen z uradne fotke vgradnje — čaka ROKSAL katalog (#6).',
   },
   {
     id: 'kubo-80-42-dekor-1',
@@ -791,8 +804,11 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // barvne lestvice (oznake po POLOŽAJU 1–7, imena niso objavljena).
   // PRIVZETI dekor = 1/7 (temno sivi — najbolj podoben dekorju na
   // uradni fotki profila/preseka in uradni fotki vgradnje, obe temno
-  // sivi). Fuga NI uradno objavljena → gapCm 0,4 TIPEN privzetek
-  // (isti kot obstoječi wpc-deka-140); postCm 6 tipen; catalogSku
+  // sivi). Fuga NI objavljena v ODGOVORU: v FAQ se 5-6 mm pojavi samo v
+  // BESEDU VPRAŠANJA („Med deskami je razmak 5-6mm kako potem čistite…“) —
+  // to ni predpis, zato je ADJACENT in ne more postati privzeta mera.
+  // gapCm 0,4 je PRIVZETEK IZRAČUNA (isti kot obstoječi wpc-deka-140),
+  // pod omenjenimi 5–6 mm; postCm 6 tipen; catalogSku
   // null (SKU se ne izmišljuje).
   {
     id: 'roksal-deka-150',
@@ -803,7 +819,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-roksal-deka-dekor-1',
     postCm: 6,
     pattern: 'terasa',
-    note: 'Uradne mere: 150 × 25 × 4000/2200 mm (roksal.com). PRIVZETI dekor = 1/7 (temno sivi — kot na uradni fotki profila in vgradnje). gapCm 0,4 in postCm 6 sta tipena privzetka — čakata ROKSAL katalog (#6).',
+    note: 'Uradne mere: 150 × 25 × 4000/2200 mm (roksal.com). PRIVZETI dekor = 1/7 (temno sivi — kot na uradni fotki profila in vgradnje). gapCm 0,4 in postCm 6 sta privzetka izračuna — reže ROKSAL v ODGOVORU ne objavi (v FAQ se 5-6 mm pojavi samo v besedilu vprašanja in zato ne more biti predpis); čakata ROKSAL katalog (#6).',
   },
   {
     id: 'roksal-deka-150-dekor-2',
@@ -874,9 +890,10 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // ── ROKSAL OGRAJE — POLNA DESKA + ROMB (uradni gradivi, roksal.com) ──
   // Uradni viri: stran "WPC deske za pokončno ograjo" + "Barvni
   // odtenki". Uradne mere + barvne lestvice (glej komentar sekcije
-  // assetov zgoraj). gapCm 2 je TIPEN privzetek znotraj uradno
-  // priporočenega obsega 0,2–3 cm (uradni FAQ); postCm 6 tipen
-  // (ROKSAL širine stebričkov ne objavlja); catalogSku null.
+  // assetov zgoraj). gapCm 2 je PRIVZETEK IZRAČUNA: ROKSAL reže objavi samo za
+  // profila 100 in 128 (pas 0,5–3 cm), za 57/32 in ROMB-67 je NE objavi —
+  // vrednosti zato ne smejo biti predstavljeni kot objavljeni (boardGap()).
+  // postCm 6 tipen (ROKSAL širine stebričkov ne objavlja); catalogSku null.
   // PRIVZETI dekor = 1 (temno sivi — prvi na vseh uradnih lestvicah,
   // kot pri KUBO/deka; parjenje z vgradnjo bi bilo sklepanje).
   {
@@ -888,7 +905,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-roksal-kubo-dekor-1',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Uradne mere: 57 × 32 × 5800 mm, "naleganje je lahko na 57 ali 32" (tu na širini 57 mm = plankCm 5,7); max razmak nosilcev 100 cm. Barvne različice = "štiri barve" — uradna stran ZA TA PROFIL uporablja KUBO lestvico (BARVNA_LESTVICA_5-kubo4) → teksture = obstoječi KUBO dekorji 1–4 (parjenje uradno, na strani). gapCm 2 tipen (uradni obseg 0,2–3 cm); postCm 6 tipen.',
+    note: 'Uradne mere: 57 × 32 × 5800 mm, "naleganje je lahko na 57 ali 32" (tu na širini 57 mm = plankCm 5,7); max razmak nosilcev 100 cm (edini objavljen razmak nosilcev vseh profilov). Barvne različice = "štiri barve" — uradna stran ZA TA PROFIL uporablja KUBO lestvico (BARVNA_LESTVICA_5-kubo4) → teksture = obstoječi KUBO dekorji 1–4 (parjenje uradno, na strani). gapCm 2 je PRIVZETEK IZRAČUNA — ROKSAL reže za 57/32 NE objavlja (pas 0,5–3 cm velja samo profiloma 100 in 128); postCm 6 tipen.',
   },
   {
     id: 'polna-57-32-dekor-2',
@@ -932,7 +949,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-roksal-polna100-dekor-1',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Uradne mere: 100 × 12 × 5800 mm, "samo za POKONČNO ograjo" (roksal.com); max razmak nosilcev 80 cm; barvne različice = "osmimi barvami" (uradna lestvica TOČNO 8 krogov). gapCm 2 tipen (uradni obseg 0,2–3 cm); postCm 6 tipen. Uradni presek profila roksal.com NE objavlja (#6, vpisano kot manjkajoče gradivo).',
+    note: 'Uradne mere: 100 × 12 × 5800 mm, "samo za POKONČNO ograjo" (roksal.com); razmika nosilcev ROKSAL za ta profil NE objavi (stran napoti na navodila stroke — prej je ta note trdil „80 cm“, kar ni v nobeni objavi); barvne različice = "osmimi barvami" (uradna lestvica TOČNO 8 krogov). gapCm 2 znotraj OBJAVLJENEGA pasu 0,5–3 cm; postCm 6 tipen. Uradni presek profila roksal.com NE objavlja (#6, vpisano kot manjkajoče gradivo).',
   },
   {
     id: 'polna-100-dekor-2',
@@ -1020,7 +1037,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-roksal-polna128-dekor-1',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Uradne mere: 128 × 16 × 2200 mm (pokončno); roksal.com uradno omogoča TUDI prečno vgradnjo (128 × 16,5 × 2200) — prečna različica NI registrirana kot ločen profil (obstoječi vodoravni vzorci: roksal-deka-150, fasadna-obloga-8); max razmak nosilcev 100 cm (pokončno) / 110 cm (prečno); barvne različice = "šestimi barvami" (uradna lestvica TOČNO 6 krogov). gapCm 2 tipen; postCm 6 tipen.',
+    note: 'Uradne mere: 128 × 16 × 2200 mm (pokončno); roksal.com uradno omogoča TUDI prečno vgradnjo (128 × 16,5 × 2200) — prečna različica NI registrirana kot ločen profil (obstoječi vodoravni vzorci: roksal-deka-150, fasadna-obloga-8); objavljeni meji STEBRIČKOV: 180 cm do 150 cm višine / 150 cm nad njo (pokončno) in 110 cm za vodoravno postavitev (prečno); razmika nosilcev stran ne objavi; barvne različice = "šestimi barvami" (uradna lestvica TOČNO 6 krogov). gapCm 2 znotraj OBJAVLJENEGA pasu 0,5–3 cm; postCm 6 tipen.',
   },
   {
     id: 'polna-128-dekor-2',
@@ -1086,7 +1103,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-roksal-romb67-dekor-1',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Uradne mere: 67 × 26 × 5800 mm Z ALU CEVJO v sredini romba (obvezna, vključena v ceno — nakup brez alu cevi ni mogoč); max razmak stebričkov 110 cm (pokončno) / 145 cm z L-kotniki (prečno). Barvne različice = "sedmimi barvami" (uradna lestvica TOČNO 7 krogov). RENDER: vizualizer riše pravokotne deske — kosooglati presek in alu cev med deskami NE sta rišana (pri pokončni postavitvi je cev uradno vidna med deskami; tu reže iskreno kažejo ozadje fotke). gapCm 2 tipen; postCm 6 tipen.',
+    note: 'Uradne mere: 67 × 26 × 5800 mm Z ALU CEVJO v sredini romba (obvezna, vključena v ceno — nakup brez alu cevi ni mogoč); objavljena meja STEBRIČKOV je samo 145 cm in samo z L-kotnikom na levi IN desni strani stebra (prečna postavitev); 110 cm pa NI ROMBOVA meja — to je DESKA-128. Barvne različice = "sedmimi barvami" (uradna lestvica TOČNO 7 krogov). RENDER: vizualizer riše pravokotne deske — kosooglati presek in alu cev med deskami NE sta rišana (pri pokončni postavitvi je cev uradno vidna med deskami; tu reže iskreno kažejo ozadje fotke). gapCm 2 je PRIVZETEK IZRAČUNA (reže ROKSAL za ROMB ne objavi, pri fasadi le opomoni „večji razmak ⇒ viden fasadni klip“); postCm 6 tipen.',
   },
   {
     id: 'romb-67-dekor-2',

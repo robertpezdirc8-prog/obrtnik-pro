@@ -20,12 +20,12 @@ import {
   planPostLayout, formatLayoutText, downloadLayoutCsv,
   type LayoutMode, type PostLayoutResult,
 } from '@/lib/post-layout';
-import { maxAllowedSpan, profileLabel, type RoksalProfileKind } from '@/lib/roksal-span-rules';
+import { maxAllowedSpan, boardGap, formatSpanCm, profileLabel, type RoksalProfileKind } from '@/lib/roksal-span-rules';
 import { formatCm } from '@/lib/measure-geometry';
 
 const MAX_SPANS = [100, 125, 150, 175, 200, 250];
 
-/** Profili, za katere ROKSAL objavlja mejo razmika stebrov (v tej applicaciji). */
+/** Profili, za katere ROKSAL objavlja mejo razmika stebrov (v tej aplikaciji). */
 const SPAN_PROFILES: RoksalProfileKind[] = ['polna-57-32', 'polna-100', 'polna-128', 'romb-67', 'terasna-150'];
 
 const ORIENTATIONS: ['horizontal' | 'cross' | 'vertical', string][] = [
@@ -81,6 +81,10 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
     () => maxAllowedSpan({ family: 'ograja', context: 'posts', panelHeightCm: panelH, profile, orientation }),
     [panelH, profile, orientation],
   );
+  // Reža med deskami ima LOČENO usodo: zanjo ROKSAL objavi pas (0,5–3 cm) samo
+  // za profila 100 in 128, za druga dva pa nič. Aplikacija ima svoj `gapCm`,
+  // monter pa mora vedeti, ali številka izvira iz objave ali iz izračuna.
+  const gapRule = useMemo(() => boardGap({ family: 'ograja', profile }), [profile]);
   /** meja, glede na katero UI opozarja: citirana, ali najstrožja po profilih */
   const warnLimitCm = spanRule.assurance === 'SOURCED' ? spanRule.maxSpanCm : spanRule.profileFloorCm ?? 0;
   // Opozorilo sme biti samo tam, kjer JE neka objavljena meja. Brez nje (0) bi
@@ -253,6 +257,41 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
           </span>
         </p>
       ) : null}
+
+      {/* Reža med deskami: objavljen podatek ali njegova ODSOTNOST (Task 82) */}
+      <p
+        className="flex items-start gap-1.5 rounded-lg border border-transparent bg-secondary/50 px-2.5 py-1.5 text-[11px] text-muted-foreground"
+        data-testid="post-layout-board-gap"
+      >
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span className="space-y-0.5">
+          <span className="block" data-testid="post-layout-board-gap-headline">
+            {gapRule.bandCm ? (
+              <>
+                <b>Reža po ROKSALu: {formatSpanCm(gapRule.bandCm[0])}–{formatSpanCm(gapRule.bandCm[1])} cm</b>
+                {' '}({gapRule.sources.join(', ')}) — priporočen pas, ne meja
+              </>
+            ) : gapRule.typicalCm !== null ? (
+              <>
+                <b>Reža po ROKSALu: običajno {formatSpanCm(gapRule.typicalCm)} cm</b>
+                {' '}({gapRule.sources.join(', ')}) — objavljen je samo običaj, ne pa dovoljenega obsega
+              </>
+            ) : gapRule.state === 'PUBLISHED_FREE' ? (
+              <>
+                <b>Reža po ROKSALu: poljubna</b> ({gapRule.sources.join(', ')}) — številke ni treba iskati
+              </>
+            ) : (
+              <>
+                <b>Reže ROKSAL za ta izdelek ne objavlja</b> — številka, ki jo vidiš pri razporedu, zato ni
+                prevzeta iz navodil
+              </>
+            )}
+          </span>
+          {gapRule.notes
+            .filter((n) => !/^ROKSAL (priporoča razmik|navaja OBIČAJNO razmik|objavlja, da je razmik poljuben)/.test(n))
+            .map((n) => <span key={n} className="block">{n}</span>)}
+        </span>
+      </p>
 
       <div className="grid gap-2 sm:grid-cols-2">
         {/* Način montaže */}

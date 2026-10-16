@@ -873,8 +873,9 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     && kubos[1]!.textureId === 'tex-roksal-kubo-dekor-1'
     && kubos[2]!.textureId === 'tex-roksal-kubo-dekor-3'
     && kubos[3]!.textureId === 'tex-roksal-kubo-dekor-4');
-  check('kubo-80-42 note: uradni vir + gapCm/postCm izrecno tipena privzetka',
-    typeof kubos[0]!.note === 'string' && kubos[0]!.note.includes('roksal.com') && kubos[0]!.note.includes('tipena privzetka'));
+  check('kubo-80-42 note: uradni vir + gapCm IN postCm posebej označena kot privzetek (Task 82 besedišče)',
+    typeof kubos[0]!.note === 'string' && kubos[0]!.note.includes('roksal.com')
+    && /gapCm[^.]*privzet/.test(kubos[0]!.note) && /postCm[^.]*privzet/.test(kubos[0]!.note));
   // readiness: CAN render (uradni vir obstaja), NI overjen original, iskreni label
   const r2 = profileReadiness(kubos[0]!);
   check('kubo-80-42: canRender TRUE (uradno gradivo ima vir)', r2.canRender === true, JSON.stringify(r2));
@@ -1023,8 +1024,9 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('roksal-deka-150 teksture: dekor-1 privzeti, različice → dekor-2…7 po vrsti',
     dekaProfiles[0]!.textureId === 'tex-roksal-deka-dekor-1'
     && dekaProfiles.slice(1).every((p, i) => p!.textureId === `tex-roksal-deka-dekor-${i + 2}`));
-  check('roksal-deka-150 note: uradne mere 150 × 25 + gapCm/postCm izrecno tipena privzetka',
-    typeof dekaProfiles[0]!.note === 'string' && dekaProfiles[0]!.note.includes('150 × 25') && dekaProfiles[0]!.note.includes('tipena privzetka'));
+  check('roksal-deka-150 note: uradne mere 150 × 25 + gapCm IN postCm posebej označena kot privzetek',
+    typeof dekaProfiles[0]!.note === 'string' && dekaProfiles[0]!.note.includes('150 × 25')
+    && /gapCm[^.]*privzet/.test(dekaProfiles[0]!.note) && /postCm[^.]*privzet/.test(dekaProfiles[0]!.note));
   const rd = profileReadiness(dekaProfiles[0]!);
   check('roksal-deka-150: canRender TRUE (uradno gradivo ima vir)', rd.canRender === true, JSON.stringify(rd));
   check('roksal-deka-150: isOriginal FALSE (unverified — izvoz z oznako original ostaja blokiran)', rd.isOriginal === false);

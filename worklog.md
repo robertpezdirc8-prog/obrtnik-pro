@@ -2094,3 +2094,57 @@ Stage Summary:
   napačna — izmislila si je proizvajalčevo razhajanje in je za en profil pokazala mejo, ki je za
   40 cm preširoka. Popravlja jo to, da ima vsak citat zdaj tudi izdelek, in test, ki meri prav to.
 - Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
+
+## Task 82 — REŽA med deskami sme biti samo OBJAVLJENA (popravek kataloga), 2026-10-16
+
+- KAJ JE BILO NAPAČNO: katalog (`roksal-assets.ts`) je za VSE profile trdil „uradni FAQ obseg
+  0,2–3 cm“, za ROMB pa „110 cm za nosilce“. Nobena stran ROKSALa tega ne objavi. „0,2–3“ ni
+  nikjer zapisana kot obseg — je seštevek dveh LOČENIH objav, ki govorita o različnih izdelkih:
+  2 mm je običajna vrednost za POLNA DESKA-100 na FASADI, 3 cm je zgornji rob priporočenega pasu
+  za POLNA DESKA 100/128 na OGRADI. „110 cm“ je meja razmika MED STEBRIČKAMI za DESKA-128, ne
+  nobena reža in ne nobena meja ROMB-a. Izmišljena številka je nevarnejša od manjkajoče, ker jo
+  monter prebere kot dovoljenje.
+- KAJ JE NAREJENO: trije novi tipi pravil (`typical` objavljen običaj, `free` razmik poljuben,
+  `deferred` številka zadržana drugam) + `qualitative` opomba brez mere; uvoz `profiles` kot
+  MNOŽICA (objava pod naslovom, ki imenuje dva profila, velja za oba — z AND pogojem ne bi bilo
+  izrazljivo); nov `boardGap()` vrne štiri ločena stanja (pas / običaj / poljubno / nič) in
+  `boardGapStamp()` za katalog, ki deduje tudi po barvnih različicah (`…-dekor-N`). Panel
+  razporeda desk ima štiri izpise in decimalke z vejico (`formatSpanCm` je izvožen), kartica
+  profila v fotomontaži pa žig `fr-gap-stamp-<id>`: zelen „ROKSAL objavlja 0,5–3 cm na ograji“
+  ALI jantarov „privzetek izračuna — ROKSAL je ne objavlja“. Opombe v katalogu so prepisane:
+  izmišljene trditve so odstranjene, številke, ki ostanejo, so v istem stavku označene kot
+  napaka prejšnje verzije.
+- NAJPOMEMBNEJŠI POUK: napako je ujel šele brskalnik, ne enotski zaklepi. Brez izbranega profila
+  je panel pokazal pas 0,5–3 cm, ki je objavljen POD profiloma 100/128 — ista vrsta napake kot
+  preširoka meja iz Task 81 (trditi splošnost, ki je ROKSAL ni napisal). Enotski zaklepi so
+  preverjali samo pare s profilom, zato nič ni opazilo praznega vnosa. Popravljeno je v jedru
+  (`boardGap()` brez profila upošteva samo pravila, ki profila ne imenujejo) in zaklenjeno z
+  dvema novima zaklepoma za vseh šest družin.
+- IZMERE: `roksal-board-gap` nov s **58/58**, `roksal-span-rules` 130 → **133**,
+  `photo-replace` **391/391** (dva zaklepa o opombah sta bila prepisana na novo besedišče in
+  sta hkrati strožja: zahtevata, da sta `gapCm` IN `postCm` označena kot privzetek posebej),
+  sweep **50/50** skript z izhodom 0, `bun tests/verify-counts.ts` → **2928 OK / 0 NAPAK** v
+  **43** od **50** skriptov (delta +61 = 58 + 3, nič ni izginilo), `tsc --noEmit` izhod 0,
+  `eslint .` (ignorira `.next-*/**`) izhod 0 brez zapisov. E2E **50/50** s posnetkom
+  `span-rule-ui.png` na disku (preizkusi 43–48 so nova).
+- ČESA NI (iskreno): (1) nobenega od 27 citatov ni potrdil dobavitelj; (2) `gapCm` v katalogu je
+  še vedno privzetek izračuna tam, kjer objave ni (terasa 0,4, romb 0,4, 57-32 0,5) — žig to
+  pove, številke pa kode ne spremeni; (3) ROKSAL objavi običaj in priporočen pas, ne pa
+  enotnega DOVOLJENEGA obsega, zato panel reže nikoli ne sme pokazati besede „največ“;
+  (4) cene na enoto, `defaults.ts` `joistSpacing`, omejitev `Math.min(0.6, …)` v načrtu terase,
+  meje drsnikov in trditve v `install-plan.ts:209`/`:400` ostajajo neujemljene iz javnih virov.
+- POPRAVEK LASTNE TRDITVE v prejšnjem poročilu: napisal sem, da stran ROKSAL vsebuje besedo
+  „kontrukcije“. Nima je — citat se glasi „Pri izdelavi konstrukcije upoštevajte navodila stroke
+  za nosilnost konstrukcije.“ (`…/wpc-ograja-pokoncna/`). V kodi in dokumentih je povsod
+  pravilna črka; napaka je bila samo v proznem povzetku, kar je isti razred napake kot izmišljena
+  številka: stavek, ki naj bi bil citat, ni bil preverjen.
+
+Stage Summary:
+- To, kar Robert vidi: na kartici vsakega profila je zdaj napisano, OD KOD je reža — zelen
+  „ROKSAL objavlja 0,5–3 cm na ograji“ ali jantarov „privzetek izračuna — ROKSAL je ne
+  objavlja“. Panel razporeda desk pri profilu 57-32 pravi, da je reže ROKSAL za ta izdelek
+  NE objavil, in če profil sploh ni izbran, na zaslonu ni nobene številke reže.
+- Kaj sem se naučil: enotski zaklepi ne ujamejo napake, ki živi v praznem vnosu. Številko,
+  objavljeno pod profilom, je bilo treba izrecno prepovedati, ko profil ni izrečen — in to je
+  pokazal šele klik v brskalniku.
+- Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.

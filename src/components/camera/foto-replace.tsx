@@ -51,6 +51,7 @@ import {
   type XY,
 } from '@/lib/photo-replace-core';
 import { ROKSAL_PROFILES, assetById, profileReadiness, type RoksalProfile } from '@/lib/roksal-assets';
+import { boardGapStamp } from '@/lib/roksal-span-rules';
 import {
   defaultParamsForPattern,
   drawLayersOnQuad,
@@ -1985,6 +1986,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
             {ROKSAL_PROFILES.map((p) => {
               const r = profileReadiness(p);
+              // žig reže: številka v katalogu je lahko ROKSALova objava ALI
+              // privzetek izračuna — kartica mora povedati, katera (Task 82).
+              const gapStamp = boardGapStamp(p.id);
               const tex = assetById(p.textureId);
               const selected = profileId === p.id;
               return (
@@ -2008,6 +2012,12 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                       <span className="block truncate text-sm font-semibold">{p.label}</span>
                       <span className="block text-[11px] text-muted-foreground">
                         element {fmtN(p.plankCm, p.plankCm < 2 ? 1 : 0)} cm · reža {fmtN(p.gapCm, 1)} cm · {p.orientation === 'horizontal' ? 'vodoravno' : 'navpično'} · steber {fmtN(p.postCm, 1)} cm
+                      </span>
+                      <span
+                        className={`block text-[10px] ${gapStamp.published ? 'text-green-700' : 'text-amber-700'}`}
+                        data-testid={`fr-gap-stamp-${p.id}`}
+                      >
+                        reža: {gapStamp.stamp}
                       </span>
                       <Badge
                         className={`h-auto py-0.5 whitespace-normal break-words text-left ${

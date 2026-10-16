@@ -11,7 +11,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 49/49 skript zeleno** (pet, ki je bilo doslej rdečih, je
+> Zadnja polna preverba: **regresija 50/50 skript zeleno** (pet, ki je bilo doslej rdečih, je
 > padalo samo zaradi poti, vezanih na razvojni stroj — `/tmp/*.png` in ena absolutna
 > kontejnerska pot; odpravljeno 2026-10-16, Task 71, z novim varovalnim skriptom
 > `portable-paths`), **photo-replace 391/391, assertion 119/119**
@@ -53,8 +53,8 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > modula je številko vezala samo na ELEMENT (stebriček, nosilec, letev) in je zato trdila dve
 > napačni stvari: da je 150 cm splošna meja za stebričke (v resnici velja samo za profil POLNA
 > DESKA-57-32) in da si ROKSAL nasprotuje s 150/180 cm.
-> **Druga verzija (Task 81, 2026-10-16):** vsako od **22** pravil v `src/lib/roksal-span-rules.ts`
-> (**130/130**) nosi tudi **izdelek** (`family`: ograja / terasa / fasada / pregrada / ročaj /
+> **Druga verzija (Task 81, 2026-10-16):** vsako od pravil v `src/lib/roksal-span-rules.ts`
+> nosi tudi **izdelek** (`family`: ograja / terasa / fasada / pregrada / ročaj /
 > korito) in **naslov odseka**, pod katerim je citat stal. Isti izraz pomeni različne stvari:
 > podložna letev je na fasadi 70–80 cm, na terasi 33–35 cm; KUBO je na fasadi 100 cm, kot
 > pregradna stena 120 cm oziroma 260 cm z alu vstavkom. Brez izrečene družine modul vrne
@@ -68,11 +68,29 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > odgovor (manjka višina polnila, orientacija ali profil), UI reče »manjka: …« in ne »ROKSAL
 > tega ne objavlja«. Monterjev vmesnik pokaže »Največ 110 cm po ROKSALovih navodilih
 > (roksal.com/…montaza-wpc-deske/) — „…»« in OPOZORI, če je izbrana meja nad objavljeno.
-> Dokaz v brskalniku: `tests/e2e-span-rule-ui.ts` (**44/44**) s `span-rule-ui.png` na disku;
+> Dokaz v brskalniku: `tests/e2e-span-rule-ui.ts` (**50/50**) s `span-rule-ui.png` na disku;
 > panel je viden tudi BREZ fotke (zavihek Pripomočki). Računski razpored (`planPostLayout`)
 > in nakupovna načrta se nista spremenila — pravila svetujejo, ne vsiljujejo: monterjeva izbira
 > ostane v aritmetiki in je jasno označena kot nad mejo. Enako je razmak 1,5 m v ponudbi zdaj
 > oznčen kot *predpostavka izračuna*, ne kot ROKSALova meja.
+> **REŽA med deskami (Task 82, 2026-10-16):** katalog je za VSE profile trdil „uradni FAQ
+> obseg 0,2–3 cm“ in za ROMB „110 cm za nosilce“. Nobena stran ROKSALa tega ne objavlja.
+> „0,2–3“ je seštevek DVEH LOČENIH objav: 2 mm kot običajna vrednost za POLNA DESKA-100 na
+> FASADI in 3 cm kot zgornji rob priporočenega pasu za 100/128 na OGRADI. Izmišljena številka
+> je nevarnejša od manjkajoče — monter jo prebere kot dovoljenje. Pravila reže so zato zdaj
+> ločena po profilu: pas **0,5–3 cm** velja samo za POLNA DESKA 100 in 128 na ograji (istovesten
+> naslov imenuje oba, zato ju sme pokrivati), **0,2 cm** je objavljen kot OBIČAJ (ne pas) za
+> POLNA DESKA-100 na fasadi, KUBO ima objavljeno „razmak med deskami poljuben“, ROMB pa samo
+> KAKOVOSTNO opombo (viden pritrdilni material). Terasna deka 150 nima objavljenega PASU —
+> 5–6 mm se v FAQ pojavi samo v besedilu samega vprašanja (`ADJACENT`), zato nikoli ne more
+> postati mera. Novi izvozni tipi so `typical` (običaj), `free` (poljuben) in `deferred`
+> (ROKSAL številko zadrži drugam); `boardGap()` brez izrečenega profila NE SME vrniti
+> nobene številke, čeprav jo pozna. Katalog (`roksal-assets.ts`) vsako režo zdaj označi sama:
+> kartica profila v foto-replace pokaže žig „ROKSAL objavlja 0,5–3 cm na ograji“ ALI
+> „privzetek izračuna — ROKSAL je ne objavlja“ (`fr-gap-stamp-<id>`), panel razporeda pa
+> štirimi stanjami (pas / običaj / poljubna / **ne objavlja**). Zaklenjeno:
+> `tests/verify/roksal-board-gap.ts` (**58/58**), `tests/verify/roksal-span-rules.ts`
+> (**133/133**), E2E preizkusi 43–48 (vključno z „brez profila ni pokazane NOBE številke reže“).
 
 ---
 
@@ -213,7 +231,7 @@ in deterministično obdelani (`tests/make-*-fetch.ts` prek CDP,
 ### Objavljena montažna pravila (`src/lib/roksal-span-rules.ts`)
 
 Dokler je bila meja razmika med stebrički samo privzetek kode (`150`), je aplikacija
-monterju prodajala številko, ki je ni znala utemeljiti. Zdaj je **22** ROKSALovih pravil za
+monterju prodajala številko, ki je ni znala utemeljiti. Zdaj je **27** ROKSALovih pravil za
 razmike shranjenih **iz besede v besedo**, vsako s svojim virom in — kar je bistvo druge
 verzije — s svojim **izdelkom**:
 
@@ -223,7 +241,7 @@ verzije — s svojim **izdelkom**:
 | `family` | izdelek, pod katerim je bil citat objavljen (ograja / terasa / fasada / pregrada / ročaj / korito) |
 | `heading` | dobeseden naslov odseka na strani — številka velja SAMO pod njim |
 | `basis` | `DIRECT` (citat govori O TEM elementu) / `ADJACENT` (stevek iz Vprašanj; sme biti samo opomba) |
-| `kind` | `limit` (meja) / `range` (priporočen pas reže — NIKOLI ne veže) / `consequence` («pri ≥ 180 cm dodaj še en stebriček» — NI meja) |
+| `kind` | `limit` (meja) / `range` (priporočen pas reže — NIKOLI ne veže) / `typical` (objavljen **običaj**, ne pas) / `free` (ROKSAL objavi, da je razmik **poljuben**) / `deferred` (ROKSAL številko zadrži drugam) / `qualitative` (opomba brez mere) / `consequence` («pri ≥ 180 cm dodaj še en stebriček» — NI meja) |
 | `bandCm` | objavljen pas (133–140, 133–145, 70–80, 33–35) → kot meja vedno velja **SPODNJI** rob |
 
 Zakaj `family`: ROKSAL isto besedo uporablja za različne izdelke, številke pa se prav po
@@ -247,8 +265,38 @@ razdalji 110 cm." « (roksal.com/woodcore-wpc-deske/montaza-wpc-deske/). Brez iz
 panel NE trdi ene meje, ampak našteje tabelo (110 / 150 / 180 cm s svojimi viri) in opozori
 na najstrožjo. Če monter izbere nad mejo, se pojavi OPOZORILO, razpored pa še vedno računa z
 izbrano mero — pravila svetujejo, ne prevzemajo odločitve namesto človeka.
-Pokrito z `tests/verify/roksal-span-rules.ts` (**130/130**) in
-`tests/e2e-span-rule-ui.ts` (**44/44**).
+Pokrito z `tests/verify/roksal-span-rules.ts` (**133/133**),
+`tests/verify/roksal-board-gap.ts` (**58/58**) in
+`tests/e2e-span-rule-ui.ts` (**50/50**).
+
+#### Reža med deskami: objavljeno, običaj, poljubno — ALI nič (Task 82)
+
+Katalog je za VSE profile trdil „uradni FAQ obseg 0,2–3 cm“. Te objave ni. „0,2–3“ je
+seštevek dveh LOČENIH objav, ki govorita o različnih izdelkih: **2 mm** je običajna vrednost
+za POLNA DESKA-100 na **fasadi**, **3 cm** je zgornji rob priporočenega pasu za
+POLNA DESKA 100/128 na **ograji**. Izmišljena številka je nevarnejša od manjkajoče, ker jo
+monter prebere kot dovoljenje.
+
+Zato `boardGap()` pozna ŠTIRI izhode in nobenega od njih ne zamenja s številko:
+
+| Stanje | Kaj ROKSAL objavi | Kaj pokaže vmesnik |
+|---|---|---|
+| pas (`range`) | 0,5–3 cm pod naslovom, ki imenuje DESKA 100 IN 128 | „Reža po ROKSALu: 0,5–3 cm — priporočen pas, **ne meja**“ |
+| običaj (`typical`) | 0,2 cm, objavljena je samo vrednost, ne obseg | „Reža po ROKSALu: običajno 0,2 cm — objavljen je samo običaj“ |
+| poljubno (`free`) | KUBO na fasadi: „razmak med deskami poljuben“ | „Reža po ROKSALu: poljubna — številke ni treba iskati“ |
+| nič (`UNKNOWN`) | za ta izdelek reža ni objavljena | „**Reže ROKSAL za ta izdelek ne objavlja**“ |
+
+Tri pravila, ki jih ta razcep zavrne: številka enega profila se NE SME prenesti na drugega
+(57-32, ROMB, KUBO, terasna deka so za ograjo `UNKNOWN`); objava z dvema profiloma v naslovu
+velja za **oba** (množica `profiles`, ne AND pogoj); `ADJACENT` citat — 5–6 mm se na terasi
+pojavi samo v besedilu samega vprašanja — nikoli ne postane mera.
+
+Ista beseda velja za katalog: vsaka kartica profila v fotomontaži dobi žig
+(`fr-gap-stamp-<id>`), ki razloči **objavo** od **privzetka izračuna** — zelen
+„ROKSAL objavlja 0,5–3 cm na ograji“ ali jantarov „privzetek izračuna — ROKSAL je ne
+objavlja“. Tretje pravilo, ki ga je ujel šele brskalnik in ne enotskih zaklepov:
+**brez izrečenega profila modul ne sme vrniti nobene številke**, sicer kartica trdi
+splošnost, ki je ROKSAL ni napisal.
 
 ### Iskrenost fotomontaže (pomembno)
 
@@ -337,12 +385,13 @@ bun tests/verify/band-suggest.ts    # FAZA-9: dvotapni pas — pragovi, plateau,
 bun tests/verify/suggest-gate.ts    # FAZA-9: vrata predloga (SUGGESTED ne odpre izrisa/naročilnice)
 bun tests/verify/band-ui-contract.ts # FAZA-9: vir-gledni zaklep UI vrat (kar brskalnik ne more)
 bun tests/verify/gt-evidence.ts     # Task 75: dokazna gradiva sonde so še na mestu in se ujemajo z dokumenti
-bun tests/verify/roksal-span-rules.ts # Task 80/81: 22 objavljenih ROKSAL pravil — citat, vir, izdelek, pas, razhajanje
+bun tests/verify/roksal-span-rules.ts # Task 80/81/82: 27 objavljenih ROKSAL pravil — citat, vir, izdelek, pas, razhajanje
+bun tests/verify/roksal-board-gap.ts  # Task 82: reža sme biti samo objavljena (brez prenosa med profili)
 # … (celoten seznam: tests/verify/)
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75 + Task 80): **49 skript, 49 z izhodno kodo 0**.
+Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75 + Task 80/81/82): **50 skriptov, 50 z izhodno kodo 0**.
 Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
 `stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
 `import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
@@ -352,24 +401,28 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
-25/25**, **gt-evidence 102/102**, **roksal-span-rules 130/130**. Assertivnih preverjanj skupaj,
+25/25**, **gt-evidence 102/102**, **roksal-span-rules 133/133**, **roksal-board-gap 58/58**.
+Assertivnih preverjanj skupaj,
 zdaj IZMERJENO Z ENO STEVLJO in
-ne sešteto iz spomina: **2867 OK / 0 NAPAK** v **42** od **49** `tests/verify/*.ts` skriptov;
+ne sešteto iz spomina: **2928 OK / 0 NAPAK** v **43** od **50** `tests/verify/*.ts` skriptov;
 sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
 `quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
 `bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
 zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
 **20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
 obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
-seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2811 → **2867** = +56
-(`roksal-span-rules` je prerastel iz 74 v 130 preveritev), nič se ni izgubilo.
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2867 → **2928** = +61
+(`roksal-board-gap` je nov s 58 preverjanji, `roksal-span-rules` je zrastel iz 130 v 133),
+nič se ni izgubilo.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
-zažene se SAMO z argu­mentom fotokorpusa, ker fotk ni v repozitoriju),
-`e2e-span-rule-ui.ts` **44/44** (Task 80/81: tabela mej brez profila, citirana meja po profilu,
+zažene se SAMO z argumentom fotokorpusa, ker fotk ni v repozitoriju),
+`e2e-span-rule-ui.ts` **50/50** (Task 80/81/82: tabela mej brez profila, citirana meja po profilu,
 133 cm pri prečni postavitvi, opozorilo nad mejo, OHRANJENA monterjeva aritmetika in dokaz, da
-izmišljenega razhajanja 150/180 ni več v živem vmesniku; posnetek `span-rule-ui.png` preverjen
+izmišljenega razhajanja 150/180 ni več v živem vmesniku; od preizkusa 43 naprej še reža —
+pas 0,5–3 cm z vejico in virom, ista objava pod profiloma 100 in 128, javljen ODSOTEN podatek
+pri 57-32 in NIKAKŠNA številka reže, ko profil ni izbran; posnetek `span-rule-ui.png` preverjen
 po velikosti NA DISKU, zapisnik pa gre skozi `guardOutSideRepo`, ki ZAVRŽE zapis v repozitorij;
 zaganja se z `APP_URL=…`, če :3000 drži tuji proces),
 `e2e-colmap-cdp.ts` 36/36.
@@ -385,7 +438,7 @@ mobilni 390), kosovnica `e2e-bom-01-kosovnica-v-ponudbi … -04-mobilni-
 kosovnica.png` (Task 64: material iz različice v osnutek ponudbe — 16 kosov,
 rezalni načrt, namizje + mobilni 390) ter pred/po izvoz `e2e-compare-01-
 primerjava.png … -05-brez-originala.png` (Task 65: PRAVA izvožena datoteka
-ujetá pri palačinki `URL.createObjectURL` in preverjena pikselsko
+ujeta pri palačinki `URL.createObjectURL` in preverjena pikselsko
 (`tests/e2e-compare-check.ts`: levo = original, desno = upodobitev, žig temen,
 ločilo), bajt-identična na namizju in mobilnem 390, blokirana brez gradiva,
 iskrena napaka brez originala v sejanu) ter predlog profila `e2e-suggest-01-
@@ -442,7 +495,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (49 skript), gt/ (sonde + zamrznjeni izpisi), e2e-*.png, e2e-*.ts (CDP), make-* orodja
+tests/            # verify/ (50 skript), gt/ (sonde + zamrznjeni izpisi), e2e-*.png, e2e-*.ts (CDP), make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```
