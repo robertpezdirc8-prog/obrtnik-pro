@@ -2292,3 +2292,65 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   `formatEUR` je `Intl.NumberFormat` in med številko ter € da nepretržen presledek (U+00A0).
   Primerjava »1342,00 €« zato ne more biti dobesedna; normalizira se, preden se preveri.
 - Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
+
+## Task 85 — OKNO VNOSA ŠE ZA PET DEJAVNOSTI: nobena številka se ne useka tiho (2026-10-17)
+
+- **KAJ.** Kar je bilo storjeno pri terasi (Task 83) in ograjah (Task 84), zdaj velja za vseh
+  sedem dejavnosti. Pravilo je eno samo: vpisanega števila kalkulator NE SME popraviti — ali ga
+  uporabi točno tako, kot je vpisan, ali pa izračun zavrne in v razlogu navede VPISANO
+  vrednost. Register meja, resolver in besedilo zavrnitve živijo v `src/lib/craft-inputs.ts`,
+  cena (`pricing.ts`), načrt montaže (`install-plan.ts`) in norma za trajanje (`labor.ts`) pa
+  vsi trije hodijo čez `resolveCraftInputs('<dejavnost>', …)`, zato se ne morejo raziti.
+- **KAJ JE BILO NAJDENO.** Usek je bil povsod drug drugič:
+  - stopnice: `Math.max(0.6, širina)` v ceni, načrt pa je širino bral dobesedno — pri 0,4 m
+    sta bili na zaslonu in v računu DVE različni števili;
+  - keramika: `Math.max(1, cena €/m²)` in rezerva usekana na 30 %, medtem ko je načrt risal
+    vpisanih 50 % — ponudba in rezalni načrt iz istega vnosa;
+  - okna/vrata: `Math.max(0.5, velikost odprtine)`; velikost samo OPISUJE okno (cena je na
+    kos), zato je spodnja meja registra 0 in ponudba samo z vrati ni zavrnjena;
+  - nadstrešek: `Math.max(2, št. stebrov)`; 0 stebrov pomeni sidranje na zid in je veljavna
+    odločitev montažerja, ne napaka, ki bi jo bilo treba popraviti;
+  - fasada: `Math.max(0, bruto − odprtine)` je iz napačne izmere naredil prazno ponudbo brez
+    razloga — monter bi videl »neto 0 m²« in ne bi vedel, kaj je narobe.
+- **IZMIŠLJENA ŠTEVILKA, NE SAMO USEK (hujša najdba).** Načrt za stopnice je računal
+  `G = Math.min(32, Math.max(25, 63 − 2R))` in nato iz TE GLOBINE, ki jo je sam priskrbel,
+  sklepal »✓ udobje«. Krog se je zaprl vedno, ne glede na vnos — preizkus, ki ne more
+  spodleteti, ni preizkus. Zdaj načrt pove R in RAZPON G, ki ga pravilo 2R + G = 60–66 cm
+  zahteva, ter eksplicitno zapiše, da globine stopnice vnos ne pozna, zato je ne more
+  preveriti. Enako pri ceni.
+- **ROB, KI GA JE BILO TREBA IZRAČUNATI.** Pri fasadi zgornja meja odprtin ni konstanta, ampak
+  bruto površina stene. `fasadaOpeningProblem(gross, openings)` mejo sestavi ob klicu, zato
+  120 m² odprtin na 100,8 m² stene dobi razlog »(120 > 100,8)« in ne tihe ničle. Rob je
+  plavajoč: 17 × 2,35 = 39,9499…, odprtine 39,95 m² NISO zavrnjene (tolerance 1e-9), 39,96 pa
+  že. Ničla se izpiše kot »0 m²«, ne »−0 m²« (`r2(...) || 0`).
+- **ZASLON.** Iz polj so odstranjene DOM meje, ki so obljubljale poseg v vnos (`min={0.6}`,
+  `min={0}`), namigi pod njimi pa številke črpajo IZ REGISTRA — beseda pod poljem in zavrnitev
+  v ponudbi ne moreta zletiti narazen.
+- IZMERJENO: nov `tests/verify/craft-inputs-all.ts` **481 OK / 0 NAPAK** (pregled vira, da
+  useka ni več v nobenem od treh bralcev; generična zanka čez VSAK registriran rob vseh petih
+  dejavnosti; pariteta cena ⇄ načrt ⇄ norma; determinističen krog; plavajoči rob pri fasadi;
+  dve slabini naenkrat; vejica povsod); nov `tests/e2e-craft-inputs-ui.ts` **79/79** v živem
+  brskalniku na treh dejavnostih, s tremi posnetki, preverjenimi po velikosti NA DISKU;
+  `ograje-input-guard` ostane **75/75** in `terasa-input-guard` **84/84**, kljub preselitvi
+  registra v skupni modul; sweep **3568 OK / 0 NAPAK** v 46/53 skriptih (+481, nič ni
+  izginilo); `tsc` 0 napak; `eslint` 0 zapisov; cirilčni pregled vseh spremenjenih datotek
+  prazen.
+- ZAJETA TRDITEV V DOKUMENTIH (ob končnem branju, ne ob pisanju): README je za 0,45 m pisal
+  »nakup desk pravi 12 × 0,45 m = 5,4 lm«. Noben preizkus te številke ni meril — E2E je na
+  zaslonu preveril samo postavko, povzetek in spremembo vsote. Izpis cene in načrt sta bila
+  zato ponovno pognana in trditev je zamenjana z IZMERJENO: antidrseči profili znašajo
+  št. stopnic × VPISANA širina, kar je dodano kot tri preverjanja (0,45 / 0,6 / 1,35 m; pri
+  0,45 m bi stari usek na 0,6 m zaračunal 33 % več). Številka skripta je zato 481, ne 478.
+- ZADNJI POPRAVEK (ob pregledu zaslona, ne ob prvem naboru): na posnetku je načrt za stopnice
+  še vedno trdil »0,45 m — priporočilo ≥ 0,9 m za glavne stopnice« brez vira. Gre za isti
+  razred napake, ki so ga odstranjevali Tasks 80–84, le da tu številka ni bila izmišljena,
+  ampak NEIMENOVANA. Ostala je (monterju nekaj pove), dobila pa je vir: »(splošna praksa, ne
+  objavljen podatek ROKSAL)«, zaklenjeno s štirimi novimi preverjanji. E2E je bil po
+  besedilni spremembi ponovljen in ostane 79/79.
+- POUK O TESTIH: štirje prvotno rdeči preizkusi so bili napaka pričakovanja, ne kode —
+  skeniranje vira je iskalo `resolveCraftInputs('stopnice')` Z OKLEPAJEMA, klic pa ima še
+  drugi argument; `craftProblemText` dvigne `why` šele ob izpisu (»Odprtine so večje …« z
+  veliko); `nf` je v `install-plan.ts` instanca `Intl.NumberFormat`, v `pricing.ts` pa
+  funkcija, zato mešanje obeh takoj pokaže piko namesto vejice; agregator je nov skript brez
+  povzetka štel kot napako, kar je pravilno. Popravljena so bila pričakovanja, ne koda.
+- Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.

@@ -1,5 +1,6 @@
 import { formatNum } from './format';
 import { resolveCraftInputs } from './craft-inputs';
+import { resolveTerasaInputs } from './terasa-inputs';
 import type { CraftId, CraftInputs } from './types';
 
 // ─── Ocena trajanja montaže — deterministični normativi ─────
@@ -48,38 +49,58 @@ export function estimateDuration(craft: CraftId, inputs: CraftInputs): DurationE
   if (!norm) return null;
 
   let units = 0;
+  // Trije bralci istega vnosa (cena, načrt, norma) morajo zavrniti skupaj.
+  // Sicer bi vrstica »Trajanje montaže« načrtovala termine po meritvi, ki jo je
+  // ponudba že zavrnila — norma je zato pri vseh dejavnostih na resolverju.
   switch (craft) {
     case 'ograje': {
-      // Trije bralci istega vnosa (cena, načrt, norma) morajo zavrniti skupaj.
-      // Sicer bi vrstica »Trajanje montaže« načrtovala termine po meritvi, ki
-      // je ponudba že zavrnila.
       const inp = resolveCraftInputs('ograje', inputs);
       if (!inp.ok) return null;
       units = inp.v.length;
       break;
     }
-    case 'stopnice':
-      units = Math.max(0, inputs.steps ?? 0);
-      break;
-    case 'keramika': {
-      const L = Math.max(0, inputs.floorLength ?? 0);
-      const W = Math.max(0, inputs.floorWidth ?? 0);
-      const wallH = Math.max(0, inputs.wallHeight ?? 0);
-      units = L * W + 2 * (L + W) * wallH;
+    case 'stopnice': {
+      const inp = resolveCraftInputs('stopnice', inputs);
+      if (!inp.ok) return null;
+      units = inp.v.steps;
+      // Isti samodejni predlog kot pri ceni in načrtu (ciljna višina 17,5 cm).
+      if (units === 0 && inp.v.totalRiseCm > 0) units = Math.ceil(inp.v.totalRiseCm / 17.5);
       break;
     }
-    case 'wpc-terasa':
-      units = Math.max(0, inputs.deckLength ?? 0) * Math.max(0, inputs.deckWidth ?? 0);
+    case 'keramika': {
+      const inp = resolveCraftInputs('keramika', inputs);
+      if (!inp.ok) return null;
+      const L = inp.v.floorLength;
+      const W = inp.v.floorWidth;
+      units = L * W + 2 * (L + W) * inp.v.wallHeight;
       break;
-    case 'okna-vrata':
-      units = Math.max(0, inputs.windowCount ?? 0) + 1.67 * Math.max(0, inputs.doorCount ?? 0); // vrata ≈ 2,5 / 1,5
+    }
+    case 'wpc-terasa': {
+      const inp = resolveTerasaInputs(inputs);
+      if (!inp.ok) return null;
+      units = inp.v.deckLength * inp.v.deckWidth;
       break;
-    case 'nadstreški':
-      units = Math.max(0, inputs.canopyWidth ?? 0) * Math.max(0, inputs.canopyDepth ?? 0);
+    }
+    case 'okna-vrata': {
+      const inp = resolveCraftInputs('okna-vrata', inputs);
+      if (!inp.ok) return null;
+      // Vrata trajajo več kot okno — razmerje je 2,5 / 1,5 man-ure.
+      units = inp.v.windowCount + (2.5 / 1.5) * inp.v.doorCount;
       break;
+    }
+    case 'nadstreški': {
+      const inp = resolveCraftInputs('nadstreški', inputs);
+      if (!inp.ok) return null;
+      units = inp.v.canopyWidth * inp.v.canopyDepth;
+      break;
+    }
     case 'fasada': {
-      const gross = Math.max(0, inputs.facadePerimeter ?? 0) * Math.max(0, inputs.facadeHeight ?? 0);
-      units = Math.max(0, gross - Math.max(0, inputs.openingsM2 ?? 0));
+      const inp = resolveCraftInputs('fasada', inputs);
+      if (!inp.ok) return null;
+      const gross = inp.v.facadePerimeter * inp.v.facadeHeight;
+      // Resolver že zavrne, če so odprtine večje od stene, zato `max(0, …)`
+      // ni več potreben — in tudi ne bi več prikril napačne izmere.
+      units = gross - inp.v.openingsM2;
       break;
     }
   }

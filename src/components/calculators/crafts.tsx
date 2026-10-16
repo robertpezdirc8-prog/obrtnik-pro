@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CraftCalculator, NumField, SelField, BoolField } from './shared';
 import { calculateOgraje, calculateStopnice, calculateKeramika, calculateWpcTerasa, calculateOknaVrata, calculateNadstresek, calculateFasada } from '@/lib/pricing';
 import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
-import { inputWindowHint } from '@/lib/craft-inputs';
+import { inputWindowHint, inputWindowHintWith } from '@/lib/craft-inputs';
 import { useView } from '@/lib/store';
 import type { CraftId, CraftInputs } from '@/lib/types';
 
@@ -30,7 +30,7 @@ export function OgrajeCalc() {
       compute={(i) => calculateOgraje(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Dolžina ograje" unit="m" value={inputs.length ?? 0} onChange={(v) => setInputs({ length: v })} />
+        <NumField label="Dolžina ograje" unit="m" value={inputs.length ?? 0} onChange={(v) => setInputs({ length: v })} hint={inputWindowHint('ograje', 'length')} />
         <NumField label="Višina ograje" unit="m" value={inputs.height ?? 1} onChange={(v) => setInputs({ height: v })} step={0.05} hint={inputWindowHint('ograje', 'height')} />
       </div>
       <SelField
@@ -43,7 +43,7 @@ export function OgrajeCalc() {
           { value: 'inox', label: 'Inox' },
         ]}
       />
-      <NumField label="Št. oključljivih prehodov" unit="kos" value={inputs.gates ?? 0} onChange={(v) => setInputs({ gates: v })} step={1} hint="Vrata za dostop (0,9 m)" />
+      <NumField label="Št. oključljivih prehodov" unit="kos" value={inputs.gates ?? 0} onChange={(v) => setInputs({ gates: v })} step={1} hint={inputWindowHintWith('ograje', 'gates', 'Vrata za dostop (0,9 m)')} />
     </CraftCalculator>
   );
 }
@@ -63,8 +63,8 @@ export function StopniceCalc() {
       compute={(i) => calculateStopnice(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Št. stopnic" unit="kos" value={inputs.steps ?? 0} onChange={(v) => setInputs({ steps: v })} step={1} hint="0 = samodejno iz višinske razlike" />
-        <NumField label="Širina stopnic" unit="m" value={inputs.stepWidth ?? 1} onChange={(v) => setInputs({ stepWidth: v })} min={0.6} />
+        <NumField label="Št. stopnic" unit="kos" value={inputs.steps ?? 0} onChange={(v) => setInputs({ steps: v })} step={1} hint={inputWindowHintWith('stopnice', 'steps', '0 = samodejno iz višinske razlike')} />
+        <NumField label="Širina stopnic" unit="m" value={inputs.stepWidth ?? 1} onChange={(v) => setInputs({ stepWidth: v })} hint={inputWindowHint('stopnice', 'stepWidth')} />
       </div>
       <NumField
         label="Višinska razlika (od tal do galerije)"
@@ -72,7 +72,7 @@ export function StopniceCalc() {
         value={inputs.totalRiseCm ?? 0}
         onChange={(v) => setInputs({ totalRiseCm: v })}
         step={1}
-        hint="Skripta predlaga št. stopnic in preveri udobje (pravilo 2R + G = 60–66 cm)"
+        hint={inputWindowHintWith('stopnice', 'totalRiseCm', 'Skripta predlaga št. stopnic in pove, kakšno globino stopnice zahteva pravilo 2R + G = 60–66 cm')}
       />
       <SelField
         label="Material stopnic"
@@ -108,10 +108,10 @@ export function KeramikaCalc() {
       compute={(i) => calculateKeramika(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Dolžina prostora" unit="m" value={inputs.floorLength ?? 0} onChange={(v) => setInputs({ floorLength: v })} />
-        <NumField label="Širina prostora" unit="m" value={inputs.floorWidth ?? 0} onChange={(v) => setInputs({ floorWidth: v })} />
+        <NumField label="Dolžina prostora" unit="m" value={inputs.floorLength ?? 0} onChange={(v) => setInputs({ floorLength: v })} hint={inputWindowHint('keramika', 'floorLength')} />
+        <NumField label="Širina prostora" unit="m" value={inputs.floorWidth ?? 0} onChange={(v) => setInputs({ floorWidth: v })} hint={inputWindowHint('keramika', 'floorWidth')} />
       </div>
-      <NumField label="Višina obloženih sten" unit="m" value={inputs.wallHeight ?? 0} onChange={(v) => setInputs({ wallHeight: v })} hint="0 = oblagujemo samo tla" />
+      <NumField label="Višina obloženih sten" unit="m" value={inputs.wallHeight ?? 0} onChange={(v) => setInputs({ wallHeight: v })} hint={inputWindowHintWith('keramika', 'wallHeight', '0 = oblagujemo samo tla')} />
       <SelField
         label="Vzorec polaganja"
         value={inputs.tilePattern ?? 'ravno'}
@@ -123,8 +123,8 @@ export function KeramikaCalc() {
         ]}
       />
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Cena ploščic" unit="€/m²" value={inputs.tilePricePerM2 ?? 24} onChange={(v) => setInputs({ tilePricePerM2: v })} />
-        <NumField label="Rezerva za rezanje" unit="%" value={inputs.reservePercent ?? 10} onChange={(v) => setInputs({ reservePercent: v })} step={1} />
+        <NumField label="Cena ploščic" unit="€/m²" value={inputs.tilePricePerM2 ?? 24} onChange={(v) => setInputs({ tilePricePerM2: v })} hint={inputWindowHint('keramika', 'tilePricePerM2')} />
+        <NumField label="Rezerva za rezanje" unit="%" value={inputs.reservePercent ?? 10} onChange={(v) => setInputs({ reservePercent: v })} step={1} hint={inputWindowHint('keramika', 'reservePercent')} />
       </div>
     </CraftCalculator>
   );
@@ -174,11 +174,11 @@ export function OknaVrataCalc() {
       compute={(i) => calculateOknaVrata(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Št. oken" unit="kos" value={inputs.windowCount ?? 0} onChange={(v) => setInputs({ windowCount: v })} step={1} />
-        <NumField label="Povprečna velikost okna" unit="m²" value={inputs.windowSize ?? 2} onChange={(v) => setInputs({ windowSize: v })} />
+        <NumField label="Št. oken" unit="kos" value={inputs.windowCount ?? 0} onChange={(v) => setInputs({ windowCount: v })} step={1} hint={inputWindowHint('okna-vrata', 'windowCount')} />
+        <NumField label="Povprečna velikost okna" unit="m²" value={inputs.windowSize ?? 2} onChange={(v) => setInputs({ windowSize: v })} hint={inputWindowHint('okna-vrata', 'windowSize')} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Št. zunanjih vrat" unit="kos" value={inputs.doorCount ?? 0} onChange={(v) => setInputs({ doorCount: v })} step={1} />
+        <NumField label="Št. zunanjih vrat" unit="kos" value={inputs.doorCount ?? 0} onChange={(v) => setInputs({ doorCount: v })} step={1} hint={inputWindowHint('okna-vrata', 'doorCount')} />
       </div>
       <SelField
         label="Material oken"
@@ -214,8 +214,8 @@ export function NadstresekCalc() {
       compute={(i) => calculateNadstresek(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Širina (fronta)" unit="m" value={inputs.canopyWidth ?? 0} onChange={(v) => setInputs({ canopyWidth: v })} />
-        <NumField label="Globina" unit="m" value={inputs.canopyDepth ?? 0} onChange={(v) => setInputs({ canopyDepth: v })} />
+        <NumField label="Širina (fronta)" unit="m" value={inputs.canopyWidth ?? 0} onChange={(v) => setInputs({ canopyWidth: v })} hint={inputWindowHint('nadstreški', 'canopyWidth')} />
+        <NumField label="Globina" unit="m" value={inputs.canopyDepth ?? 0} onChange={(v) => setInputs({ canopyDepth: v })} hint={inputWindowHint('nadstreški', 'canopyDepth')} />
       </div>
       <SelField
         label="Kritina"
@@ -228,11 +228,11 @@ export function NadstresekCalc() {
         ]}
       />
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Št. stebrov" unit="kos" value={inputs.canopyPosts ?? 2} onChange={(v) => setInputs({ canopyPosts: v })} step={1} min={0} />
+        <NumField label="Št. stebrov" unit="kos" value={inputs.canopyPosts ?? 2} onChange={(v) => setInputs({ canopyPosts: v })} step={1} hint={inputWindowHintWith('nadstreški', 'canopyPosts', '0 = konstrukcija je sidrana na zid')} />
       </div>
       <BoolField
         label="Odvod padavinske vode"
-        hint="Zaboj + cev po sprednji strani"
+        hint="Odvodni žleb + cev po sprednji strani"
         value={inputs.waterDrain ?? true}
         onChange={(v) => setInputs({ waterDrain: v })}
       />
@@ -255,10 +255,10 @@ export function FasadaCalc() {
       compute={(i) => calculateFasada(i, 35)}
     >
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Obseg / dolžina stene" unit="m" value={inputs.facadePerimeter ?? 0} onChange={(v) => setInputs({ facadePerimeter: v })} />
-        <NumField label="Višina fasade" unit="m" value={inputs.facadeHeight ?? 0} onChange={(v) => setInputs({ facadeHeight: v })} />
+        <NumField label="Obseg / dolžina stene" unit="m" value={inputs.facadePerimeter ?? 0} onChange={(v) => setInputs({ facadePerimeter: v })} hint={inputWindowHint('fasada', 'facadePerimeter')} />
+        <NumField label="Višina fasade" unit="m" value={inputs.facadeHeight ?? 0} onChange={(v) => setInputs({ facadeHeight: v })} hint={inputWindowHint('fasada', 'facadeHeight')} />
       </div>
-      <NumField label="Površina odprtin (okna, vrata)" unit="m²" value={inputs.openingsM2 ?? 0} onChange={(v) => setInputs({ openingsM2: v })} />
+      <NumField label="Površina odprtin (okna, vrata)" unit="m²" value={inputs.openingsM2 ?? 0} onChange={(v) => setInputs({ openingsM2: v })} hint={inputWindowHintWith('fasada', 'openingsM2', 'največ toliko, kot znaša bruto površina stene')} />
       <SelField
         label="Vrsta obloge"
         value={inputs.cladding ?? 'wpc'}

@@ -1,7 +1,7 @@
 import type { CraftId, CraftInputs } from './types';
 import { maxAllowedSpan, profileLabel } from './roksal-span-rules';
 import { resolveTerasaInputs, terasaProblemText } from './terasa-inputs';
-import { craftProblemText, resolveCraftInputs } from './craft-inputs';
+import { craftProblemText, resolveCraftInputs, type InputProblem } from './craft-inputs';
 
 // ─── Material & montaža — čiste deterministične skripte ─────
 // Brez AI: geometrija, enakomerni razmaki, 1D rezalni načrt
@@ -178,15 +178,19 @@ const BOARD_STOCK_M = 6;   // nabavna dolžina stopničnih desk
 const JOIST_STOCK_M = 4;   // nabavna dolžina nosilcev WPC
 const TILE_BOX_M2 = 1.44;  // m² na škatlo ploščic
 
+/** Zavrnjen vnos: načrt nima materiala in namesto kontrol našteje VPISANE
+ *  vrednosti z razlogom. Isti obrazec velja za vseh sedem dejavnosti. */
+function refusalPlan(problems: InputProblem[]): InstallPlan {
+  return {
+    buys: [],
+    cuts: [],
+    checks: problems.map((p) => ({ label: 'Izračun ni opravljen', detail: craftProblemText(p), status: 'bad' as const })),
+  };
+}
+
 function ograjePlan(i: CraftInputs): InstallPlan {
   const inp = resolveCraftInputs('ograje', i);
-  if (!inp.ok) {
-    return {
-      buys: [],
-      cuts: [],
-      checks: inp.problems.map((p) => ({ label: 'Izračun ni opravljen', detail: craftProblemText(p), status: 'bad' as const })),
-    };
-  }
+  if (!inp.ok) return refusalPlan(inp.problems);
   const L = inp.v.length;
   const H = inp.v.height;
   const gates = inp.v.gates;
@@ -248,32 +252,57 @@ function ograjePlan(i: CraftInputs): InstallPlan {
 }
 
 function stopnicePlan(i: CraftInputs): InstallPlan {
-  const steps = Math.max(0, i.steps ?? 0);
-  const width = Math.max(0, i.stepWidth ?? 1);
-  const riseCm = Math.max(0, i.totalRiseCm ?? 0);
+  const inp = resolveCraftInputs('stopnice', i);
+  if (!inp.ok) return refusalPlan(inp.problems);
+  let steps = inp.v.steps;
+  const width = inp.v.stepWidth;
+  const riseCm = inp.v.totalRiseCm;
+
+  // Isti samodejni predlog kot pri ceni (ciljna višina stopnice ~17,5 cm),
+  // sicer bi načrt pri 0 stopnicah natisnil prazen seznam, ponudba pa 12 kosov.
+  if (riseCm > 0 && steps === 0) steps = Math.ceil(riseCm / 17.5);
   if (steps <= 0) return { buys: [], cuts: [], checks: [] };
 
   const desks = cutPlan1D(Array.from({ length: steps }, () => width), BOARD_STOCK_M);
 
   const checks: PlanCheck[] = [];
   if (riseCm > 0) {
-    const R = riseCm / steps;
-    const G = Math.min(32, Math.max(25, 63 - 2 * R));
-    const comfort = 2 * R + G;
+    const R = r2(riseCm / steps);
+    // Globine stopnice (G) noben vnos ne traži, zato je NE izmislimo. Stara
+    // koda je računala `G = min(32, max(25, 63 − 2R))` in nato izpisala
+    // »✓ udobje 63 cm« — krog je bil vedno sklenjen, ker je G prislala ista
+    // številka, ki ga je preverjala. Namesto tega načrt pove R in RAZPON G,
+    // ki ga pravilo 2R + G = 60–66 cm zahteva, montažo pa izmeri sama.
+    const goingBand: [number, number] = [r2(60 - 2 * R), r2(66 - 2 * R)];
+    const buildable = goingBand[0] > 0;
     checks.push(
       R >= 15 && R <= 19
-        ? { label: 'Višina stopnice (R)', detail: `${nf.format(r2(R))} cm — v idealnem območju 15–19 cm`, status: 'ok' }
+        ? { label: 'Višina stopnice (R)', detail: `${nf.format(R)} cm — v idealnem območju 15–19 cm`, status: 'ok' }
         : R >= 14 && R <= 20
-          ? { label: 'Višina stopnice (R)', detail: `${nf.format(r2(R))} cm — obrobnica; idealno 15–19 cm`, status: 'warn' }
-          : { label: 'Višina stopnice (R)', detail: `${nf.format(r2(R))} cm — izven priporočila 15–19 cm; prilagodi št. stopnic`, status: 'bad' },
-      comfort >= 60 && comfort <= 66
-        ? { label: 'Udobje (pravilo 2R + G)', detail: `${nf.format(r2(comfort))} cm — v idealnem območju 60–66 cm (G = ${nf.format(r2(G))} cm)`, status: 'ok' }
-        : { label: 'Udobje (pravilo 2R + G)', detail: `${nf.format(r2(comfort))} cm — idealno 60–66 cm; prilagodi R ali G`, status: 'warn' },
+          ? { label: 'Višina stopnice (R)', detail: `${nf.format(R)} cm — obrobnica; idealno 15–19 cm`, status: 'warn' }
+          : { label: 'Višina stopnice (R)', detail: `${nf.format(R)} cm — izven priporočila 15–19 cm; prilagodi št. stopnic`, status: 'bad' },
+      !buildable
+        ? {
+            label: 'Pravilo 2R + G',
+            detail: `R = ${nf.format(R)} cm → pravilo bi zahtevalo G = ${nf.format(goingBand[0])}–${nf.format(goingBand[1])} cm, kar ni izvedljivo; povečaj število stopnic`,
+            status: 'bad',
+          }
+        : {
+            label: 'Pravilo 2R + G',
+            detail: `R = ${nf.format(R)} cm → G mora biti ${nf.format(goingBand[0])}–${nf.format(goingBand[1])} cm (pravilo 60–66 cm). Globine stopnice vnos ne vsebuje, zato je ne moremo preveriti`,
+            status: 'info',
+          },
     );
   } else {
-    checks.push({ label: 'Udobje (pravilo 2R + G)', detail: 'vnesi višinsko razliko za kontrolo udobja in višine stopnic', status: 'info' });
+    checks.push({ label: 'Pravilo 2R + G', detail: 'vnesi višinsko razliko za kontrolo višine stopnic in zahtevane globine', status: 'info' });
   }
-  checks.push({ label: 'Širina stopnic', detail: `${nf.format(width)} m — priporočilo ≥ 0,9 m za glavne stopnice`, status: width >= 0.9 ? 'ok' : 'warn' });
+  // 0,9 m je PRAKSA, ne objavljen podatek ROKSAL — zato je tako tudi zapisano.
+  // Načrt meri oceni, vpisane širine ne popravlja (za to je okno vnosa).
+  checks.push({
+    label: 'Širina stopnic',
+    detail: `${nf.format(width)} m — za glavne stopnice se priporoča ≥ 0,9 m (splošna praksa, ne objavljen podatek ROKSAL)`,
+    status: width >= 0.9 ? 'ok' : 'warn',
+  });
 
   return {
     buys: [
@@ -293,12 +322,14 @@ function stopnicePlan(i: CraftInputs): InstallPlan {
 }
 
 function keramikaPlan(i: CraftInputs): InstallPlan {
-  const L = Math.max(0, i.floorLength ?? 0);
-  const W = Math.max(0, i.floorWidth ?? 0);
-  const wallH = Math.max(0, i.wallHeight ?? 0);
+  const inp = resolveCraftInputs('keramika', i);
+  if (!inp.ok) return refusalPlan(inp.problems);
+  const L = inp.v.floorLength;
+  const W = inp.v.floorWidth;
+  const wallH = inp.v.wallHeight;
+  const reserve = inp.v.reservePercent;
   const pattern = i.tilePattern ?? 'ravno';
   const rec = pattern === 'diagonalno' ? 15 : pattern === 'ribja-kost' ? 18 : 10;
-  const reserve = i.reservePercent ?? rec;
   const floor = L * W;
   const total = floor + 2 * (L + W) * wallH;
   if (total <= 0) return { buys: [], cuts: [], checks: [] };
@@ -395,10 +426,12 @@ function wpcTerasaPlan(i: CraftInputs): InstallPlan {
 }
 
 function oknaVrataPlan(i: CraftInputs): InstallPlan {
-  const count = Math.max(0, (i.windowCount ?? 0) + (i.doorCount ?? 0));
+  const inp = resolveCraftInputs('okna-vrata', i);
+  if (!inp.ok) return refusalPlan(inp.problems);
+  const count = inp.v.windowCount + inp.v.doorCount;
   if (count <= 0) return { buys: [], cuts: [], checks: [] };
   return {
-    buys: [{ label: 'Montažna pena', detail: `≈ ${count} kosov (1 × 750 ml na odprtino) + distančni klinčki` }],
+    buys: [{ label: 'Montažna pena', detail: `≈ ${count} ${plural(count, KOS)} (1 × 750 ml na odprtino) + distančni klinčki` }],
     cuts: [],
     checks: [
       { label: 'Vgradna reža', detail: '5–10 mm na stran (10–15 mm na tlorisnih straneh večjih odprtin) — meri odprtino, ne starega okna', status: 'info' },
@@ -409,37 +442,53 @@ function oknaVrataPlan(i: CraftInputs): InstallPlan {
 }
 
 function nadstresekPlan(i: CraftInputs): InstallPlan {
-  const W = Math.max(0, i.canopyWidth ?? 0);
-  const D = Math.max(0, i.canopyDepth ?? 0);
-  const posts = Math.max(2, i.canopyPosts ?? 2);
+  const inp = resolveCraftInputs('nadstreški', i);
+  if (!inp.ok) return refusalPlan(inp.problems);
+  const W = inp.v.canopyWidth;
+  const D = inp.v.canopyDepth;
+  // `Math.max(2, št. stebrov)` je monterju tiho dodal dva stebra, ki ju je
+  // izpustil namenoma (nadstrešek je sidran na zid). 0 je veljaven izum.
+  const posts = inp.v.canopyPosts;
   const cover = i.canopyCover ?? 'ploc';
   if (W <= 0 || D <= 0) return { buys: [], cuts: [], checks: [] };
 
   const postGap = posts > 1 ? r2(W / (posts - 1)) : 0;
   const minSlope = cover === 'polikar' ? 5 : cover === 'steklo' ? 10 : 7;
 
+  const postCheck: PlanCheck =
+    posts === 0
+      ? { label: 'Razmak stebrov', detail: 'brez stebrov — konstrukcija je sidrana na zid; nosilnost sidranja preveri s statikom', status: 'info' }
+      : posts === 1
+        ? { label: 'Razmak stebrov', detail: '1 steber na prosti fronti — preveri, ali nosilec zdrži eno samo oporno točko', status: 'warn' }
+        : postGap <= 3
+          ? { label: 'Razmak stebrov', detail: `${nf.format(postGap)} m — OK (maks. 3 m za običajno kritino)`, status: 'ok' }
+          : { label: 'Razmak stebrov', detail: `${nf.format(postGap)} m — preširoko; dodaj steber ali masivnejši nosilec`, status: 'warn' };
+
   return {
     buys: [],
     cuts: [],
     checks: [
-      postGap > 0 && postGap <= 3
-        ? { label: 'Razmak stebrov', detail: `${nf.format(postGap)} m — OK (maks. 3 m za običajno kritino)`, status: 'ok' }
-        : { label: 'Razmak stebrov', detail: `${nf.format(postGap)} m — preširoko; dodaj steber ali masivnejši nosilec`, status: 'warn' },
+      postCheck,
       { label: 'Minimalni naklon kritine', detail: `${minSlope}° za ${cover === 'ploc' ? 'trapezno pločevino' : cover === 'polikar' ? 'polikarbonat' : 'steklo'} — pri manjšem naklonu uhaja voda na spojih`, status: 'info' },
       { label: 'Preklop kritine', detail: '10 % za preklope in odpad ob rezanju', status: 'info' },
-      { label: 'Odvod vode', detail: (i.waterDrain ?? true) ? 'zaboj + cev po sprednji strani — vzdržuj padec ≥ 0,5 %' : 'brez odvoda — voda kaplja na sprednji rob; priporočamo zaboj', status: (i.waterDrain ?? true) ? 'ok' : 'warn' },
+      { label: 'Odvod vode', detail: (i.waterDrain ?? true) ? 'odvodni žleb + cev po sprednji strani — vzdržuj padec ≥ 0,5 %' : 'brez odvoda — voda kaplja na sprednji rob; priporočamo odvodni žleb', status: (i.waterDrain ?? true) ? 'ok' : 'warn' },
     ],
   };
 }
 
 function fasadaPlan(i: CraftInputs): InstallPlan {
-  const perimeter = Math.max(0, i.facadePerimeter ?? 0);
-  const height = Math.max(0, i.facadeHeight ?? 0);
-  const openings = Math.max(0, i.openingsM2 ?? 0);
+  const inp = resolveCraftInputs('fasada', i);
+  if (!inp.ok) return refusalPlan(inp.problems);
+  const perimeter = inp.v.facadePerimeter;
+  const height = inp.v.facadeHeight;
+  const openings = inp.v.openingsM2;
   const gross = perimeter * height;
   if (gross <= 0) return { buys: [], cuts: [], checks: [] };
 
   const openingShare = openings / gross;
+  // Kamera lahko v odprtine natančno zbere bruto površino; razlika je potem
+  // −0,00000000000004 m² in bi monterju izpisala »neto −0 m²«. Nič je nič.
+  const netM2 = r2(gross - openings) || 0;
   // ROKSAL za FASADO objavlja razmik podložne letve 70–80 cm — druga številka
   // kot na terasi (33–35 cm), kljub isti besedi »letev«. Splošna praksa 40 cm
   // je strožja, zato ni v navzkrižju; monter pa mora vedeti, kateri izdelek
@@ -463,8 +512,8 @@ function fasadaPlan(i: CraftInputs): InstallPlan {
       },
       { label: 'Rezerva obloge', detail: '5 % za rez in odpad; pri diagonalni smeri 10 %', status: 'info' },
       openingShare > 0.35
-        ? { label: 'Delež odprtin', detail: `${Math.round(openingShare * 100)} % bruto površine — velik delež; preveri izmero odprtin`, status: 'warn' }
-        : { label: 'Delež odprtin', detail: `${Math.round(openingShare * 100)} % bruto površine — v normalnem območju`, status: 'ok' },
+        ? { label: 'Delež odprtin', detail: `${Math.round(openingShare * 100)} % bruto površine (neto ${nf.format(netM2)} m²) — velik delež; preveri izmero odprtin`, status: 'warn' }
+        : { label: 'Delež odprtin', detail: `${Math.round(openingShare * 100)} % bruto površine (neto ${nf.format(netM2)} m²) — v normalnem območju`, status: 'ok' },
       { label: 'Dilatacija obloge', detail: 'vertikalni spoj vsakih 5–6 m + reža pod vrhnjim robom za odzračevanje', status: 'info' },
     ],
   };

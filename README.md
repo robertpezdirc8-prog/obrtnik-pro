@@ -122,6 +122,23 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > `tests/verify/ograje-input-guard.ts` (**75/75**, vključno s srednjim pasom 0,9–1,0 m, ki ga
 > prej ni pokrilo nobeno preverjanje) in `tests/e2e-ograje-input-ui.ts`
 > (**42/42** v živem brskalniku, z dvema posnetkoma na disku).
+> **Isti pogon je zdaj vseh sedem dejavnosti (Task 85, 2026-10-17).** Bolezen ni bila samo pri
+> ograjah: stopnice so računale `Math.max(0.6, širina)`, keramika je rezervo usekala na 30 %,
+> okna so velikost odprtine usekala na 0,5 m, nadstrešek je vedno dobil vsaj 2 stebra, fasada pa
+> `Math.max(0, bruto − odprtine)` — iz napačne izmere je nastala ničla brez razloga. Vseh pet
+> je zdaj prek `resolveCraftInputs('<dejavnost>', …)` povezanih v isti register (`src/lib/craft-inputs.ts`),
+> cena, načrt montaže IN norma za trajanje montaže vsi trije ali uporabijo vpisano število
+> dobesedno, ali pa ga zavrnejo z istim stavkom. Fasada ima prvič še **povezalno** mejo: zgornji
+> rob odprtin ni konstanta, ampak izračunana bruto površina stene, zato 120 m² odprtin na 100,8 m²
+> stene dobi razlog, ne tihe ničle. Pri stopnicah je hkrati odstranjena **izmišljena številka**:
+> stari načrt je računal `G = min(32, max(25, 63 − 2R))` in nato vedno izpisal »✓ udobje«, ker je
+> globino stopnice priskrbel isti izraz, ki naj bi jo preveril; zdaj našteje razpon G, ki ga
+> pravilo 2R + G = 60–66 cm zahteva, in pošteno reče, da globine vnos ne pozna. DOM meje
+> (`min={0.6}`, `min={0}`) so iz polj odstranjene, namigi pod njimi pa črpajo ISTE številke iz
+> registra. Zaklenjeno: `tests/verify/craft-inputs-all.ts` (**481/481**, generično čez vse
+> registrirane robove vseh petih dejavnosti + pariteta treh bralcev) in
+> `tests/e2e-craft-inputs-ui.ts` (**79/79** v živem brskalniku na treh dejavnostih, s tremi
+> posnetki na disku).
 
 ---
 
@@ -436,18 +453,20 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **terasa-input-guard 84/84** (Task 83: noben vnos terase se tiho ne useka; cena in montažni načrt
 se ravnavata po ISTEM resolverju),
 **ograje-input-guard 75/75** (Task 84: isti pogon pri ograjah — cena, načrt IN norma za trajanje
-berejo vpisano višino dobesedno ali pa jo vsi trije zavrnejo).
+berejo vpisano višino dobesedno ali pa jo vsi trije zavrnejo),
+**craft-inputs-all 481/481** (Task 85: ista trditev čez vseh pet preostalih dejavnosti — vsak
+registriran rob posebej, oba izpista vnosa in plavajoči rob pri fasadi).
 Assertivnih preverjanj skupaj,
 zdaj IZMERJENO Z ENO STEVLJO in
-ne sešteto iz spomina: **3087 OK / 0 NAPAK** v **45** od **52** `tests/verify/*.ts` skriptov;
+ne sešteto iz spomina: **3568 OK / 0 NAPAK** v **46** od **53** `tests/verify/*.ts` skriptov;
 sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
 `quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
 `bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
 zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
 **20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
 obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
-seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 3012 → **3087** = +75
-(`ograje-input-guard` je nov s 75 preverjanji), nič se ni izgubilo.
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 3087 → **3568** = +481
+(`craft-inputs-all` je nov s 481 preverjanji), nič se ni izgubilo.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
@@ -472,6 +491,22 @@ piše 0,5 m, ne 0,9 m, kontrola pa je pošteno označena in pravi, da predpisa a
 preveriti; 5 m in 300 prehodov se ZAVRNETA, postavke, gumb in tudi norma za trajanje montaže
 izginejo, vpisana številka pa ostane na zaslonu; vrnitev na 1,1 m da POVEČ ISTO vsoto; 7,2 man-ur
 je zapisana z vejico; oba posnetka — sprejeta 0,5 m in zavrnjen 5 m — preverjena po velikosti NA
+DISKU),
+`e2e-craft-inputs-ui.ts` **79/79** (Task 85: tri dejavnosti v živem brskalniku. Stopnice — DOM
+meje `min={0.6}` in `max` sta iz polja izginila, namig pod poljem nosi ISTE robove kot resolver;
+0,45 m se izračuna dobesedno (postavka pravi »Širina 0,45 m«, kartica povzetka prav tako, vsota
+pa se SPREMENI — mera torej res soči račun, ne samo zaslona; v `craft-inputs-all` je zaklenjeno,
+da antidrseči profili vedno znašajo št. stopnic × VPISANA širina, pri 0,45 / 0,6 / 1,35 m);
+0,3 m je ZAVRNETO z
+»Širina stopnic 0,3 m je premalo za izračun (0,3 < 0,4); sprejemamo 0,4–3 m«, postavke, gumb in
+norma za trajanje izginejo, vpisana številka pa ostane na zaslonu, načrt montaže javi ISTO
+zaustavitev; samodejni predlog 15 stopnic iz 260 cm je pri ceni in normi ISTI, karta pravila 2R +
+G pa našteje zahtevani razpon globine in ne laže o udobju. Fasade — 120 m² odprtin na 100,8 m²
+stene je zavrnjeno z IZRAČUNANO mejo (120 > 100,8); pri plavajočem robu 17 × 2,35 = 39,9499… in
+39,95 m² izračun NE javi napake in ničlo izpiše kot »0 m²«, ne »−0 m²«, 39,96 m² pa že zavrne.
+Keramika — vpisanih 50 % rezerve ostane 50 % (»Skupaj z rezervo 18 m²«; stari usek na 30 % bi
+zaračunal 15,6 m²), 101 % je zavrnjen po imenu polja. Vsak krog nazaj na privzeto vrednost da
+POVEČ ISTO vsoto; trije posnetki (sprejeta 0,45 m, zavrnitev, fasada) preverjeni po velikosti NA
 DISKU),
 `e2e-colmap-cdp.ts` 36/36.
 

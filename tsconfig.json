@@ -40,7 +40,9 @@
     ".next-e2e-terasa/types/**/*.ts",
     ".next-e2e-terasa/dev/types/**/*.ts",
     ".next-e2e-ograje/types/**/*.ts",
-    ".next-e2e-ograje/dev/types/**/*.ts"
+    ".next-e2e-ograje/dev/types/**/*.ts",
+    ".next-e2e-crafts/types/**/*.ts",
+    ".next-e2e-crafts/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

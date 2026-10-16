@@ -46,6 +46,7 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 | WPC terasa — deske/nosilci | `src/lib/deck-analysis.ts` (`JOIST_SUGGEST_M` je izpeljen iz ROKSALovega pravila, ne vtipkan; isti predlog za ravno in diagonalno) | `tests/verify/deck-analysis.ts` 53/53 |
 | WPC terasa — meja vnosa (Task 83) | `src/lib/terasa-inputs.ts` (od Task 84 sta register in resolver skupna v `src/lib/craft-inputs.ts`) — enoten resolver za ceno IN načrt montaže; znotraj okna se vpisano uporabi TOČNO, zunaj se izračun ZAVRNE z razlogom, ki imenuje vpisano vrednost (`Math.min`/`Math.max` usekov ni več) | `tests/verify/terasa-input-guard.ts` 84/84 (mutacija + pariteta čez 11 vhodov); `tests/e2e-terasa-input-ui.ts` 36/36 v živem brskalniku |
 | Balkonske ograje — meja vnosa (Task 84) | `src/lib/craft-inputs.ts` — skupni register in resolver, ki ga uporabita terasa in ograje; cena, načrt montaže IN norma za trajanje berejo isti rezultat (noben `Math.max(rob, vnos)` več) | `tests/verify/ograje-input-guard.ts` 75/75 (izvor brez useka + pariteta treh bralcev); `tests/e2e-ograje-input-ui.ts` 42/42 v živem brskalniku |
+| Preostalih pet dejavnosti — meja vnosa (Task 85) | `src/lib/craft-inputs.ts` — register je zdaj skupen vsem sedmim dejavnostim (terasa prek `terasa-inputs.ts`); cena, načrt montaže IN norma za trajanje montaže vsi trije berejo `resolveCraftInputs('<dejavnost>', …)`. Fasada ima prvič **povezalno** mejo (zgornji rob odprtin = izračunana bruto površina stene, `fasadaOpeningProblem`). Pri stopnicah je odstranjena izmišljena številka: `G = min(32, max(25, 63 − 2R))`, ki je vedno vrnila »✓ udobje«, je nadomeščena z razponom G, ki ga zahteva pravilo 2R + G = 60–66 cm, in poštenim zapisom, da globine vnos ne pozna | `tests/verify/craft-inputs-all.ts` 481/481 (generično čez vse registrirane robove + pariteta treh bralcev + plavajoči rob); `tests/e2e-craft-inputs-ui.ts` 79/79 v živem brskalniku na treh dejavnostih |
 | Okna/vrata — popis odprtin | `src/lib/opening-schedule.ts` | `tests/verify/opening-schedule.ts` 50/50 |
 | Nadstreški — 2 fotki (fronta+stran) | `src/lib/canopy-analysis.ts` | `tests/verify/canopy-analysis.ts` 52/52 |
 | Fasada — obloga + stena − odprtine | `src/lib/fasada-analysis.ts` (Radon, Sutherland–Hodgman rez) | `tests/verify/fasada-analysis.ts` 33/33 |
@@ -130,7 +131,7 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 > ni posledica kode. **Od Task 71 teh petih ni več rdečih**: izhodna mapa je
 > `os.tmpdir()/obrtnik-pro-verify`, fiksna slika pa je odvedena iz `import.meta.url`.) `photo-replace` ima **391** preverjanj, ne 152.
 
-- `measurement-status` 90/90 · `multiview` 104/104 · `multiview-chain` 66/66 · `multiview-sfm` 122/122 · `multiview-sheet` 20/20 · `photo-replace` 391/391 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `accuracy-test` 35/35 · `measure-report` 48/48 · `laser-protocols` 72/72 · `offer-pipeline` 56/56 · `payment-tracking` 77/77 · `time-tracking` 74/74 · `ar-depth` 32/32 · `colmap-model` 44/44 · `site-diary` 57/57 · `eslog` 101/101 · **FAZA-8 nove: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26** · **F3: `render-promise` 25/25** · **Task 71: `portable-paths` 28/28** · **FAZA-9: `band-suggest` 54/54 · `suggest-gate` 21/21** · **Task 74: `band-ui-contract` 54/54** · **Task 75: `gt-evidence` 102/102** · **Task 80: `roksal-span-rules` 74/74, od Task 81 130/130, od Task 82 133/133** · **Task 82: `roksal-board-gap` 58/58** · **Task 83: `terasa-input-guard` 84/84** · **Task 84: `ograje-input-guard` 75/75** · `scale-suggestions` ✓ · `scene-classify` ✓ — vsi assertivni skripti v tests/verify izhod 0 (**52/52**, kar velja od Task 84; 51/51 od Task 83; 50/50 od Task 82; 49/49 od Task 80; 48/48 od Task 75; 47/47 od Task 74; 44/44 od Task 71, prej 38/43 zaradi petih okoljskih poti)
+- `measurement-status` 90/90 · `multiview` 104/104 · `multiview-chain` 66/66 · `multiview-sfm` 122/122 · `multiview-sheet` 20/20 · `photo-replace` 391/391 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `accuracy-test` 35/35 · `measure-report` 48/48 · `laser-protocols` 72/72 · `offer-pipeline` 56/56 · `payment-tracking` 77/77 · `time-tracking` 74/74 · `ar-depth` 32/32 · `colmap-model` 44/44 · `site-diary` 57/57 · `eslog` 101/101 · **FAZA-8 nove: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26** · **F3: `render-promise` 25/25** · **Task 71: `portable-paths` 28/28** · **FAZA-9: `band-suggest` 54/54 · `suggest-gate` 21/21** · **Task 74: `band-ui-contract` 54/54** · **Task 75: `gt-evidence` 102/102** · **Task 80: `roksal-span-rules` 74/74, od Task 81 130/130, od Task 82 133/133** · **Task 82: `roksal-board-gap` 58/58** · **Task 83: `terasa-input-guard` 84/84** · **Task 84: `ograje-input-guard` 75/75** · **Task 85: `craft-inputs-all` 481/481** · `scale-suggestions` ✓ · `scene-classify` ✓ — vsi assertivni skripti v tests/verify izhod 0 (**53/53**, kar velja od Task 85; 52/52 od Task 84; 51/51 od Task 83; 50/50 od Task 82; 49/49 od Task 80; 48/48 od Task 75; 47/47 od Task 74; 44/44 od Task 71, prej 38/43 zaradi petih okoljskih poti)
 - Poslovni moduli (deterministično, 0 AI, pogodbe iskrenosti kot pri merjenju): sledenje ponudbam (`offer-pipeline.ts` — win-rate < 3 odločenih = brez trditev), terjatve/Mahnwesen (`payment-tracking.ts` — povprečje < 3 plačanih = null), časovnica (`time-tracking.ts` — obračun na 0,25 h izrecno izpisan, povprečje < 3 dni = null), terenski dnevnik (`site-diary.ts` — ure iz časovnice samo za vnos s ponudbo, brez vnosov span = null, nič tihih »0 h«), e-račun (`eslog.ts` — račun z neskladnimi zneski ali brez postavk se NE izvozi (iskrena vrata 409); snapshot postavk ob izdaji računa (InvoiceItem) — zgodovina ne sledi spremembam ponudbe; opozorila (manjka IBAN/naslov kupca) NE blokirajo in so izpisana kot XML komentar)
 - `tsc --noEmit` **PONOVLJENO 2026-10-16 po FAZA-8** (izmerjeno, ne iz spomina): izhodna koda 1, 5 napak v 5 vrsticah, **0 vrstic se začne na `src/`** (`grep -c '^src/'` = 0). Napake so izven aplikacije: `examples/websocket/frontend.tsx(4,20)` in `examples/websocket/server.ts(2,24)` TS2307, `tests/e2e-compare-fixture.ts(69,7)/(129,7)/(130,7)` TS2867. Zavestno NE popravljene: popravek = nova odvisnost (`@types/bun`, `socket.io`), nobena pa ni na fotomontažni poti.
 - `tsc --noEmit` **PONOVLJENO ŠE 2026-10-16 po Task 71**: ISTIH 5 vrstic (primerjano z `cmp`, izpis identičen), pri `tests/e2e-compare-fixture.ts` so vrste zamaknjene na (79,7)/(139,7)/(140,7), ker je Task 71 vanj vstavil 10 vrstic prehodnega uvoza — ne nove napake. Opomba o kodi: en zagon vrne 2 ob identičnem izpisu, ponovna zagona stabilno 1; zapisana je koda 1, vir resnice je izpis.
@@ -211,6 +212,50 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
   ne koda — prazna dolžina vrne `Dolžina: 0 m` (ne zavrnitve), `craftProblemText` začne razlog z
   veliko začetnico, kratki povzetek ne vsebuje besede »preveč«, `formatNum` pa tiska »0,2« in
   »4«, ne »0,20« / »4,00«. Vsa štiri so bila popravljena proti IZMERJENEMU izpisu, nobeno proti kodi.
+- **Ponovljeno 2026-10-17 (Task 85):** `bun tests/verify-counts.ts` → **3568 OK / 0 NAPAK** v
+  **46** od **53** skriptov (brez brojača je istih sedem). Delta glede na Task 84 je **+481** in je
+  v celoti nov `craft-inputs-all` (481/481); nobeno preverjanje ni izginilo, `ograje-input-guard`
+  ostaja **75/75** in `terasa-input-guard` **84/84**, kljub temu da je register zdaj skupen vsem
+  sedmim dejavnostim. `tsc --noEmit` izhodna koda 0, `eslint . --ignore-pattern '.next*/**'`
+  izhodna koda 0 brez zapisov. Nov `tests/e2e-craft-inputs-ui.ts` **79/79** v živem brskalniku na
+  treh dejavnostih (stopnice, fasade, keramika), s tremi posnetki, preverjenimi po velikosti na
+  disku, in s sveže zgrajenim svežnjem (`NEXT_DIST_DIR=.next-e2e-crafts`, `next dev -p 3017`), da
+  preizkus ne vidi starega paketa.
+  **Kaj je bilo najdeno:** bolezen iz Tasks 83/84 ni bila posebnost terase in ograj, ampak vzorec
+  v vseh petih preostalih dejavnostih. Vsaka je imela svoj tihi popravek vnosa: stopnice
+  `Math.max(0.6, širina)` (načrt je isto širino bral dobesedno — pri 0,4 m sta bili na zaslonu in
+  v računu dve različni števili), keramika `Math.max(1, cena)` in rezerva usekana na 30 % (načrt
+  jo je risel po vpisanih 50 %), okna `Math.max(0.5, velikost)` (velikost samo OPISUJE okno, cena
+  je na kos — zato je spodnji rob registra 0 in ponudba SAMO Z VRATI ni zavrnjena), nadstrešek
+  `Math.max(2, št. stebrov)` (0 stebrov = sidranje na zid je veljavna odločitev
+  montažerja, ne napaka), fasada `Math.max(0, bruto − odprtine)` (iz napačne izmere je naredila
+  prazno ponudbo brez razloga).
+  **Druga, hujša najdba je bila izmišljena številka, ne samo usek:** načrt za stopnice je računal
+  `G = Math.min(32, Math.max(25, 63 − 2R))` in nato iz globine, ki jo je SAM priskrbel, sklepal
+  »✓ udobje«. Krog se je zaprl vedno, ne glede na vnos. Namesto ocenjevanja zdaj našteje razpon
+  G, ki ga pravilo 2R + G = 60–66 cm ZAHTEVA (iz vpisanega R), in reče, da globine stopnice vnos
+  ne pozna, zato je ne more preveriti.
+  **Tretja najdba:** pri fasadi rob ni konstanta. Odprtine so lahko veljavne samo toliko, kot
+  znaša bruto površina stene, zato `fasadaOpeningProblem` mejo SESTAVI ob klicu (max = izračunani
+  bruto) — besedilo zavrnitve pride iz istega stroja kot vse ostalo, zato se formulacija ne more
+  raziti. Posledično je 120 m² odprtin na 100,8 m² steni zavrnjeno z »(120 > 100,8)«, plavajoči
+  rob (17 × 2,35 = 39,9499…, odprtine 39,95) pa NE javi napake in ničlo izpiše kot »0 m²«, ne
+  »−0 m²« (`r2(...) || 0`).
+  **Kaj je sledilo:** ob končnem pregledu zaslona je načrt za stopnice še vedno trdil »priporočilo
+  ≥ 0,9 m za glavne stopnice« brez vira — isti razred napake, ki so ga Tasks 80–84 odstranjevali
+  drugje. Številka je ostala (je praksa, ki monterju nekaj pove), dodan pa je vir: »(splošna
+  praksa, ne objavljen podatek ROKSAL)«, zaklenjeno s štirimi novimi preverjanji. Štiri
+  pričakovanja v prvem naborju `craft-inputs-all` so bila napačna, ne koda: skeniranje vira je
+  iskalo `resolveCraftInputs('stopnice')` Z OKLEPAJEMA (klic ima drugi argument), `craftProblemText`
+  razlog začne z VELIKO začetnico, `nf` je v `install-plan.ts` instanca `Intl.NumberFormat`, v
+  `pricing.ts` pa funkcija, agregator pa je nov skript brez povzetka štel kot napako. Vsa štiri
+  so bila popravljena proti IZMERJENEMU izpisu.
+  **Zajeta trditev v dokumentih (ob končnem branju):** README je za sprejeto 0,45 m pisal »nakup
+  desk pravi 12 × 0,45 m = 5,4 lm«, noben preizkus pa tega ni meril (E2E je na zaslonu preveril
+  postavko, povzetek in spremembo vsote). Izpis cene in načrt sta bila ponovno pognana, trditev
+  pa je zamenjana z merjenim razmerjem »antidrseči profili = št. stopnic × VPISANA širina« in
+  zaklenjena s tremi preverjanji (0,45 / 0,6 / 1,35 m). Skript ima zato 481, ne 478 preverjanj.
+- **Ponovljeno 2026-10-16 (Task 83):** `bun tests/verify-counts.ts` → **3012 OK / 0 NAPAK** v
   **44** od **51** skriptov (brez brojača je istih sedem; število skriptov je zrastelo za eno —
   nov `terasa-input-guard`). Delta glede na Task 82 je **+84** in je v celoti ta nov skript
   (84/84); nobeno preverjanje ni izginilo, `deck-analysis` ostaja 53/53 kljub trem novim
