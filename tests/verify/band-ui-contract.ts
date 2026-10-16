@@ -6,7 +6,9 @@
  *  1. ponastavitev ob MENJAVI fotografije — input živi samo v prazni veji, do
  *     ponovnega nalaganja fotke današnji UI sploh ne pride,
  *  2. vrstni red vrat v `baseRenderBlocker` — napačen vrstni red se v brskalniku
- *     pokaže samo, kadar manjka več stvari hkrati,
+ *     pokaže samo, kadar manjka več stvari hkrati (Task 78 je en tak par —
+ *     potrjen predlog brez mere — zajel v `e2e-fotomontaza-real.ts`, a
+ *     ostale kombinacije brskalnik ne more naložiti brez fotk v repozitoriju),
  *  3. nova pots, ki bi ravnino TAJNO potrdila (ali jo tiho naredila SUGGESTED).
  *
  * Torej: te trditve so ZAKLEPI OBLIKE IZVORA, ne obnašanja. Če se besedilo
@@ -15,7 +17,7 @@
  *
  * Deterministično: brez mreže, brez brskalnika, samo branje datotek.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -117,6 +119,20 @@ check('planeConfirmed je odvisnost mema (sicer bi bil blok zamrznjen)', /planeCm
 check(
   'vrstni red ima utemeljitev z BRKALNIŠKO MERITVIJO, ne le z opisom',
   /izmerjeno[\s\S]{0,40}brskalnik/.test(blocker),
+);
+// Task 78, izmerjeno na PRAVI fotki: monter potrdi predlog, mere pa nima —
+// `geo` ostane pod FITTED (planeCalibrated rabi cm), stara različica pa mu je
+// pisala, naj označi oglišča, ki jih je že potrdil. Potrjena ravnina brez mere
+// sme dobiti SAMO besedilo o meri.
+const confirmedNoCm = slice(blocker, 'if (!canRenderMontage(assurance.geo)) {', 'return planeConfirmed');
+check('veja za potrjeno ravnino brez mere obstaja', /planeConfirmed && !planeCm/.test(confirmedNoCm), 'manjka zgodnji return');
+check('ta veja IMENUJE mero', confirmedNoCm.includes('Vnesi višino ravnine v cm'));
+check('ta veja NE sme kriviti oglišč', !confirmedNoCm.includes('Geometrija ravnine ni potrjena'));
+check(
+  'isto dokazuje tudi E2E na pravi fotki (brez vnesene mere)',
+  existsSync(join(ROOT, 'tests/e2e-fotomontaza-real.ts')) &&
+    readFileSync(join(ROOT, 'tests/e2e-fotomontaza-real.ts'), 'utf-8').includes('manjkajočo mero v cm'),
+  'e2e-fotomontaza-real.ts mora glasiti isto trditev',
 );
 
 // ── 4. Amber namestitev mora stati PRED zeleno ──

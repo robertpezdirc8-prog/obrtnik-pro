@@ -32,7 +32,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **DVOTAPNI PREDLOG RAVNINE (FAZA-9, 2026-10-16):** tok je preizkušen V BRKALNIKU na pravi
 > fotki (najde: podpora 89 %/95 %, deterministično ponovljivo; zavrne: brez štirikotnika) in
 > zdaj tudi AVTOMATIZIRANO — `tests/e2e-band-ui.ts` (**50/50**, sintetična fotka z znano resnico
-> tirnic 50 %/75 %), `tests/verify/band-ui-contract.ts` (**54/54**, vir-gledni zaklep treh stvari,
+> tirnic 50 %/75 %), `tests/verify/band-ui-contract.ts` (**58/58**, vir-gledni zaklep treh stvari,
 > do katerih brskalnik ne more: ponastavitev ob menjavi slike, vrstni red vrat, edin izvor
 > nepotrjene ravnine). Obe imata mutacijski dokaz.
 > **CELA FOTOMONTAŽA (Task 77, 2026-10-16):** vseh sedem korakov je zdaj avtomatiziranih v
@@ -40,6 +40,13 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > disku. Izris ni dokazan z »gumb obstaja« ampak s piksli (`meanDiff 40,81/255` znotraj
 > kvadrata), izvoz z datoteko (`800×664`, veljavna PNG glava, žig z oznako je v sliki).
 > `src/` nespremenjen — noben novega `data-testid` ni bilo treba dodati.
+> **PRAVA FOTKA, MERJENA PROTI TERENU (Task 78, 2026-10-16):** `tests/e2e-fotomontaza-real.ts`
+> (**53/53**) odpre 04.jpg in 16.jpg monterja (fotke SO zunaj repozitorija, pot iz argumenta,
+> brez fotk izhodna koda 2), tapne dvakrat in izmeri tirnici PROTI ročno prebranemu GT.
+> Rezultat: **mediana 2,3 %, max 10,1 %** — enako kot zamrznjena jedrna sonda — in tirnici se
+> z jedrom ujamata na **0,00 %** na istih bajtih. Pri tem je UI-plast našla napako, je jedro
+> ne more: potrjen predlog brez mere je krivil oglišča namesto manjkajoče mere (popravljeno v
+> `foto-replace.tsx`, zaklenjeno v `band-ui-contract.ts` in v E2E).
 
 ---
 
@@ -281,10 +288,12 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 25/25**, **gt-evidence 102/102**. Assertivnih preverjanj skupaj: **2753** = 2024 (izmerjeni baseline,
 `../baseline/BASELINE-2026-10-15.md`) + 251 (štiri NOVE FAZA-8 skripte: 119 + 56 + 50 + 26) + 25
 (render-promise, F3) + 194 (pet doslej rdečih, izmerjenih na tej stroji po Task 71) + 28
-(`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) + 54 (`band-ui-contract`)
-+ 102 (`gt-evidence`, Task 75) = **2753**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
+(`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) + 58 (`band-ui-contract`, Task 78: +4)
++ 102 (`gt-evidence`, Task 75) = **2757**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
+`e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
+zažene se SAMO z argu­mentom fotokorpusa, ker fotk ni v repozitoriju),
 `e2e-colmap-cdp.ts` 36/36.
 
 ### E2E dokazi

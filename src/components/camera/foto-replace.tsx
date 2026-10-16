@@ -556,11 +556,16 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     // zaradi višine, in korak 6 mora reči tisto, kar res drži (izmerjeno v
     // brskalniku: vrstni red je napovedal cm pred predlogom).
     if (!canRenderMontage(assurance.geo)) {
+      // Drugi del istega pouka, izmerjen 2026-10-16 na PRAVI fotki (Task 78):
+      // ko je predlog POTRJEN, `geo` vseeno ostane pod `FITTED`, ker
+      // `planeCalibrated` potrebuje tudi vnos cm. Takrat oglišča niso kriva —
+      // manjka mera, in to je treba tudi reči; sicer monter gleda v 4/4
+      // potrjena oglišča in jim piše, da jih naj označi.
+      if (planeConfirmed && !planeCm) return 'Vnesi višino ravnine v cm (korak 2). Širino lahko pustiš prazno.';
       return planeConfirmed
         ? 'Geometrija ravnine ni potrjena (4 oglišča) — brez nje izris ni utemeljen.'
         : 'Štirikotnik je samodejni predlog in ga monter še ni potrdil — izris je zaprt, dokler oglišč ne pregledaš (korak 2).';
     }
-    if (!planeCm) return 'Vnesi višino ravnine v cm (korak 2). Širino lahko pustiš prazno.';
     if (layoutInfo.error) return layoutInfo.error;
     if (!layoutInfo.layout) return 'Postavitev elementov ni izračunana (korak 2).';
     if (!inpaintRes) return 'Zaženi odstranitev stare ograje (korak 4).';
