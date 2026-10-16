@@ -11,7 +11,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 46/46 skript zeleno** (pet, ki je bilo doslej rdečih, je
+> Zadnja polna preverba: **regresija 47/47 skript zeleno** (pet, ki je bilo doslej rdečih, je
 > padalo samo zaradi poti, vezanih na razvojni stroj — `/tmp/*.png` in ena absolutna
 > kontejnerska pot; odpravljeno 2026-10-16, Task 71, z novim varovalnim skriptom
 > `portable-paths`), **photo-replace 391/391, assertion 119/119**
@@ -29,6 +29,12 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > poti, je prevedenih na `os.tmpdir()` oziroma relacijo do `import.meta.url`; skupaj z njimi
 > je pregledanih še 10 E2E/orodnih skriptov z istim vzorcem. Nov skript `portable-paths`
 > (28/28, mutacijsko dokazan) prepreči, da bi se taka pot vrnila.
+> **DVOTAPNI PREDLOG RAVNINE (FAZA-9, 2026-10-16):** tok je preizkušen V BRKALNIKU na pravi
+> fotki (najde: podpora 89 %/95 %, deterministično ponovljivo; zavrne: brez štirikotnika) in
+> zdaj tudi AVTOMATIZIRANO — `tests/e2e-band-ui.ts` (**50/50**, sintetična fotka z znano resnico
+> tirnic 50 %/75 %), `tests/verify/band-ui-contract.ts` (**54/54**, vir-gledni zaklep treh stvari,
+> do katerih brskalnik ne more: ponastavitev ob menjavi slike, vrstni red vrat, edin izvor
+> nepotrjene ravnine). Obe imata mutacijski dokaz.
 
 ---
 
@@ -231,7 +237,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (42)
+### Verifikacijske skripte (47)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):
@@ -249,11 +255,14 @@ bun tests/verify/assertion.ts         # FAZA-8: dve osi trditev, totalna 25/25 p
 bun tests/verify/plank-layout-width.ts # FAZA-8: neznana širina ravnine (kanon. mera, pravilo 13)
 bun tests/verify/render-promise.ts   # F3: kaj UI SME obložiti o izrisu (30-kombinacijska tabela)
 bun tests/verify/portable-paths.ts  # Task 71: nobena pot ne sme biti vezana na konkretn stroj
+bun tests/verify/band-suggest.ts    # FAZA-9: dvotapni pas — pragovi, plateau, zavrnitev naklona
+bun tests/verify/suggest-gate.ts    # FAZA-9: vrata predloga (SUGGESTED ne odpre izrisa/naročilnice)
+bun tests/verify/band-ui-contract.ts # FAZA-9: vir-gledni zaklep UI vrat (kar brskalnik ne more)
 # … (celoten seznam: tests/verify/)
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9): **46 skript, 46 z izhodno kodo 0**.
+Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9): **47 skript, 47 z izhodno kodo 0**.
 Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
 `stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
 `import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
@@ -263,10 +272,13 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
-25/25**. Assertivnih preverjanj skupaj: **2597** = 2024 (izmerjeni baseline,
+25/25**. Assertivnih preverjanj skupaj: **2651** = 2024 (izmerjeni baseline,
 `../baseline/BASELINE-2026-10-15.md`) + 251 (štiri NOVE FAZA-8 skripte: 119 + 56 + 50 + 26) + 25
 (render-promise, F3) + 194 (pet doslej rdečih, izmerjenih na tej stroji po Task 71) + 28
-(`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) = **2597**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
+(`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) + 54 (`band-ui-contract`)
+= **2651**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
+E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
+`e2e-colmap-cdp.ts` 36/36.
 
 ### E2E dokazi
 
@@ -289,6 +301,14 @@ fixture, predlogi z razlikami v cm/%, klik predloga izbere profil,
 prikazano do upodobitve z izbranim profilom; namizje + mobilni 390 brez
 vodoravnega prelivanja). Pokrivajo namizni in mobilni prikaz
 (390 px), izvoz z žigom, primerjave profilov in celoten tok fotomontaže.
+
+**Avtomatizirani E2E skripti** (CDP prek WebSocket, brez Playwright — poganjajo se z `bun`
+ob zažganem `next dev` na 3000): `tests/e2e-band-ui.ts` (**50/50**, FAZA-9: dvotapni predlog
+na sintetični fotki z ANALITIČNO resnico tirnic 50 %/75 %, tolerance 1,5 %; iskrena zavrnitev,
+črtkan štirikotnik, vrstni red blokerjev, amber `SUGGESTED` plošča, zaprt izris, potrditev,
+mobilni 390, nič konzolnih napak; mutacijsko dokazan) in `tests/e2e-colmap-cdp.ts` (36/36 —
+temu je bil letos popravljen `--user-data-dir`, ki je kazal na kontejnerski `/tmp` in je
+skript na tej stroji naredil nezagonljivega).
 
 ### Orodja za gradiva (`tests/make-*`)
 
@@ -319,7 +339,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (46 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (47 skript), e2e-*.png, e2e-*.ts (CDP), make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```

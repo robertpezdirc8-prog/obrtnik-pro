@@ -60,7 +60,7 @@ function launchChrome(): ChildProcess {
       '--disable-gpu',
       '--disable-dev-shm-usage',
       '--remote-allow-origins=*',
-      `--user-data-dir=/tmp/colmap-e2e`,
+      `--user-data-dir=${TMP('colmap-e2e-profile')}`,
       `--remote-debugging-port=${PORT}`,
       'about:blank',
     ],
