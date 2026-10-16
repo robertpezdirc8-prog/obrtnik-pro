@@ -12,6 +12,16 @@
 //        /tmp/e2e-compare-ref.json (pričakovane povprečne barve za nadaljnjo preverbo)
 // Zagon: bun tests/e2e-compare-fixture.ts
 import sharp from 'sharp';
+import * as __vfyFs from 'node:fs';
+import * as __vfyOs from 'node:os';
+import * as __vfyPath from 'node:path';
+// Izhodna mapa je odvedena iz os.tmpdir(): '/tmp' je veljala samo v razvojnem
+// kontejnerju, na Windows bi pomenila C:\tmp in script bi padel zaradi okolja.
+// Uvozi so prostorno poimenovani, da ne morejo zadniti obstojecega uvoza istih
+// imen (tri od teh datotek ze uvozijo 'join' iz node:path).
+const __vfyOutDir = __vfyPath.join(__vfyOs.tmpdir(), 'obrtnik-pro-e2e');
+__vfyFs.mkdirSync(__vfyOutDir, { recursive: true });
+const TMP = (name: string) => __vfyPath.join(__vfyOutDir, name);
 import { buildReplaceMetadata, computePlankLayouts, createMask } from '../src/lib/photo-replace-core';
 
 const W = 1280;
@@ -66,7 +76,7 @@ const newBuf = renderRaw(newPixel);
 
 // PRED: PNG (za nalaganje skozi realni processImage pipeline v brskalniku)
 const beforePng = await sharp(oldBuf, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
-await Bun.write('/tmp/e2e-compare-before.b64', beforePng.toString('base64'));
+await Bun.write(TMP('e2e-compare-before.b64'), beforePng.toString('base64'));
 
 // PO: JPEG 0,92 (enako kot app: comp.toDataURL('image/jpeg', 0.92)) → dataUrl
 const afterJpeg = await sharp(newBuf, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 92 }).toBuffer(); // ≈ canvas toDataURL('image/jpeg', 0.92)
@@ -126,6 +136,6 @@ const versions = [
   { id: 'e2e-compare-1', createdAt: CREATED_AT, profileLabel: metaOk.profileLabel, meta: metaOk, aux, dataUrl: afterDataUrl },
   { id: 'e2e-compare-2', createdAt: CREATED_AT, profileLabel: metaBrezTeksture.profileLabel, meta: metaBrezTeksture, aux, dataUrl: afterDataUrl },
 ];
-await Bun.write('/tmp/e2e-compare-versions.json', JSON.stringify(versions));
-await Bun.write('/tmp/e2e-compare-ref.json', JSON.stringify({ oldQuadAvg, newQuadAvg, W, H, created: CREATED_AT }));
+await Bun.write(TMP('e2e-compare-versions.json'), JSON.stringify(versions));
+await Bun.write(TMP('e2e-compare-ref.json'), JSON.stringify({ oldQuadAvg, newQuadAvg, W, H, created: CREATED_AT }));
 console.log(`fixture zapisan: ${versions.length} različici (v1 overjena → izvoz, v2 brez teksture → blokada), PNG ${(beforePng.length / 1024).toFixed(0)} KB, JSON ${(JSON.stringify(versions).length / 1024).toFixed(0)} KB`);

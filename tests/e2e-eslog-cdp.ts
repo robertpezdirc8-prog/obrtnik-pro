@@ -5,6 +5,16 @@
 // XML (zajem prek URL.createObjectURL) → iskrna vrata 409 (brez davčne
 // številke) → mobilni 390 → konzola čista → čiščenje.
 import { spawn, type ChildProcess } from 'node:child_process';
+import * as __vfyFs from 'node:fs';
+import * as __vfyOs from 'node:os';
+import * as __vfyPath from 'node:path';
+// Izhodna mapa je odvedena iz os.tmpdir(): '/tmp' je veljala samo v razvojnem
+// kontejnerju, na Windows bi pomenila C:\tmp in script bi padel zaradi okolja.
+// Uvozi so prostorno poimenovani, da ne morejo zadniti obstojecega uvoza istih
+// imen (tri od teh datotek ze uvozijo 'join' iz node:path).
+const __vfyOutDir = __vfyPath.join(__vfyOs.tmpdir(), 'obrtnik-pro-e2e');
+__vfyFs.mkdirSync(__vfyOutDir, { recursive: true });
+const TMP = (name: string) => __vfyPath.join(__vfyOutDir, name);
 import { accessSync, rmSync } from 'node:fs';
 
 const CHROME_CANDIDATES = [
@@ -39,7 +49,7 @@ function launchChrome(): ChildProcess {
     }
   });
   if (!bin) throw new Error('chromium binary ni najden');
-  rmSync('/tmp/eslog-e2e', { recursive: true, force: true });
+  rmSync(TMP('eslog-e2e'), { recursive: true, force: true });
   const child = spawn(
     bin,
     [

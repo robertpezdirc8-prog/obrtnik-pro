@@ -25,7 +25,11 @@ async function cdpCall(ws: WebSocket, id: number, method: string, params: any = 
 }
 
 async function main() {
-  const out = '/tmp/kubo-assets/';
+  // Prehodna izhodna mapa: '/tmp' je veljala samo v razvojnem kontejnerju.
+  const out = (await import('node:os')).tmpdir() + '/obrtnik-kubo-assets/';
+  // Mapa se ustvari tu: bratrica orodja (deka, ograje) sta to že imeli, brez
+  // tega writeFileSync pade — skrita napaka orodja, ne okoljska.
+  (await import('node:fs')).mkdirSync(out, { recursive: true });
   for (const [name, url] of urls) {
     // nov tab
     const tab = await (await fetch(`${CDP}/json/new?url=${encodeURIComponent('about:blank')}`, { method: 'PUT' })).json();

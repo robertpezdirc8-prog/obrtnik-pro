@@ -1,7 +1,18 @@
 // Verifikacija keramične mreže (bun + sharp): sintetične mreže ploščic
 // (stack, running bond, diagonalno, ribja kost) + realna fotka keramike.
 // Zagon: bun tests/verify/tile-grid.ts
+// Pot izvira iz relacije do te datoteke: absolutna pot razvojnega
+// kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// Prehodna izhodna mapa: "/tmp" je bil pot v razvojnem kontejnerju, na Windows
+// bi pomenila C:\tmp in skript bi padel zaradi okolja, ne zaradi logike.
+const VERIFY_OUT = join(tmpdir(), 'obrtnik-pro-verify');
+mkdirSync(VERIFY_OUT, { recursive: true });
+const TMP = (name: string) => join(VERIFY_OUT, name);
 import { analyzeTileGrid, snapTile, type RgbaImage } from '../../src/lib/tile-grid';
 
 async function loadRgba(path: string): Promise<RgbaImage> {
@@ -31,8 +42,8 @@ const GROUT = 4;
       }
     }
   }
-  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t27-stack.png');
-  const img = await loadRgba('/tmp/t27-stack.png');
+  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t27-stack.png'));
+  const img = await loadRgba(TMP('t27-stack.png'));
   const r = analyzeTileGrid({ img, pxPerCm: PX_PER_CM });
   console.log('stack bond (sintetika, 60×60):');
   check('mreža zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -60,8 +71,8 @@ const GROUT = 4;
       }
     }
   }
-  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t27-running.png');
-  const img = await loadRgba('/tmp/t27-running.png');
+  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t27-running.png'));
+  const img = await loadRgba(TMP('t27-running.png'));
   const r = analyzeTileGrid({ img, pxPerCm: PX_PER_CM });
   console.log('running bond (sintetika, 60×60):');
   check('mreža zaznana', r.ok);
@@ -88,8 +99,8 @@ const GROUT = 4;
       }
     }
   }
-  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t27-diag.png');
-  const img = await loadRgba('/tmp/t27-diag.png');
+  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t27-diag.png'));
+  const img = await loadRgba(TMP('t27-diag.png'));
   const r = analyzeTileGrid({ img, pxPerCm: PX_PER_CM });
   console.log('diagonalno (sintetika, 45°):');
   check('mreža zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -123,8 +134,8 @@ const GROUT = 4;
       fillRect(px + 2 * Ht + g, py + g, Ht - 2 * g, 2 * Ht - 2 * g);  // navpična
     }
   }
-  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t27-herr.png');
-  const img = await loadRgba('/tmp/t27-herr.png');
+  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t27-herr.png'));
+  const img = await loadRgba(TMP('t27-herr.png'));
   const r = analyzeTileGrid({ img, pxPerCm: PX_PER_CM });
   console.log('ribja kost (sintetika, 2:1):');
   check('mreža zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -137,7 +148,7 @@ const GROUT = 4;
 
 // ── 5. Kalibracija z znano ploščico (known-tile) ────────────
 {
-  const img = await loadRgba('/tmp/t27-stack.png');
+  const img = await loadRgba(TMP('t27-stack.png'));
   const r = analyzeTileGrid({ img, knownTileCm: 60 });
   console.log('kalibracija po znani ploščici:');
   check('vir = known-tile', r.calibSource === 'known-tile', `got ${r.calibSource}`);
@@ -159,7 +170,7 @@ const GROUT = 4;
 
 // ── 7. Brez kalibracije ─────────────────────────────────────
 {
-  const img = await loadRgba('/tmp/t27-stack.png');
+  const img = await loadRgba(TMP('t27-stack.png'));
   const r = analyzeTileGrid({ img });
   console.log('brez kalibracije:');
   check('vzorec vseeno prepoznan', r.ok && r.pattern === 'ravno');
@@ -169,7 +180,7 @@ const GROUT = 4;
 
 // ── 8. Realna fotka (sanity: ne crasha, koherenten izhod) ───
 {
-  const img = await loadRgba('/home/z/my-project/public/crafts/keramika.jpg');
+  const img = await loadRgba(fileURLToPath(new URL('../../public/crafts/keramika.jpg', import.meta.url)));
   const t0 = Date.now();
   const r = analyzeTileGrid({ img, pxPerCm: PX_PER_CM });
   const ms = Date.now() - t0;

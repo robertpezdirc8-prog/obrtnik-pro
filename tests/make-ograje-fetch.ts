@@ -49,7 +49,8 @@ async function cdpCall(ws: WebSocket, id: number, method: string, params: any = 
 }
 
 async function main() {
-  const out = '/tmp/ograje-assets/';
+  // Prehodna izhodna mapa: '/tmp' je veljala samo v razvojnem kontejnerju.
+  const out = (await import('node:os')).tmpdir() + '/obrtnik-ograje-assets/';
   (await import('node:fs')).mkdirSync(out, { recursive: true });
   const fs = await import('node:fs');
   for (const [name, url] of urls) {

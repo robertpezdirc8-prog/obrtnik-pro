@@ -11,6 +11,16 @@
 // Izhod: /tmp/e2e-suggest-photo.b64 (PNG base64 za brskalnik)
 // Zagon: bun tests/e2e-suggest-fixture.ts
 import sharp from 'sharp';
+import * as __vfyFs from 'node:fs';
+import * as __vfyOs from 'node:os';
+import * as __vfyPath from 'node:path';
+// Izhodna mapa je odvedena iz os.tmpdir(): '/tmp' je veljala samo v razvojnem
+// kontejnerju, na Windows bi pomenila C:\tmp in script bi padel zaradi okolja.
+// Uvozi so prostorno poimenovani, da ne morejo zadniti obstojecega uvoza istih
+// imen (tri od teh datotek ze uvozijo 'join' iz node:path).
+const __vfyOutDir = __vfyPath.join(__vfyOs.tmpdir(), 'obrtnik-pro-e2e');
+__vfyFs.mkdirSync(__vfyOutDir, { recursive: true });
+const TMP = (name: string) => __vfyPath.join(__vfyOutDir, name);
 import { writeFileSync } from 'node:fs';
 import { calibratePlane, planeDistanceCm } from '../src/lib/homography';
 
@@ -55,7 +65,7 @@ for (let y = 0; y < H; y++) {
 }
 
 const png = await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toBuffer();
-writeFileSync('/tmp/e2e-suggest-photo.b64', png.toString('base64'));
+writeFileSync(TMP('e2e-suggest-photo.b64'), png.toString('base64'));
 
 // pričakovana E2E meritev iz ENAKE homografije (stagePct zaokroži na 0,1 %)
 const quadPct = [[12, 48], [88, 48], [88, 92], [12, 92]] as [number, number][];

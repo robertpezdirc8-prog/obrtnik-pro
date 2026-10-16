@@ -6,6 +6,9 @@
 //         Δx = 300 px = 3,00 m globine, Δy = 64 px → naklon ≈ 12,1°, poševno ≈ 3,07 m.
 //         Vrata (referenca) x 180–380, y 494–694; tla spodaj (vodoravna črta ne sme zmedeti detekcijo).
 // Poženi: bun tests/make-task30-photo.ts → tests/task30-front.jpg + tests/task30-side.jpg
+// Pot izvira iz relacije do te datoteke: absolutna pot razvojnega
+// kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const W = 960, H = 720;
@@ -40,6 +43,6 @@ const side = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"
 </svg>`;
 
 Promise.all([
-  sharp(Buffer.from(front)).jpeg({ quality: 90 }).toFile('/home/z/my-project/tests/task30-front.jpg'),
-  sharp(Buffer.from(side)).jpeg({ quality: 90 }).toFile('/home/z/my-project/tests/task30-side.jpg'),
+  sharp(Buffer.from(front)).jpeg({ quality: 90 }).toFile(fileURLToPath(new URL('./task30-front.jpg', import.meta.url))),
+  sharp(Buffer.from(side)).jpeg({ quality: 90 }).toFile(fileURLToPath(new URL('./task30-side.jpg', import.meta.url))),
 ]).then(() => console.log('OK tests/task30-front.jpg + tests/task30-side.jpg'));

@@ -2,6 +2,14 @@
 // diagonalno, vertikalno, šum) + površina iz 4 oglišč.
 // Zagon: bun tests/verify/deck-analysis.ts
 import sharp from 'sharp';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// Prehodna izhodna mapa: "/tmp" je bil pot v razvojnem kontejnerju, na Windows
+// bi pomenila C:\tmp in skript bi padel zaradi okolja, ne zaradi logike.
+const VERIFY_OUT = join(tmpdir(), 'obrtnik-pro-verify');
+mkdirSync(VERIFY_OUT, { recursive: true });
+const TMP = (name: string) => join(VERIFY_OUT, name);
 import {
   analyzeDeck, deckQuadArea, snapBoard, STANDARD_BOARD_CM,
   type RgbaImage,
@@ -54,8 +62,8 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
 // ── 1. Ravna terasa (deske vodoravne → reže horizontalne → normala 90°) ──
 {
   const W = 800, H = 600;
-  await sharp(makeDeck(W, H, { angleDeg: 90 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t29-flat.png');
-  const img = await loadRgba('/tmp/t29-flat.png');
+  await sharp(makeDeck(W, H, { angleDeg: 90 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t29-flat.png'));
+  const img = await loadRgba(TMP('t29-flat.png'));
   const r = analyzeDeck({ img, pxPerCm: PX_PER_CM });
   console.log('ravna terasa (sintetika, deske 140 + reža 5):');
   check('zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -75,8 +83,8 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
 // ── 2. Diagonalna terasa 45° ───────────────────────────────
 {
   const W = 640, H = 640;
-  await sharp(makeDeck(W, H, { angleDeg: 45 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t29-diag.png');
-  const img = await loadRgba('/tmp/t29-diag.png');
+  await sharp(makeDeck(W, H, { angleDeg: 45 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t29-diag.png'));
+  const img = await loadRgba(TMP('t29-diag.png'));
   const r = analyzeDeck({ img, pxPerCm: PX_PER_CM });
   console.log('diagonalna terasa (45°):');
   check('zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -89,8 +97,8 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
 // ── 3. Vertikalne deske (reže vertikalne → normala 0°) ─────
 {
   const W = 600, H = 800;
-  await sharp(makeDeck(W, H, { angleDeg: 0 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t29-vert.png');
-  const img = await loadRgba('/tmp/t29-vert.png');
+  await sharp(makeDeck(W, H, { angleDeg: 0 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t29-vert.png'));
+  const img = await loadRgba(TMP('t29-vert.png'));
   const r = analyzeDeck({ img, pxPerCm: PX_PER_CM });
   console.log('vertikalne deske:');
   check('zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -101,8 +109,8 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
 // ── 4. Kalibracija po znani deski (brez reference) ─────────
 {
   const W = 800, H = 600;
-  await sharp(makeDeck(W, H), { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t29-known.png');
-  const img = await loadRgba('/tmp/t29-known.png');
+  await sharp(makeDeck(W, H), { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t29-known.png'));
+  const img = await loadRgba(TMP('t29-known.png'));
   const r = analyzeDeck({ img, knownBoardCm: 14 });
   console.log('kalibracija po znani deski (14 cm):');
   check('zaznana', r.ok);
@@ -116,8 +124,8 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
 // ── 5. Brez kalibracije ────────────────────────────────────
 {
   const W = 800, H = 600;
-  await sharp(makeDeck(W, H), { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t29-nocal.png');
-  const img = await loadRgba('/tmp/t29-nocal.png');
+  await sharp(makeDeck(W, H), { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t29-nocal.png'));
+  const img = await loadRgba(TMP('t29-nocal.png'));
   const r = analyzeDeck({ img });
   console.log('brez kalibracije:');
   check('zaznana (smer/razmerja)', r.ok);
@@ -130,8 +138,8 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
 // ── 6. Šum (±14) ───────────────────────────────────────────
 {
   const W = 800, H = 600;
-  await sharp(makeDeck(W, H, { noise: 14 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t29-noise.png');
-  const img = await loadRgba('/tmp/t29-noise.png');
+  await sharp(makeDeck(W, H, { noise: 14 }), { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t29-noise.png'));
+  const img = await loadRgba(TMP('t29-noise.png'));
   const r = analyzeDeck({ img, pxPerCm: PX_PER_CM });
   console.log('šum ±14:');
   check('zaznana kljub šumu', r.ok, `warnings: ${r.warnings.join('; ')}`);

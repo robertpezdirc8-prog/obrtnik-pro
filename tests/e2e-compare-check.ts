@@ -7,6 +7,16 @@
 // Pogoj: testi/e2e-compare-fixture.ts je pognan (ref povprečij v /tmp/e2e-compare-ref.json).
 // Zagon: bun tests/e2e-compare-check.ts
 import sharp from 'sharp';
+import * as __vfyFs from 'node:fs';
+import * as __vfyOs from 'node:os';
+import * as __vfyPath from 'node:path';
+// Izhodna mapa je odvedena iz os.tmpdir(): '/tmp' je veljala samo v razvojnem
+// kontejnerju, na Windows bi pomenila C:\tmp in script bi padel zaradi okolja.
+// Uvozi so prostorno poimenovani, da ne morejo zadniti obstojecega uvoza istih
+// imen (tri od teh datotek ze uvozijo 'join' iz node:path).
+const __vfyOutDir = __vfyPath.join(__vfyOs.tmpdir(), 'obrtnik-pro-e2e');
+__vfyFs.mkdirSync(__vfyOutDir, { recursive: true });
+const TMP = (name: string) => __vfyPath.join(__vfyOutDir, name);
 import { readFileSync, existsSync } from 'node:fs';
 
 let pass = 0, fail = 0;
@@ -20,7 +30,7 @@ if (!existsSync(ART)) {
   console.error(`NAPAKA: ${ART} ne obstaja — najprej poženi E2E (agent-browser), ki ujame pravo izvoženo datoteko.`);
   process.exit(1);
 }
-const ref = JSON.parse(readFileSync('/tmp/e2e-compare-ref.json', 'utf8')) as {
+const ref = JSON.parse(readFileSync(TMP('e2e-compare-ref.json'), 'utf8')) as {
   oldQuadAvg: [number, number, number]; newQuadAvg: [number, number, number]; W: number; H: number;
 };
 

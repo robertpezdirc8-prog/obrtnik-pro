@@ -2,6 +2,14 @@
 // (frontalna + stranska sintetika), meritev iz 2 točk, stebri, geometrija.
 // Zagon: bun tests/verify/canopy-analysis.ts
 import sharp from 'sharp';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// Prehodna izhodna mapa: "/tmp" je bil pot v razvojnem kontejnerju, na Windows
+// bi pomenila C:\tmp in skript bi padel zaradi okolja, ne zaradi logike.
+const VERIFY_OUT = join(tmpdir(), 'obrtnik-pro-verify');
+mkdirSync(VERIFY_OUT, { recursive: true });
+const TMP = (name: string) => join(VERIFY_OUT, name);
 import {
   detectCanopyLine, measureFromPoints, refPxPerCm, suggestPosts, measureCanopy, formatCanopyText,
   type RgbaImage,
@@ -86,8 +94,8 @@ async function save(buf: Buffer, W: number, H: number, path: string) {
   const roof: Rect = { x0: 260, y0: 196, x1: 740, y1: 240, c: [138, 132, 122] };
   const fascia: Rect = { x0: 260, y0: 240, x1: 740, y1: 256, c: [43, 40, 35] };
   const door: Rect = { x0: 430, y0: 480, x1: 546, y1: 680, c: [72, 60, 52] };
-  await save(makeFront(W, H, { roof, fascia, door }), W, H, '/tmp/t30-front.png');
-  const img = await loadRgba('/tmp/t30-front.png');
+  await save(makeFront(W, H, { roof, fascia, door }), W, H, TMP('t30-front.png'));
+  const img = await loadRgba(TMP('t30-front.png'));
   const r = detectCanopyLine(img, 'width');
   console.log('frontalna sintetika (kritina 480 px, fašna lenta, vrata):');
   check('zaznana črta', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -123,8 +131,8 @@ async function save(buf: Buffer, W: number, H: number, path: string) {
 {
   const W = 960, H = 720;
   // rob: (220,240)→(700,340) → kot = atan2(100,480) = 11,77°
-  await save(makeSide(W, H, { x0: 220, y0: 240, x1: 700, y1: 340, groundY: 620 }), W, H, '/tmp/t30-side.png');
-  const img = await loadRgba('/tmp/t30-side.png');
+  await save(makeSide(W, H, { x0: 220, y0: 240, x1: 700, y1: 340, groundY: 620 }), W, H, TMP('t30-side.png'));
+  const img = await loadRgba(TMP('t30-side.png'));
   const r = detectCanopyLine(img, 'depth');
   console.log('stranska sintetika (rob kritine ≈ 11,8°, tla vodoravno):');
   check('zaznana črta', r.ok, `warnings: ${r.warnings.join('; ')}`);
@@ -149,24 +157,24 @@ async function save(buf: Buffer, W: number, H: number, path: string) {
 // ── 4. Neuspešne zaznave ──
 {
   const W = 640, H = 480;
-  await save(makeFront(W, H, {}), W, H, '/tmp/t30-flat.png');
-  const flat = await loadRgba('/tmp/t30-flat.png');
+  await save(makeFront(W, H, {}), W, H, TMP('t30-flat.png'));
+  const flat = await loadRgba(TMP('t30-flat.png'));
   const r1 = detectCanopyLine(flat, 'width');
   check('ravna stena: ni črte', !r1.ok, `got ${r1.ok}`);
   check('opozorilo o manjkajočih robovih', r1.warnings.length > 0);
 
   // prekratek rob (12 % širine) v načinu width
   const short: Rect = { x0: 280, y0: 200, x1: 360, y1: 214, c: [50, 46, 40] };
-  await save(makeFront(W, H, { fascia: short }), W, H, '/tmp/t30-short.png');
-  const r2 = detectCanopyLine(await loadRgba('/tmp/t30-short.png'), 'width');
+  await save(makeFront(W, H, { fascia: short }), W, H, TMP('t30-short.png'));
+  const r2 = detectCanopyLine(await loadRgba(TMP('t30-short.png')), 'width');
   check('prekratek rob: zavrnjen', !r2.ok, `got ok=${r2.ok} span=${r2.spanPct}`);
   check('opozorilo o prekratku', r2.warnings.some((w) => w.includes('prekratek')), r2.warnings.join('; '));
 
   // prešibek kontrast (Δ ≈ 10) — pod pragom gradienta 16
   const faintRoof: Rect = { x0: 160, y0: 200, x1: 560, y1: 244, c: [200, 193, 180] };
   const faintFascia: Rect = { x0: 160, y0: 244, x1: 560, y1: 258, c: [198, 191, 178] };
-  await save(makeFront(W, H, { roof: faintRoof, fascia: faintFascia, noise: 2 }), W, H, '/tmp/t30-faint.png');
-  const r3 = detectCanopyLine(await loadRgba('/tmp/t30-faint.png'), 'width');
+  await save(makeFront(W, H, { roof: faintRoof, fascia: faintFascia, noise: 2 }), W, H, TMP('t30-faint.png'));
+  const r3 = detectCanopyLine(await loadRgba(TMP('t30-faint.png')), 'width');
   check('prešibek kontrast: zavrnjen', !r3.ok, `got ok=${r3.ok}`);
 
   // premajhna slika
@@ -174,7 +182,7 @@ async function save(buf: Buffer, W: number, H: number, path: string) {
   check('premajhna slika: zavrnjena', !detectCanopyLine(tiny, 'width').ok);
 
   // depth na frontalni fotki: vodoravnih črt ne sme izbrati (range θ 2–46°)
-  const rFront = detectCanopyLine(await loadRgba('/tmp/t30-front.png'), 'depth');
+  const rFront = detectCanopyLine(await loadRgba(TMP('t30-front.png')), 'depth');
   check('depth na fronti: zavrnjena', !rFront.ok, `got ok=${rFront.ok} angle=${rFront.angleDeg} span=${rFront.spanPct}`);
 }
 

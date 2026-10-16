@@ -11,9 +11,10 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 38/43 skript zeleno** (pet rdečih je zaradi
-> okolja, ne logike: štirje pišejo na `/tmp/*.png`, ki ga na Windowsu ni, en bere
-> trdo kodirano tujo pot), **photo-replace 391/391, assertion 119/119**
+> Zadnja polna preverba: **regresija 44/44 skript zeleno** (pet, ki je bilo doslej rdečih, je
+> padalo samo zaradi poti, vezanih na razvojni stroj — `/tmp/*.png` in ena absolutna
+> kontejnerska pot; odpravljeno 2026-10-16, Task 71, z novim varovalnim skriptom
+> `portable-paths`), **photo-replace 391/391, assertion 119/119**
 > (FAZA-8, oktober 2026). **PONOVLJENO PO FAZA-8 (2026-10-16, `node_modules` nameščeni):**
 > `tsc --noEmit` — v `src/` **0 napak**; preostane 5 napak IZVEN aplikacije (`examples/websocket/`
 > ×2 manjkata `socket.io`/`socket.io-client`, `tests/e2e-compare-fixture.ts` ×3 manjka
@@ -24,6 +25,10 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > merjenje onemogočeno). E2E je našel in odpravil DVA resnična UI problema, ki ju 391 statičnih
 > preverjanj ne vidi: napačen vrstni red vej značke (je pisala »Kalibrirano · znane mere« kljub
 > prazni širini) in prelivanje besedila čez 390 px. Dokaz: `tests/e2e-faza8-mobile-390.png`.
+> **OKOLJE ODPRAVLJENO (Task 71, 2026-10-16):** pet skriptov, ki je doslej padalo zaradi
+> poti, je prevedenih na `os.tmpdir()` oziroma relacijo do `import.meta.url`; skupaj z njimi
+> je pregledanih še 10 E2E/orodnih skriptov z istim vzorcem. Nov skript `portable-paths`
+> (28/28, mutacijsko dokazan) prepreči, da bi se taka pot vrnila.
 
 ---
 
@@ -243,21 +248,25 @@ bun tests/verify/deck-analysis.ts     # analiza dek
 bun tests/verify/assertion.ts         # FAZA-8: dve osi trditev, totalna 25/25 projekcija
 bun tests/verify/plank-layout-width.ts # FAZA-8: neznana širina ravnine (kanon. mera, pravilo 13)
 bun tests/verify/render-promise.ts   # F3: kaj UI SME obložiti o izrisu (30-kombinacijska tabela)
+bun tests/verify/portable-paths.ts  # Task 71: nobena pot ne sme biti vezana na konkretn stroj
 # … (celoten seznam: tests/verify/)
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3): **43 skript, 38 z izhodno kodo 0**;
-pet rdečih (`canopy-analysis`, `deck-analysis`, `fasada-analysis`, `stair-profile`,
-`tile-grid`) pade samo zaradi okolja (manjkajo `/tmp/*.png` in ena trdo kodirana
-tuja pot), ne zaradi logike. Izmerjeno posamezno: **photo-replace 391/391**,
+Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71): **44 skript, 44 z izhodno kodo 0**.
+Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
+`stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
+`import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
+= **194**. Nov varovalni skript `portable-paths` (**28/28**, z mutacijskim dokazom) prepove
+absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo-replace 391/391**,
 **assertion 119/119**, **measurement-status 90/90** (besedilo testa nespremenjeno),
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
-25/25**. Assertivnih preverjanj skupaj: **2300** = 2024 (izmerjeni baseline,
+25/25**. Assertivnih preverjanj skupaj: **2522** = 2024 (izmerjeni baseline,
 `../baseline/BASELINE-2026-10-15.md`) + 251 (štiri NOVE FAZA-8 skripte: 119 + 56 + 50 + 26) + 25
-(render-promise, F3). Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
+(render-promise, F3) + 194 (pet doslej rdečih, izmerjenih na tej stroji po Task 71) + 28
+(`portable-paths`). Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
 
 ### E2E dokazi
 
@@ -310,7 +319,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (43 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (44 skript), e2e-*.png, make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```

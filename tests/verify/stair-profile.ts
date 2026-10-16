@@ -2,6 +2,14 @@
 // (frontalni + stranski pogled) + realna fotka public/crafts/stopnice.jpg.
 // Zagon: bun tests/verify/stair-profile.ts
 import sharp from 'sharp';
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// Prehodna izhodna mapa: "/tmp" je bil pot v razvojnem kontejnerju, na Windows
+// bi pomenila C:\tmp in skript bi padel zaradi okolja, ne zaradi logike.
+const VERIFY_OUT = join(tmpdir(), 'obrtnik-pro-verify');
+mkdirSync(VERIFY_OUT, { recursive: true });
+const TMP = (name: string) => join(VERIFY_OUT, name);
 import { analyzeStairProfile, type RgbaImage, type PctPoint } from '../../src/lib/stair-profile';
 
 async function loadRgba(path: string): Promise<RgbaImage> {
@@ -31,8 +39,8 @@ const check = (name: string, cond: boolean, info?: string) => {
       }
     }
   }
-  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t26-front.png');
-  const img = await loadRgba('/tmp/t26-front.png');
+  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t26-front.png'));
+  const img = await loadRgba(TMP('t26-front.png'));
   const r = analyzeStairProfile({ img, mode: 'front' });
   console.log('frontalni (sintetika, 8 stopnic):');
   check('prešteje 8 stopnic', r.ok && r.steps === 8, `got ${r.steps}`);
@@ -69,8 +77,8 @@ const check = (name: string, cond: boolean, info?: string) => {
     drawLine(x, y + riser, x + going, y + riser); // tread (vodoravna)
     x += going; y += riser;
   }
-  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile('/tmp/t26-side.png');
-  const img = await loadRgba('/tmp/t26-side.png');
+  await sharp(buf, { raw: { width: W, height: H, channels: 3 } }).png().toFile(TMP('t26-side.png'));
+  const img = await loadRgba(TMP('t26-side.png'));
   // linija skozi notranjost stopničaste diagonale (vrh zgornji nosilec → dno)
   const line: [PctPoint, PctPoint] = [
     { x: (60 / W) * 100, y: (80 / H) * 100 },

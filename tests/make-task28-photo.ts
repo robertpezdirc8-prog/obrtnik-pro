@@ -6,6 +6,9 @@
 // postala "steklo" in okna se niso zaznala). Lekcija Task 27: kontrast mora biti realen.
 // Pričakovani popis: Vrata ≈ 106×206 (s okvirom), Okno 1/2 ≈ 126×126, merila se ujemajo.
 // Poženi: bun tests/make-task28-photo.ts → tests/task28-facade.jpg
+// Pot izvira iz relacije do te datoteke: absolutna pot razvojnega
+// kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const W = 960, H = 720;
@@ -31,5 +34,5 @@ const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
 
 sharp(Buffer.from(svg))
   .jpeg({ quality: 90 })
-  .toFile('/home/z/my-project/tests/task28-facade.jpg')
+  .toFile(fileURLToPath(new URL('./task28-facade.jpg', import.meta.url)))
   .then(() => console.log('OK tests/task28-facade.jpg'));

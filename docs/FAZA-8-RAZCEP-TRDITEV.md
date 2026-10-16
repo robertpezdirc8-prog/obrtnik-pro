@@ -21,9 +21,11 @@ Narejeno, z merjenim dokazom (vsako številko je izpisal bun, ne spomin):
 - Neznana širina ravnine peljana skozi celotno pot (jedro, metapodatki, kosovnica, napis
   pred/po, UI) — `plank-layout-width` **26/26** na geometriji `fb-hi/04.jpg`, izmerjena meja
   neodvisnosti 2,274e-13 px; `photo-replace` **391/391**.
-- Sweep: **42 skriptov, 37 z izhodno kodo 0**; istih 5 rdečih kot pred posegom in vseh 5
-  (po tem pasu je bil dodan 43. skript `render-promise` 25/25 → 43/38, Task 70).
-  zaradi manjkajočih datotek v tem okolju (`/tmp/*.png`, ena tuja absolutna pot).
+- Sweep: **42 skriptov, 37 z izhodno kodo 0**; vseh 5 rdečih je istih kot pred posegom in
+  vsi padajo zaradi manjkajočih datotek v tem okolju (`/tmp/*.png`, ena tuja absolutna pot),
+  ne zaradi logike (po tem pasu je bil dodan 43. skript `render-promise` 25/25 → 43/38,
+  Task 70; **Task 71 je 2026-10-16 prevedel poti onih petih in dodal 44. skript
+  `portable-paths` → 44/44 na tej stroji**).
 - Dokumentacija: BASELINE §2.6/§3/§4/§5/§6 (pravila 10–14), ta spec §8–§9, README, worklog
   Task 67.
 
@@ -598,6 +600,11 @@ Izvedbe, ki jih spec ni mogel predvideti do konca:
    Agregata ni bilo mogoče ponovno izračunati samodejno (nekateri skripti v izpisu
    tiskajo decimalke z vejico, kar regex-a prenabije), zato je zapisana vsota dveh
    MERJENJI, ne ena samodejna številka.
+   **Amandma 2026-10-16 (Task 71):** okoljski razlog je odpravljen (izhodna mapa
+   `os.tmpdir()`, fiksna slika odvedena iz `import.meta.url`), zato sweep na tej stroji znaša
+   **44/44** in jih 194 preverjanj onih petih skriptov NI VEČ NEZNANIH; skupaj z novim
+   varovalnim skriptom `portable-paths` (28) je agregat **2522**. Številka 2275 zgoraj ostane
+   kot izmerjen zgodovinski pas.
 6. **Korak 8**: `MEASUREMENT-BASELINE.md` posodobljen — nova §2.6 (dve osi, z dokazi), §3
    približka 8–9, §4 tri iskrene vrstice (realne meritve manjkajo, `tsc`/`eslint` nista bila
    pognana, katalogske višine ne obstajajo), §5 popravljene številke in §6 pravila 10–14.

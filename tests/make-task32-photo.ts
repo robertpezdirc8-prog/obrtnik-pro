@@ -7,6 +7,9 @@
 //  OBLIGA: vodoravne linije vsakih 30 px (12,5 px preklopa ni potreben)
 //  Odprtine: 2,00 + 1,20 + 2,24 = 5,44 m² → NETO 30,56 m²
 // Poženi: bun tests/make-task32-photo.ts → tests/task32-fasada.jpg
+// Pot izvira iz relacije do te datoteke: absolutna pot razvojnega
+// kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const W = 960, H = 720;
@@ -40,5 +43,5 @@ const svg = `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <rect x="606" y="186" width="148" height="128" fill="rgb(94,116,132)"/>
 </svg>`;
 
-sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toFile('/home/z/my-project/tests/task32-fasada.jpg')
+sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toFile(fileURLToPath(new URL('./task32-fasada.jpg', import.meta.url)))
   .then(() => console.log('OK tests/task32-fasada.jpg'));

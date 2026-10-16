@@ -1,4 +1,7 @@
 // Ustvari testno fotografijo balkona z alu ograjo + vrata (referenca 200 cm)
+// Pot izvira iz relacije do te datoteke: absolutna pot razvojnega
+// kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
+import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 
 const svg = `
@@ -40,5 +43,6 @@ const svg = `
 </svg>`;
 
 const buf = await sharp(Buffer.from(svg)).jpeg({ quality: 88 }).toBuffer();
-await sharp(buf).toFile('/home/z/my-project/tests/test-photo.jpg');
-console.log('OK /home/z/my-project/tests/test-photo.jpg', buf.length, 'bytes');
+const FOTO = fileURLToPath(new URL('./test-photo.jpg', import.meta.url));
+await sharp(buf).toFile(FOTO);
+console.log('OK', FOTO, buf.length, 'bytes');

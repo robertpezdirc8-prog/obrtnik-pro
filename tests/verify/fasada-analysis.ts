@@ -2,6 +2,11 @@
 // rez poligona (Sutherland–Hodgman), površina stene − odprtine, prefill.
 // Zagon: bun tests/verify/fasada-analysis.ts
 import sharp from 'sharp';
+import { fileURLToPath } from 'node:url';
+// Fiksna tuja pot je zamenjana z relacijo do same datoteke: ista slika je
+// verificirano v repotu (tests/task32-fasada.jpg), pot pa je veljala samo v
+// razvojnem kontejnerju.
+const FIXTURE = fileURLToPath(new URL('../task32-fasada.jpg', import.meta.url));
 import {
   analyzeFasadaLines, clipPolygonRect, fasadaWallArea, fasadaPrefill,
   type RgbaImage, type FasadaOpeningPx,
@@ -49,7 +54,7 @@ console.log('— Rez poligona (clipPolygonRect) —');
 
 // ─── 2) Sintetična fotka: linije obloge ─────────────────────
 console.log('— analyzeFasadaLines (sintetika 960×720, pitch 30 px) —');
-const img = await loadRgba('/home/z/my-project/tests/task32-fasada.jpg');
+const img = await loadRgba(FIXTURE);
 {
   const r = analyzeFasadaLines(img);
   check('ok', r.ok);

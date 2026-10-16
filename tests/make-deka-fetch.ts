@@ -38,7 +38,8 @@ async function cdpCall(ws: WebSocket, id: number, method: string, params: any = 
 }
 
 async function main() {
-  const out = '/tmp/deka-assets/';
+  // Prehodna izhodna mapa: '/tmp' je veljala samo v razvojnem kontejnerju.
+  const out = (await import('node:os')).tmpdir() + '/obrtnik-deka-assets/';
   (await import('node:fs')).mkdirSync(out, { recursive: true });
   for (const [name, url] of urls) {
     const tab = await (await fetch(`${CDP}/json/new?url=${encodeURIComponent('about:blank')}`, { method: 'PUT' })).json();

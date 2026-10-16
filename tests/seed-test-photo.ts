@@ -1,9 +1,12 @@
 // Vstavi testno fotografijo z realistično AI analizo (kot bi jo vrnil VLM)
 // — za E2E preverjanje prikaza rezultatov, merjenja in predpolnjevanja.
+// Pot izvira iz relacije do te datoteke: absolutna pot razvojnega
+// kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
+import { fileURLToPath } from 'node:url';
 import { db } from '../src/lib/db';
 import { readFileSync } from 'fs';
 
-const b64 = readFileSync('/home/z/my-project/tests/test-photo.jpg').toString('base64');
+const b64 = readFileSync(fileURLToPath(new URL('./test-photo.jpg', import.meta.url))).toString('base64');
 const dataUrl = `data:image/jpeg;base64,${b64}`;
 
 const products = await db.category.findUnique({
