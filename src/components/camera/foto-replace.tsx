@@ -536,6 +536,19 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     return null;
   }, [imgEl, quadPct, quadPx, planeCm, assurance, layoutInfo, inpaintRes]);
 
+  /**
+   * Kadar širina ravnine NI izmerjena, par (geo, met) sam NE zadostuje za izris:
+   * pri pokončnem profilu je število elementov odvisno od širine, zato jedro brez
+   * wCm vrne izrecno napako (photo-replace-core.ts:545-550, najdba F3). Značka v
+   * koraku 2 sme obljubiti samo toliko, kolikor drži za izbrani profil — sicer bi
+   * pisala »Izris: dovoljen« korak 6 pa »NI mogoč«.
+   */
+  const renderPromise = useMemo<'closed' | 'needsWidth' | 'open'>(() => {
+    if (!canRenderMontage(assurance.geo)) return 'closed';
+    if (planeCm?.wCm === null && selProfile && selProfile.orientation !== 'horizontal') return 'needsWidth';
+    return 'open';
+  }, [assurance.geo, planeCm, selProfile]);
+
   const renderBlocker = useMemo<string | null>(() => {
     if (baseRenderBlocker) return baseRenderBlocker;
     if (!selProfile) return 'Izberi profil nove ograje (korak 5).';
@@ -1504,7 +1517,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                 {quadComplete
                   ? <>Geometrija: potrjena (4 oglišča) · merilo: samo izmerjena višina ravnine ({fmtN(planeCm.hCm, 0)} cm).
                     Širine ni izmeril nihče, zato je ne prikazujemo kot mero.
-                    Izris: {canRenderMontage(assurance.geo) ? 'dovoljen' : 'NI dovoljen'} — naročilnica: {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).</>
+                    Izris: {renderPromise === 'open' ? 'dovoljen (vodoravni profili)' : renderPromise === 'needsWidth' ? 'ZAPRT — izbrani profil je pokončen, njegovo število elementov pa je odvisno od neizmerjene širine' : 'NI dovoljen'} — naročilnica: {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).</>
                   : <>Višina je izmerjena ({fmtN(planeCm.hCm, 0)} cm), širina ne, oglišča pa še niso dokončana (manj kot 4/4) —
                     zato ni ne geometrije ne mere. Označi 4 oglisča.</>}
               </p>

@@ -1745,3 +1745,19 @@ Stage Summary:
 - Vrednost tega pasa ni v zelenih številkah, ampak v dveh napakah, ki ju samo živi brskalnik vidi: nepoštena značka (izpis je obetal mero) in prelivanje čez 390 px (prav telefon monterja). Obe sta popravljeni in ponovno izmerjeni.
 - BLOKIRANO NA ROBERTU (nespremenjeno): ročne meritve `05..08` in ≥ 5 parov resnica/izmerjeno, potrditev pravila 11 kot poslovne politike, manjkajoča ROKSAL gradiva. Push ni bil narejen — HEAD `4db835d` + ta commit sta lokalna.
 - 0 AI, 0 novih odvisnosti (install je razrešil obstoječe), 0 mrežnih klicev aplikacije, nič pobrisanega.
+
+---
+Task ID: 69
+Agent: Qoder (glavni agent, nadaljevanje verifikacijskega pasa)
+Task: Najdba F3 zaprta tudi v UI-ju — izris se ne sme obljubljati profilu, ki ga jedro zavrne. Ukaz se glasi naprej (»delaj naprej 8 ur«); NIČ pusha, NIČ brisanja.
+
+Work Log:
+- Razlog: značka v koraku 2 je pisala »Izris: dovoljen«, kadar je bil `geo >= FITTED`, ne glede na to, kateri profil je monter izbral. Jedro pa pri pokončnem profilu brez `wCm` vrne izrecno napako (`photo-replace-core.ts:545-550`). UI in jedro sta si bila v nasprotju — enako vrsto neiskrenosti kot Najdba 1, samo po drugi osi (pravilo 14 pravi, da vrata sklenemo po paru; F3 pokaže, da par pri pokončnem profilu NI dovolj).
+- `foto-replace.tsx`: nov `renderPromise` memo (`closed` / `needsWidth` / `open`) — `needsWidth` samo kadar je `planeCm.wCm === null` IN je izbran profil `orientation !== 'horizontal'`; sicer `open`, če geometrija drži. Značka uporabi tri besedila: »NI dovoljen« / »ZAPRT — izbrani profil je pokončen, njegovo število elementov pa je odvisno od neizmerjene širine« / »dovoljen (vodoravni profili)«.
+- E2E izmerjeno v brskalniku (mobilni 390×844, `next dev`): (a) širina pusta + pokončen profil `piketna-18` → značka »ZAPRT …«, `fr-render-blocker` vsebina »NEZADOSTNI PODATKI: brez znane širine ravnine (wCm) je izris določen samo za vodoravne deske …« (isti razlog na obeh krajih), `fr-render` gumb ne obstaja, `scrollWidth 375 / overflow false`; (b) širina pusta + vodoravni profili → »dovoljen (vodoravni profili)«; (c) širina 150 + pokončen profil → značka »Kalibrirano · znane mere (150×110 cm)«, blocker sedaj samo še »Zaženi odstranitev stare ograje (korak 4)« — torej izris NI več blokan zaradi podatkov, kar dokaže, da je bila blokada res lastnost mere in ne profila.
+- Regresija ponovljena v istem obratu: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26 · `photo-replace` 391/391 · `measurement-status` 90/90 (vsi izhod 0). `tsc --noEmit`: 5 napak, 0 na `src/` (isti trije pari izven aplikacije kot v Task 68); `eslint` na `foto-replace.tsx` izhod 0. Opomba o meritvi: en `tsc` zagon je vrnil izhodno kodo 2 brez spremembe izpisa, dva ponovna zagona stabilno 1 — dokumentirana je koda 1, ker je izpis enak.
+- Posnetek: `tests/e2e-faza8-f3-vertical-zaprt.png` (375×10228, 943106 B). BASELINE §6 pravilo 11 ima zdaj zapisano mejo F3 IN dokaz, da se je UI drži.
+
+Stage Summary:
+- Pravilo 11 je zdaj res vsiljeno do izpisa vrednosti: vrata se sklenejo po paru `(geo, met)`, izjema F3 (pokončen profil potrebuje širino) pa je zapisana v dokumentu in jo UI pove pred klikom, ne šele po napaki.
+- Nič pushano. Lokalni commiti: `4db835d` (FAZA-8), `6aebb83` (verifikacija), ta (F3 UI). 0 AI, 0 novih odvisnosti, 0 mrežnih klicev aplikacije.
