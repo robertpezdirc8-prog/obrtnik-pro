@@ -35,6 +35,11 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > tirnic 50 %/75 %), `tests/verify/band-ui-contract.ts` (**54/54**, vir-gledni zaklep treh stvari,
 > do katerih brskalnik ne more: ponastavitev ob menjavi slike, vrstni red vrat, edin izvor
 > nepotrjene ravnine). Obe imata mutacijski dokaz.
+> **CELA FOTOMONTAŽA (Task 77, 2026-10-16):** vseh sedem korakov je zdaj avtomatiziranih v
+> `tests/e2e-fotomontaza-full.ts` (**55/55**) — od nalaganja fotke do IZVOŽENEGA PNG-ja na
+> disku. Izris ni dokazan z »gumb obstaja« ampak s piksli (`meanDiff 40,81/255` znotraj
+> kvadrata), izvoz z datoteko (`800×664`, veljavna PNG glava, žig z oznako je v sliki).
+> `src/` nespremenjen — noben novega `data-testid` ni bilo treba dodati.
 
 ---
 
@@ -279,6 +284,7 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 (`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) + 54 (`band-ui-contract`)
 + 102 (`gt-evidence`, Task 75) = **2753**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
+`e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-colmap-cdp.ts` 36/36.
 
 ### E2E dokazi
@@ -307,7 +313,16 @@ vodoravnega prelivanja). Pokrivajo namizni in mobilni prikaz
 ob zažganem `next dev` na 3000): `tests/e2e-band-ui.ts` (**50/50**, FAZA-9: dvotapni predlog
 na sintetični fotki z ANALITIČNO resnico tirnic 50 %/75 %, tolerance 1,5 %; iskrena zavrnitev,
 črtkan štirikotnik, vrstni red blokerjev, amber `SUGGESTED` plošča, zaprt izris, potrditev,
-mobilni 390, nič konzolnih napak; mutacijsko dokazan) in `tests/e2e-colmap-cdp.ts` (36/36 —
+mobilni 390, nič konzolnih napak; mutacijsko dokazan),
+`tests/e2e-fotomontaza-full.ts` (**55/55**, Task 77: VSEH SEDM korakov fotomontaže v vrsti —
+nalaganje fotke prek pravega `input[type=file]`, dvotapni predlog + potrditev, samodejna maska
+(100 % kvadrata / 14 % fotke), obnova 66.236 pikslov, profil, izris in IZVOZ. Izris je dokazan
+s PIKSLI, ne s prisotnostjo gumba: notranjost kvadrata se razlikuje od originala za
+`meanDiff 40,81/255`, ni enobarvna (`spread 11,73`) in ima 124 odtenkov. Izvoz je dokazan z
+DATOTEKO: pravi brskalnikov download na disk, veljavna PNG glava, `800×664` — višina je
+64 px večja od platna, ker je žig z oznako za predstavitev pristitan v sliki. Nič v `src/`
+ni bilo spremenjenega: vsi `data-testid`-i so že obstajali. Manjkajoča aplikacija je glasna
+napaka z izhodno kodo 2, ne tiha ničla.) in `tests/e2e-colmap-cdp.ts` (36/36 —
 temu je bil letos popravljen `--user-data-dir`, ki je kazal na kontejnerski `/tmp` in je
 skript na tej stroji naredil nezagonljivega).
 
