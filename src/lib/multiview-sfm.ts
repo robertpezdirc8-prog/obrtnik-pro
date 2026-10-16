@@ -102,7 +102,7 @@ export type SfmErrorCode =
 /** Status — enaka oblika kot validateMultiView/validateSfm (pogodba merilnega lista). */
 export type SfmStatus = ScaleValidation;
 
-/** Uspešen izhod: registrirane + neuspelе fotke, treke, fokus, merilo, status. */
+/** Uspešen izhod: registrirane + neuspele fotke, treke, fokus, merilo, status. */
 export type SfmResult = {
   ok: true;
   registered: SfmRegistered[];

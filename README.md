@@ -11,7 +11,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 50/50 skript zeleno** (pet, ki je bilo doslej rdečih, je
+> Zadnja polna preverba: **regresija 51/51 skript zeleno** (pet, ki je bilo doslej rdečih, je
 > padalo samo zaradi poti, vezanih na razvojni stroj — `/tmp/*.png` in ena absolutna
 > kontejnerska pot; odpravljeno 2026-10-16, Task 71, z novim varovalnim skriptom
 > `portable-paths`), **photo-replace 391/391, assertion 119/119**
@@ -91,6 +91,22 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > štirimi stanjami (pas / običaj / poljubna / **ne objavlja**). Zaklenjeno:
 > `tests/verify/roksal-board-gap.ts` (**58/58**), `tests/verify/roksal-span-rules.ts`
 > (**133/133**), E2E preizkusi 43–48 (vključno z „brez profila ni pokazane NOBE številke reže“).
+> **VNOS SE NE POPRAVLJA VEČ (Task 83, 2026-10-16):** WPC kalkulator je vnose zdravil s tihim
+> usekom (`Math.min`) — monter je vpisal razmak nosilcev 1,2 m, na zaslonu je stal 1,2 m,
+> računal pa je 0,6 m. Pri terasi 4 × 3 m je to pomenilo 24 lm namesto 15 lm nosilcev (+60 % materiala na
+> ponudbi), ki je bila videti kot izračunana po monterjevih podatkih. Pravilo je zdaj razločeno:
+> **okno vnosa ni inženirski predpis**. `src/lib/terasa-inputs.ts` pozna sedem meja, ki samo
+> povedo, kaj aplikacija še ZNA izračunati; zunaj njih se izračun ZAVRNE z razlogom, ki imenuje
+> VPISANO vrednost (»Razmak nosilcev 8 m je preveč za izračun (8 > 3) … Izračun ni opravljen —
+> nobena postavka ni obračunana.«), postavke in gumb »Dodaj v ponudbo« pa izginejo. Znotraj okna
+> se vpisana vrednost uporabi TOČNO, ROKSALov objavljen pas (33–35 cm) pa jo samo OCENI
+> (znotraj pasu / znotraj pasu a nad varno mejo / PREŠIROKO). Cena in načrt montaže se ravnavata
+> po ISTEM resolverju, zato se ne moreta raziti. Posledično je bil aplikacijski privzetek
+> premaknjen z 0,4 m na **0,33 m** (spodnji rob objavljenega pasu — stari privzetek je sam sebi
+> sprožil opozorilo »preširoko«), predlog iz fotografije pa se več ne tipka, ampak se izpelje iz
+> pravila (`JOIST_SUGGEST_M`). Zaklenjeno: `tests/verify/terasa-input-guard.ts` (**72/72**,
+> vključno z mutacijskim dokazom in pariteto cena ⇄ načrt čez 11 vhodov) in
+> `tests/e2e-terasa-input-ui.ts` (**36/36** v živem brskalniku).
 
 ---
 
@@ -130,7 +146,7 @@ delu na telefonu (poljski način).
 Aplikacija ima 8 zavihkov (`src/components/app-shell.tsx`):
 
 ### 🏠 Domov
-Preglednadna plošča s stanjem ponudb, terjatvami in hitrim dostopom do orodij.
+Pregledna plošča s stanjem ponudb, terjatvami in hitrim dostopom do orodij.
 
 ### 📷 Pametna kamera
 Najobsežnejši sklop (`src/components/camera/`):
@@ -391,7 +407,7 @@ bun tests/verify/roksal-board-gap.ts  # Task 82: reža sme biti samo objavljena 
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75 + Task 80/81/82): **50 skriptov, 50 z izhodno kodo 0**.
+Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75 + Task 80/81/82 + Task 83): **51 skriptov, 51 z izhodno kodo 0**.
 Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
 `stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
 `import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
@@ -401,19 +417,20 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
-25/25**, **gt-evidence 102/102**, **roksal-span-rules 133/133**, **roksal-board-gap 58/58**.
+25/25**, **gt-evidence 102/102**, **roksal-span-rules 133/133**, **roksal-board-gap 58/58**,
+**terasa-input-guard 72/72** (Task 83: noben vnos terase se tiho ne useka; cena in montažni načrt
+se ravnavata po ISTEM resolverju).
 Assertivnih preverjanj skupaj,
 zdaj IZMERJENO Z ENO STEVLJO in
-ne sešteto iz spomina: **2928 OK / 0 NAPAK** v **43** od **50** `tests/verify/*.ts` skriptov;
+ne sešteto iz spomina: **3000 OK / 0 NAPAK** v **44** od **51** `tests/verify/*.ts` skriptov;
 sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
 `quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
 `bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
 zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
 **20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
 obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
-seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2867 → **2928** = +61
-(`roksal-board-gap` je nov s 58 preverjanji, `roksal-span-rules` je zrastel iz 130 v 133),
-nič se ni izgubilo.
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 2928 → **3000** = +72
+(`terasa-input-guard` je nov s 72 preverjanji), nič se ni izgubilo.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
@@ -425,6 +442,13 @@ pas 0,5–3 cm z vejico in virom, ista objava pod profiloma 100 in 128, javljen 
 pri 57-32 in NIKAKŠNA številka reže, ko profil ni izbran; posnetek `span-rule-ui.png` preverjen
 po velikosti NA DISKU, zapisnik pa gre skozi `guardOutSideRepo`, ki ZAVRŽE zapis v repozitorij;
 zaganja se z `APP_URL=…`, če :3000 drži tuji proces),
+`e2e-terasa-input-ui.ts` **36/36** (Task 83: v živem brskalniku dokazuje, da vnosa nihče več ne
+popravlja — privzeto 0,33 m, citiran ROKSALov pas 33–35 cm, `max` odstranjen, vseh sedem vnosov z
+`aria-label`; 1,2 m se izračuna TOČNO (15 lm / 5 kosov, stari usek na 0,6 m bi dal 24 lm), a je
+označen PREŠIROKO in je še vedno ponudben; 8 m se ZAVRNE z »Izračun ni opravljen«, imenuje vpisanih
+8 m, izprazni postavke in gumb »Dodaj v ponudbo«, vnosa ne popravi in isto zaustavitev javi tudi v
+načrtu montaže; vrnitev na 0,33 m da POVEČ ISTO vsoto; 12 mm reže ostane 12 mm; 0 €/m ostane 0,00 €;
+−3 €/m je zavrnjen po imenu; posnetek `terasa-input-ui.png` preverjen po velikosti na disku),
 `e2e-colmap-cdp.ts` 36/36.
 
 ### E2E dokazi
@@ -495,7 +519,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (50 skript), gt/ (sonde + zamrznjeni izpisi), e2e-*.png, e2e-*.ts (CDP), make-* orodja
+tests/            # verify/ (51 skript), gt/ (sonde + zamrznjeni izpisi), e2e-*.png, e2e-*.ts (CDP), make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```
@@ -523,8 +547,16 @@ worklog.md        # delovni dnevnik razvoja (po Task ID)
   ozadje) — dokumentirano v opombi profila.
 - **Izvoz z oznako „original“ je blokiran** dokler gradiva niso osebno overjena
   (fizični vzorci); vsi izvozi nosijo žig „VIZUALIZACIJA ZA PREDSTAVITEV“.
-- Tipena privzetka razmaka (0,2–3 cm uradni obseg) in stebra so izrecno
-  označena; merilo uradnih lestvic ni objavljeno (`realCm` je privzetek).
+- **Številke, ki jih ROKSAL ne objavlja, a vplivajo na rezultat (odprto po Task 83):**
+  enotne cene materiala so pogodba z dobaviteljem in so zato samo preverjene proti
+  negativnosti; spodnje/zgornje meje drsnikov v vizualizaciji; računski razpored stebrov
+  dopušča 60–300 cm; trditev o zakonski najmanjši višini ograje ≥ 1,0 m; „maks. 3 m za
+  običajno kritino«; pragovi 5/7/10°; usek rezerve `Math.min(30, …)`; useki pri dolžini in
+  položu stopnic; odstotki kapare. Nobena od teh še nima preverljive podlage in je še vedno
+  v kodi kot samoumevna — to je naslednji kup del, ne ta.
+- Trditve o ROKSALovih mejah in režah so zdaj vezane na objavljene citate
+  (`src/lib/roksal-span-rules.ts`); kjer objave ni, UI reče »ROKSAL tega ne objavlja« in
+  pokaže samo vrednost, jasno označeno kot računski privzetek (`realCm` je tak privzetek).
 - COLMAP-WASM raziskava je odprta (lokalna SfM v brskalniku).
 
 ---

@@ -1,5 +1,5 @@
 // ─── Testi: Sledenje ponudbam (offer-pipeline) ──────────────
-// Vse pričakovane vrednosti so IZRAČUNANE ROČNO (nic claимерov AI).
+// Vse pričakovane vrednosti so IZRAČUNANE ROČNO (nič AI trditev).
 // Poženi: bun run tests/verify/offer-pipeline.ts
 
 import {

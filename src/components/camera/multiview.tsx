@@ -1619,7 +1619,7 @@ export function MultiView({ onAddMeasures }: { onAddMeasures?: (measures: PhotoM
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
                 Naloži fotko C, posneto iz tretjega zornega kota (prekrivanje s fotko B, FIKSNI zoom). Merilo se
-                prenesе prek skupnih točk (isti oglji vidni na vseh treh fotkah): ≥ 2 skupni točki = samo merilo,
+                prenese prek skupnih točk (isti oglji vidni na vseh treh fotkah): ≥ 2 skupni točki = samo merilo,
                 ≥ 3 nekolinearne = polno združen 3D oblak → razdalje TUDI med točkami, ki jih noben par ne vidi skupaj
                 (čez vogal prostora).
               </p>

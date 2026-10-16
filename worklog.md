@@ -2148,3 +2148,63 @@ Stage Summary:
   objavljeno pod profilom, je bilo treba izrecno prepovedati, ko profil ni izrečen — in to je
   pokazal šele klik v brskalniku.
 - Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
+
+## Task 83 — VNOS SE NE POPRAVLJA VEČ: cena in načrt montaže bereta iz istega resolverja, 2026-10-16
+
+- KAJ JE BILO NAJDENO (raziskava, ne ugibanje): preostale neujemljive številke so se zbrale v eni
+  sami vrsti kode — `calculateWpcTerasa` je z `Math.min`/`Math.max` TIHO predrugal monterjev vnos.
+  Vpisani razmak nosilcev 1,2 m je ostal na zaslonu, računal pa je 0,6 m. Pri privzeti terasi
+  4 × 3 m pomeni to 24 lm namesto 15 lm (+60 % materiala na ponudbi, ki je videti izračunana po
+  monterjevih podatkih). Druga dva useka: cena deske nikoli pod 1 €/m (pogajenih 0,99 € bi bilo
+  obračunanih kot 1 €) in nabavna dolžina deske usečena na 10/12/6 m.
+- POPRAVEK JE NAREKOVAL PRAVILO: **okno vnosa ni inženirski predpis.** `min`/`max` na polju
+  obljubljata predpis, ki ga nobena stran ne objavlja. Nova razdelitev:
+  (1) `src/lib/terasa-inputs.ts` pozna sedem meja, ki izrečejo SAMO to, kaj aplikacija še ZNA
+  izračunati (razmak 0,05–3 m, ker število nosilcev zunaj tega nima več smisla; cena ≥ 0, ker je
+  cena pogodba z dobaviteljem), in vsaka meja nosi razlog `why`, ki gre na zaslon;
+  (2) zunaj okna je izračun ZAVRNJEN, razlog imenuje VPISANO vrednost, nobena postavka ni
+  obračunana, gumb »Dodaj v ponudbo« izgine;
+  (3) znotraj okna se vpisana vrednost uporabi TOČNO, ROKSALov objavljen pas 33–35 cm pa jo samo
+  OCENI (znotraj pasu / znotraj pasu a nad varno mejo / PREŠIROKO).
+- ZAKAJ SAM EN RESOLVER: cena in načrt montaže sta imela svoj usek vsak, zato sta se
+  lahko razšla. Zdaj bereta iz `resolveTerasaInputs()`, in to zaklene pariteta čez 11 vhodov.
+- STRANSKI UKREPI ISTEGA KORENA: privzeti razmak je preskočil z 0,4 m na **0,33 m** (stari
+  privzetek je SAM SEBI prižgal opozorilo »preširoko«); `JOIST_SUGGEST_M` se izpelje iz pravila in
+  ne iz tipkanja, zato je diagonalni predlog izgubil izmišljeno vrednost 0,3 m; tržne prakse
+  (3–6 mm dilatacija, 1–2 % naklon, 15–20 mm reža ob steni) niso več zapisane kot ROKSALove
+  zahteve; `NumField` je dobil `aria-label`, ker vnos brez dostopnega imena ni merljiv ne v
+  brskalniku ne z bralnikom zaslona.
+- DOKAZI: `tests/verify/terasa-input-guard.ts` **72/72** (usek je v viru dokazano izginil, točna
+  vrednost pri petih razmakih, mutacija na 8 m, pariteta cena ⇄ načrt, ocenjevanje po pasu,
+  razlog `why` na vsaki meji, decimalna vejica) in `tests/e2e-terasa-input-ui.ts` **36/36** v
+  živem brskalniku (1,2 m → 15 lm / 5 kosov in PREŠIROKO, a še vedno ponudbeno; 8 m → zavrnitev
+  brez postavk; krog nazaj na 0,33 m da POVEČ ISTO vsoto; 12 mm ostane 12 mm; 0 €/m ostane
+  0,00 €; −3 €/m je zavrnjen). Sweep **3000 OK / 0 NAPAK** v 44/51 skriptih (+72, nič ni
+  izginilo), `tsc` 0 napak, `eslint` 0 zapisov.
+- POUK O LASTNIH PRIČAKOVANJIH: oba prvotno rdeča E2E preizkusa sta bila napaka TESTA, ne
+  aplikacije (6: `NumField` ima privzeti `min=0`, ki nikoli ni bil usek; 13: račun sem pričakoval
+  na terasi 5 × 4 m, živa privzeta pa je 4 × 3 m → 15 lm). Številka v testu mora biti izmerjena
+  resnica, ne aritmetika iz spomina — enako pravilo velja za številke v ponudbi.
+- ČESA NI (iskreno): (1) preostale skupine neujemljivih številk rešene niso — cene na enoto, meje
+  drsnikov v vizualizaciji, računski razpored 60–300 cm, trditev o zakonski višini ograje ≥ 1,0 m,
+  »maks. 3 m za običajno kritino«, pragovi 5/7/10°, usek rezerve `Math.min(30, …)`, useki pri
+  dolžini in položu stopnic, odstotki kapare; (2) okno vnosa je še vedno MOJA številka, ne
+  ROKSALova — izgovarja se z razlogom, a ga ne more potrditi dobavitelj; (3) E2E meri samo teraso,
+  ostalih sedem obrti ima enako obliko vnosa brez enakega resolverja.
+- POPRAVEK LASTNEGA BESEDILA: v tem poročilu so bile tri pokvarjene besede, ki jih je posnel šele
+  pregled (»računalna pa je«, »ISTEMGA resolverja«, »živevem brskalniku«), in pet cirilčnih
+  podobnic (а/е) v `src/` in `tests/`, ena od njih UPORABNIKU VIDNA (»Obе mere« v nadstrešku).
+  Pregled `grep -rn "[а-яА-ЯёЁ]" src/ tests/` je zdaj prazen.
+
+Stage Summary:
+- To, kar Robert vidi: v kalkulatorju WPC terase sme vpisati katerokoli številko in aplikacija je
+  ne popravlja več. Vpiše 1,2 m — računa se 1,2 m (15 lm nosilcev) in dobi opozorilo »PREŠIROKO«,
+  ker ROKSAL objavlja 33–35 cm. Vpiše 8 m — namesto ponudbe dobi »Izračun ni opravljen: Razmak
+  nosilcev 8 m je preveč za izračun (8 > 3) … nobena postavka ni obračunana«, gumb za ponudbo pa
+  izgine. Vrnitev na 0,33 m da točno ISTO vsoto kot pred izletom iz okna. Privzeti razmak je zdaj
+  0,33 m (spodnji rob objavljene meje), ne več 0,4 m, ki je bil sam sebi preširok.
+  Dokaz: `terasa-input-ui.png` (velikost preverjena na disku).
+- Kaj sem se naučil: tiha »zaščita« vnosa je hujša napaka kot manjkajoča meja — iz nje nastane
+  ponudba, ki je videti izračunana po monterjevih podatkih. Vsiljena sme biti samo tista meja, ki
+  je izgovorjena (kaj aplikacija še zna izračunati), in povedana mora biti z razlogom.
+- Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.

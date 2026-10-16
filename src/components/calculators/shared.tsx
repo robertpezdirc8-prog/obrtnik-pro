@@ -40,6 +40,7 @@ export function NumField({
         <Input
           type="number"
           inputMode="decimal"
+          aria-label={label}
           value={Number.isFinite(value) ? value : ''}
           step={step}
           min={min}

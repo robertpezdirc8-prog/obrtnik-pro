@@ -1,5 +1,5 @@
 // E2E za 3D model (COLMAP) — čist CDP prek WebSocket (bun), brez agent-browser.
-// Zlatа pot: uvoz 3 datotek (DataTransfer injekcija) → par po ID 1→2 →
+// Zlata pot: uvoz 3 datotek (DataTransfer injekcija) → par po ID 1→2 →
 // kalibracija 100 cm → par 2→3 (80 cm) → par 1→6 (2,00 m) → zaključi →
 // meritve v Pripomočkih z značko 3D. Resnica fixture: 1 enota = 40 cm.
 import { spawn, type ChildProcess } from 'node:child_process';

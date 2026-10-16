@@ -148,11 +148,11 @@ export function WpcTerasaCalc() {
         <NumField label="Širina terase" unit="m" value={inputs.deckWidth ?? 0} onChange={(v) => setInputs({ deckWidth: v })} />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Razmak nosilcev" unit="m" value={inputs.joistSpacing ?? 0.4} onChange={(v) => setInputs({ joistSpacing: v })} min={0.3} max={0.6} hint="Privzeto 0,4 m" />
+        <NumField label="Razmak nosilcev" unit="m" value={inputs.joistSpacing ?? CRAFT_INPUT_DEFAULTS.joistSpacing ?? 0.33} onChange={(v) => setInputs({ joistSpacing: v })} step={0.01} hint="ROKSAL za teraso objavlja razmak podložnih letev 33–35 cm — privzeto spodnji rob" />
         <NumField label="Cena deske" unit="€/m" value={inputs.boardPricePerM ?? 12.5} onChange={(v) => setInputs({ boardPricePerM: v })} />
-        <NumField label="Nabavna dolžina deske" unit="m" value={inputs.boardLengthM ?? 4} onChange={(v) => setInputs({ boardLengthM: v })} step={0.5} min={2} max={6} hint="Za rezalni načrt" />
-        <NumField label="Čelna dilatacija" unit="mm" value={inputs.endGapMm ?? 4} onChange={(v) => setInputs({ endGapMm: v })} step={1} min={2} max={12} hint="Pogoste napake: preozke reže" />
-        <NumField label="Stranska dilatacija" unit="mm" value={inputs.sideGapMm ?? 5} onChange={(v) => setInputs({ sideGapMm: v })} step={1} min={2} max={10} hint="3–6 mm po proizvajalcih" />
+        <NumField label="Nabavna dolžina deske" unit="m" value={inputs.boardLengthM ?? 4} onChange={(v) => setInputs({ boardLengthM: v })} step={0.5} hint="Za rezalni načrt" />
+        <NumField label="Čelna dilatacija" unit="mm" value={inputs.endGapMm ?? 4} onChange={(v) => setInputs({ endGapMm: v })} step={1} hint="3–5 mm (tržna praksa, ne ROKSAL)" />
+        <NumField label="Stranska dilatacija" unit="mm" value={inputs.sideGapMm ?? 5} onChange={(v) => setInputs({ sideGapMm: v })} step={1} hint="3–6 mm (tržna praksa, ne ROKSAL)" />
       </div>
     </CraftCalculator>
   );

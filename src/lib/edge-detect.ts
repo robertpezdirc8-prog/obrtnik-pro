@@ -1,7 +1,7 @@
 // ─── Magnet za točke: Sobel robovi + pripenjanje klikov ─────
 // Kamera "vidi robove kot človek": iz fotografije/kadra zgradimo
 // Sobel karto robov (downscale za hitrost), klik blizu roba
-// (okvir okna, fugа ploščice, rob stene…) se pripne na rob.
+// (okvir okna, fuga ploščice, rob stene…) se pripne na rob.
 // Tako so merjene daljice natančne tudi pri hitrem tapkanju.
 
 import type { XY } from './measure-geometry';

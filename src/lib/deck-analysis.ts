@@ -12,8 +12,11 @@
 //  • Snap na standardne širine WPC desk (tržna praksa, toleranca 8 %).
 //  • Površina: 4 oglišča terase → strani + Shoelace z enotnim pxPerCm
 //    (orientacijska mera — enako kot ostale fotomeritve, disclaimer 2–8 %).
-//  • Predlog razmaka nosilcev: ravno 0,40 m, diagonalno 0,30 m (proizvajalci:
-//    diagonal installation → reduce joist spacing to ~30 cm).
+//  • Predlog razmaka nosilcev: SAMO iz ROKSALove objave (spodnji rob pasu
+//    33–35 cm za podložne letve terase, `roksal-span-rules`). Prejšnji
+//    »ravno 0,40 / diagonalno 0,30« je bil navedek proizvajalcev brez vira in
+//    je montera spravil čez ROKSALovo mejo; ROKSAL za diagonalno ne objavlja
+//    ničesar, zato oba primera dobita isto utemeljeno vrednost.
 //
 // Vse čiste funkcije (brez DOM) — testabilno v bun (tests/verify).
 
@@ -21,6 +24,11 @@ import type { RgbaImage } from './bar-count';
 import type { ImgSize, XY } from './measure-geometry';
 import { pctToPx } from './measure-geometry';
 import { orderQuad } from './homography';
+import { maxAllowedSpan } from './roksal-span-rules';
+
+/** Predlog razmaka nosilcev v metrih = spodnji rob (vežoči rob) ROKSALovega
+ *  objavljenega pasu za podložne letve terase. Izpeljan iz pravila, ne vklesan. */
+export const JOIST_SUGGEST_M = maxAllowedSpan({ family: 'terasa', context: 'battens' }).maxSpanCm / 100;
 
 export type { RgbaImage };
 
@@ -308,7 +316,7 @@ export function analyzeDeck(input: DeckAnalysisInput): DeckResult {
     ok: false, boardAngleDeg: 0, pitchPx: null, gapPx: null, amplitude: 0, pitchCv: 1,
     boardsVisible: null, lines: [], pxPerCm: null, calibSource: 'none',
     boardCm: null, gapCm: null, snapBoard: null, diagonal: false,
-    joistSpacingSuggestM: 0.4, confidence: 0, verdict: 'nizka', warnings,
+    joistSpacingSuggestM: JOIST_SUGGEST_M, confidence: 0, verdict: 'nizka', warnings,
   };
   if (w < 80 || h < 80) {
     warnings.push('Slika je premajhna za analizo desk.');
@@ -429,7 +437,9 @@ export function analyzeDeck(input: DeckAnalysisInput): DeckResult {
   const boardAngleDeg = (bestA + 90) % 180;
   const angleMod = boardAngleDeg % 90;
   const diagonal = angleMod > 12;
-  const joistSpacingSuggestM = diagonal ? 0.3 : 0.4;
+  // Diagonalna vgradnja ne sme pomeniti druge ROKSALove meje — za njo ni
+  // objave, zato predlog ostane utemeljena vrednost iz pasu.
+  const joistSpacingSuggestM = JOIST_SUGGEST_M;
 
   // 7) anotacije (črte rež v % slike, omejeno število)
   const clipLine = (thetaDeg: number, u: number): DeckLinePct | null => {

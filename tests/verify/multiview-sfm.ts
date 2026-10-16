@@ -43,7 +43,7 @@ function check(name: string, cond: boolean, detail?: string): void {
 }
 
 // ─── Scena z znano resnico ────────────────────────────────────
-// Enotа rekonstrukcije = |t začetnega para| (relativna poza je normalizirana),
+// Enota rekonstrukcije = |t začetnega para| (relativna poza je normalizirana),
 // svet SfM = kamera začetnega para (R = I, t = 0). Test ne predpostavlja, kateri
 // par je začetni — svetovno kamero prepozna po t ≈ 0.
 

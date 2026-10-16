@@ -43,7 +43,8 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 | Ograje — trasa/stebri/razrez | `src/lib/bar-count.ts` (Radon + ACF), `src/lib/post-layout.ts` | `tests/verify/bar-count` v E2E; `tests/verify/post-layout.ts` 33/33 |
 | Stopnice — profil/Blondel | `src/lib/stair-profile.ts` | `tests/verify/stair-profile.ts` 15/15 |
 | Keramika — vzorec/formati | `src/lib/tile-grid.ts` (36-kotna projekcija + Pearson ACF) | `tests/verify/tile-grid.ts` 41/41 |
-| WPC terasa — deske/nosilci | `src/lib/deck-analysis.ts` | `tests/verify/deck-analysis.ts` 53/53 |
+| WPC terasa — deske/nosilci | `src/lib/deck-analysis.ts` (`JOIST_SUGGEST_M` je izpeljen iz ROKSALovega pravila, ne vtipkan; isti predlog za ravno in diagonalno) | `tests/verify/deck-analysis.ts` 53/53 |
+| WPC terasa — meja vnosa (Task 83) | `src/lib/terasa-inputs.ts` — enoten resolver za ceno IN načrt montaže; znotraj okna se vpisano uporabi TOČNO, zunaj se izračun ZAVRNE z razlogom, ki imenuje vpisano vrednost (`Math.min`/`Math.max` usekov ni več) | `tests/verify/terasa-input-guard.ts` 72/72 (mutacija + pariteta čez 11 vhodov); `tests/e2e-terasa-input-ui.ts` 36/36 v živem brskalniku |
 | Okna/vrata — popis odprtin | `src/lib/opening-schedule.ts` | `tests/verify/opening-schedule.ts` 50/50 |
 | Nadstreški — 2 fotki (fronta+stran) | `src/lib/canopy-analysis.ts` | `tests/verify/canopy-analysis.ts` 52/52 |
 | Fasada — obloga + stena − odprtine | `src/lib/fasada-analysis.ts` (Radon, Sutherland–Hodgman rez) | `tests/verify/fasada-analysis.ts` 33/33 |
@@ -128,7 +129,7 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
 > ni posledica kode. **Od Task 71 teh petih ni več rdečih**: izhodna mapa je
 > `os.tmpdir()/obrtnik-pro-verify`, fiksna slika pa je odvedena iz `import.meta.url`.) `photo-replace` ima **391** preverjanj, ne 152.
 
-- `measurement-status` 90/90 · `multiview` 104/104 · `multiview-chain` 66/66 · `multiview-sfm` 122/122 · `multiview-sheet` 20/20 · `photo-replace` 391/391 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `accuracy-test` 35/35 · `measure-report` 48/48 · `laser-protocols` 72/72 · `offer-pipeline` 56/56 · `payment-tracking` 77/77 · `time-tracking` 74/74 · `ar-depth` 32/32 · `colmap-model` 44/44 · `site-diary` 57/57 · `eslog` 101/101 · **FAZA-8 nove: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26** · **F3: `render-promise` 25/25** · **Task 71: `portable-paths` 28/28** · **FAZA-9: `band-suggest` 54/54 · `suggest-gate` 21/21** · **Task 74: `band-ui-contract` 54/54** · **Task 75: `gt-evidence` 102/102** · **Task 80: `roksal-span-rules` 74/74, od Task 81 130/130, od Task 82 133/133** · **Task 82: `roksal-board-gap` 58/58** · `scale-suggestions` ✓ · `scene-classify` ✓ — vsi assertivni skripti v tests/verify izhod 0 (**50/50**, kar velja od Task 82; 49/49 od Task 80; 48/48 od Task 75; 47/47 od Task 74; 44/44 od Task 71, prej 38/43 zaradi petih okoljskih poti)
+- `measurement-status` 90/90 · `multiview` 104/104 · `multiview-chain` 66/66 · `multiview-sfm` 122/122 · `multiview-sheet` 20/20 · `photo-replace` 391/391 · `viz-default-textures` 131/131 · `tile-grid` 41/41 · `fasada-analysis` 33/33 · `deck-analysis` 53/53 · `canopy-analysis` 52/52 · `opening-schedule` 50/50 · `post-layout` 33/33 · `stair-profile` 15/15 · `pattern-detect` 8/8 · `quality-calibrate` 19/19 · `room-sketch` 48/48 · `accuracy-test` 35/35 · `measure-report` 48/48 · `laser-protocols` 72/72 · `offer-pipeline` 56/56 · `payment-tracking` 77/77 · `time-tracking` 74/74 · `ar-depth` 32/32 · `colmap-model` 44/44 · `site-diary` 57/57 · `eslog` 101/101 · **FAZA-8 nove: `assertion` 119/119 · `scale-split` 56/56 · `multiview-split` 50/50 · `plank-layout-width` 26/26** · **F3: `render-promise` 25/25** · **Task 71: `portable-paths` 28/28** · **FAZA-9: `band-suggest` 54/54 · `suggest-gate` 21/21** · **Task 74: `band-ui-contract` 54/54** · **Task 75: `gt-evidence` 102/102** · **Task 80: `roksal-span-rules` 74/74, od Task 81 130/130, od Task 82 133/133** · **Task 82: `roksal-board-gap` 58/58** · **Task 83: `terasa-input-guard` 72/72** · `scale-suggestions` ✓ · `scene-classify` ✓ — vsi assertivni skripti v tests/verify izhod 0 (**51/51**, kar velja od Task 83; 50/50 od Task 82; 49/49 od Task 80; 48/48 od Task 75; 47/47 od Task 74; 44/44 od Task 71, prej 38/43 zaradi petih okoljskih poti)
 - Poslovni moduli (deterministično, 0 AI, pogodbe iskrenosti kot pri merjenju): sledenje ponudbam (`offer-pipeline.ts` — win-rate < 3 odločenih = brez trditev), terjatve/Mahnwesen (`payment-tracking.ts` — povprečje < 3 plačanih = null), časovnica (`time-tracking.ts` — obračun na 0,25 h izrecno izpisan, povprečje < 3 dni = null), terenski dnevnik (`site-diary.ts` — ure iz časovnice samo za vnos s ponudbo, brez vnosov span = null, nič tihih »0 h«), e-račun (`eslog.ts` — račun z neskladnimi zneski ali brez postavk se NE izvozi (iskrena vrata 409); snapshot postavk ob izdaji računa (InvoiceItem) — zgodovina ne sledi spremembam ponudbe; opozorila (manjka IBAN/naslov kupca) NE blokirajo in so izpisana kot XML komentar)
 - `tsc --noEmit` **PONOVLJENO 2026-10-16 po FAZA-8** (izmerjeno, ne iz spomina): izhodna koda 1, 5 napak v 5 vrsticah, **0 vrstic se začne na `src/`** (`grep -c '^src/'` = 0). Napake so izven aplikacije: `examples/websocket/frontend.tsx(4,20)` in `examples/websocket/server.ts(2,24)` TS2307, `tests/e2e-compare-fixture.ts(69,7)/(129,7)/(130,7)` TS2867. Zavestno NE popravljene: popravek = nova odvisnost (`@types/bun`, `socket.io`), nobena pa ni na fotomontažni poti.
 - `tsc --noEmit` **PONOVLJENO ŠE 2026-10-16 po Task 71**: ISTIH 5 vrstic (primerjano z `cmp`, izpis identičen), pri `tests/e2e-compare-fixture.ts` so vrste zamaknjene na (79,7)/(139,7)/(140,7), ker je Task 71 vanj vstavil 10 vrstic prehodnega uvoza — ne nove napake. Opomba o kodi: en zagon vrne 2 ob identičnem izpisu, ponovna zagona stabilno 1; zapisana je koda 1, vir resnice je izpis.
@@ -176,6 +177,44 @@ Vsak korak spodaj s podatkom: DATOTEKA · funkcija · DOKAZ (test/E2E).
   seštevanje pogoltnilo oba, agregator pa upošteva zadnjo vrsto. Posledično je bila tudi
   `scale-suggestions.ts` brez števila preverb (izpisala je samo `VSE OK ✓`); zdaj izpiše
   `REZULTAT: 17 OK, 0 NAPAK` in je štet.
+- **Ponovljeno 2026-10-16 (Task 83):** `bun tests/verify-counts.ts` → **3000 OK / 0 NAPAK** v
+  **44** od **51** skriptov (brez brojača je istih sedem; število skriptov je zrastelo za eno —
+  nov `terasa-input-guard`). Delta glede na Task 82 je **+72** in je v celoti ta nov skript
+  (72/72); nobeno preverjanje ni izginilo, `deck-analysis` ostaja 53/53 kljub trem novim
+  zaklepom. `tsc --noEmit` izhodna koda 0, `eslint . --ignore-pattern '.next*/**'` izhodna koda 0
+  brez zapisov. Nov `tests/e2e-terasa-input-ui.ts` **36/36** v živem brskalniku (privzeta 0,33 m,
+  citiran pas 33–35 cm, `max` odstranjen, sedem `aria-label` vnosov, 1,2 m izračunano na 15 lm /
+  5 kosov a označeno PREŠIROKO in še vedno ponudbeno, 8 m zavrnjen z imenom vpisane vrednosti,
+  postavke in »Dodaj v ponudbo« izgineta, vnosa se ne popravi, zaustavitev se javi tudi v načrtu
+  montaže, krog nazaj na 0,33 m da POVEČ ISTO vsoto, 12 mm reža ostane 12 mm, 0 €/m ostane 0,00 €,
+  −3 €/m je zavrnjen; posnetek `terasa-input-ui.png` preverjen po velikosti na disku).
+  **Kaj je bilo najdeno:** trije `Math.min`/`Math.max` useki v `calculateWpcTerasa` in
+  `wpcTerasaPlan` so TIHO predrugali monterjev vnos. Najhujši je bil razmak nosilcev: vpisani
+  1,2 m je ostal na zaslonu, računal pa je 0,6 m, kar pri privzeti terasi 4 × 3 m pomeni
+  **24 lm namesto 15 lm** (+60 % materiala) na ponudbi, ki je videti izračunana po monterjevih
+  podatkih. Druga dva: cena deske je bila vedno vsaj 1 €/m (monterjeva pogajena 0,99 € bi bila
+  obračunana kot 1 €) in nabavna dolžina deske je bila usečena na 10/12/6 m.
+  **Pravilo, ki ga je narekoval popravek: OKNO VNOSA NI INŽENIRSKI PREDPIS.** Uporabniški
+  vnosi nimajo več `min`/`max` atributov, ki obljubljata predpis, ki ga nobena stran ne objavlja.
+  Namesto njih `src/lib/terasa-inputs.ts` pozna sedem meja, ki izrečejo samo, kaj aplikacija še
+  ZNA izračunati (npr. razmak 0,05–3 m, ker zunaj tega ŠTEVILO nosilcev nima več smisla;
+  cena ≥ 0, ker je cena pogodba z dobaviteljem), vsaka meja nosi razlog `why`, ki gre na
+  zaslon. Zunaj okna → izračun je ZAVRNJEN, razlog imenuje VPISANO vrednost, nobena postavka
+  ni obračunana. Znotraj okna → vpisana vrednost se uporabi TOČNO, ROKSALov pas 33–35 cm jo
+  samo OCENI (znotraj pasu / znotraj pasu a nad varno mejo / PREŠIROKO). Ker cena in montažni
+  načrt bereta iz ISTEGA resolverja, se ne moreta več raziti — to meri pariteta čez 11 vhodov.
+  **Stranski ukrepi istega korena:** privzeti razmak nosilcev je preskočil z 0,4 m na **0,33 m**
+  (0,4 m je bil aplikacijski privzetek, ki je SAM SEBI prižgal opozorilo »preširoko«; spodnji
+  rob objavljenega pasu je 33 cm), predlog iz fotografije se več ne tipka ročno, ampak se
+  izpelje iz pravila (`JOIST_SUGGEST_M = maxAllowedSpan({family:'terasa',context:'battens'})`),
+  diagonalni predlog je zato izgubil izmišljeno vrednost 0,3 m, tržne prakse (3–6 mm dilatacija,
+  1–2 % naklon, 15–20 mm reža ob steni) pa niso več zapisane kot ROKSALove zahteve, ampak jasno
+  kot tržna praksa. Dostopnost: `NumField` vnos je bil brez dostopnega imena — `aria-label={label}`
+  je omogočil, da je E2E sploh lahko meril živi vmesnik.
+  **Pouk o lastnih pričakovanjih:** oba prvotno rdeča preizkusa sta bila napaka testa, ne
+  aplikacije (6: `NumField` ima privzeti `min=0`, ki ni bil usek; 13: račun je bil pričakovan
+  na 5 × 4 m terasi, živa privzeta pa je 4 × 3 m → 15 lm). Številka v testu mora biti
+  izmerjena resnica, ne aritmetika iz spomina.
 - **Ponovljeno 2026-10-16 (Task 82):** `bun tests/verify-counts.ts` → **2928 OK / 0 NAPAK** v
   **43** od **50** skriptov (brez brojača je istih sedem). Delta glede na Task 81 je **+61** =
   58 novih preverjanj v `roksal-board-gap` + 3 v `roksal-span-rules` (130 → **133**); nobeno

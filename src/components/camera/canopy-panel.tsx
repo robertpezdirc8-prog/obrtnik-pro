@@ -369,7 +369,7 @@ export function CanopyPanel({ dataUrl, reference, partial, onPartial, onSendToCa
         )}
         {bothDone && (
           <p className="rounded-lg bg-green-50 px-3 py-2 text-xs text-green-800" role="status">
-            Obе mere izmerjene ({fmt2(widthM!)} × {fmt2(depthM!)} m) — spodaj preveri površino, stebre in kritino ter pošlji v kalkulator.
+            Obe mere izmerjene ({fmt2(widthM!)} × {fmt2(depthM!)} m) — spodaj preveri površino, stebre in kritino ter pošlji v kalkulator.
           </p>
         )}
       </div>

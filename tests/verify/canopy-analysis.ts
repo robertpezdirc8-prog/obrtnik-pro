@@ -115,7 +115,7 @@ async function save(buf: Buffer, W: number, H: number, path: string) {
   const work = { w: Math.round(W * scale), h: Math.round(H * scale) };
   // vrata: y 480–680 → 200 naravnih px visoka = 200 cm (1 px/cm naravno)
   const ppc = refPxPerCm(200, 200, scale);
-  check('merilo iz referencе ≈ workScale (±5 %)', ppc !== null && Math.abs(ppc - scale) / scale < 0.05, `got ${ppc}, scale ${scale}`);
+  check('merilo iz reference ≈ workScale (±5 %)', ppc !== null && Math.abs(ppc - scale) / scale < 0.05, `got ${ppc}, scale ${scale}`);
   if (ppc) {
     const m = measureFromPoints({ x: 27.1, y: 24 }, { x: 76.9, y: 24 }, work, ppc);
     check('širina ≈ 480 cm (465–495)', m.lenCm !== null && m.lenCm >= 465 && m.lenCm <= 495, `got ${m.lenCm}`);
@@ -188,7 +188,7 @@ async function save(buf: Buffer, W: number, H: number, path: string) {
 
 // ── 5. Stebri po razponu ──
 {
-  console.log('št. stebrov (jeklo 80×80, praksа ≤ 3,5 m):');
+  console.log('št. stebrov (jeklo 80×80, praksa ≤ 3,5 m):');
   check('3,0 m → 2', suggestPosts(3.0) === 2, `got ${suggestPosts(3.0)}`);
   check('3,5 m → 2', suggestPosts(3.5) === 2, `got ${suggestPosts(3.5)}`);
   check('3,6 m → 3', suggestPosts(3.6) === 3, `got ${suggestPosts(3.6)}`);

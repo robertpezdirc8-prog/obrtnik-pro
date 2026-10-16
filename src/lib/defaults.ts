@@ -11,8 +11,11 @@ export const CRAFT_INPUT_DEFAULTS: CraftInputs = {
   steps: 12, stepWidth: 1.1, stepMaterial: 'wpc', railingNeeded: true, totalRiseCm: 0,
   // Keramika
   floorLength: 4, floorWidth: 3, wallHeight: 0, tilePricePerM2: 24, reservePercent: 10, tilePattern: 'ravno',
-  // WPC terasa
-  deckLength: 4, deckWidth: 3, joistSpacing: 0.4, boardPricePerM: 12.5, boardLengthM: 4, sideGapMm: 5, endGapMm: 4,
+  // WPC terasa — razmak nosilcev 0,33 m = SPODNJI rob ROKSALovega objavljenega
+  // pasu za podložne letve terase (33–35 cm center, `roksal-span-rules`
+  // `terasa-battens-33-35`). Prejšnji privzetek 0,4 m je bil ugiban in je že
+  // sam sprožil lastno opozorilo »preširoko«.
+  deckLength: 4, deckWidth: 3, joistSpacing: 0.33, boardPricePerM: 12.5, boardLengthM: 4, sideGapMm: 5, endGapMm: 4,
   // Okna/vrata
   windowCount: 3, windowSize: 2, windowMaterial: 'pvc', doorCount: 1, removeOld: true,
   // Nadstrešek

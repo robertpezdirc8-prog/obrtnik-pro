@@ -11,7 +11,7 @@ const VERIFY_OUT = join(tmpdir(), 'obrtnik-pro-verify');
 mkdirSync(VERIFY_OUT, { recursive: true });
 const TMP = (name: string) => join(VERIFY_OUT, name);
 import {
-  analyzeDeck, deckQuadArea, snapBoard, STANDARD_BOARD_CM,
+  analyzeDeck, deckQuadArea, snapBoard, JOIST_SUGGEST_M, STANDARD_BOARD_CM,
   type RgbaImage,
 } from '../../src/lib/deck-analysis';
 
@@ -74,7 +74,7 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
   check('snap = 14', r.snapBoard === 14, `got ${r.snapBoard}`);
   check('reža ≈ 0,5 cm (0,2–1,2)', r.gapCm !== null && r.gapCm >= 0.2 && r.gapCm <= 1.2, `got ${r.gapCm}`);
   check('ni diagonalno', !r.diagonal, `got ${r.diagonal}`);
-  check('nosilci: predlog 0,4 m', r.joistSpacingSuggestM === 0.4, `got ${r.joistSpacingSuggestM}`);
+  check('nosilci: predlog = ROKSALov spodnji rob pasu 0,33 m (ne več ugibani 0,4)', r.joistSpacingSuggestM === JOIST_SUGGEST_M && JOIST_SUGGEST_M === 0.33, `got ${r.joistSpacingSuggestM}`);
   check('anotacije rež (≥ 3, ≤ 24)', r.lines.length >= 3 && r.lines.length <= 24, `lines=${r.lines.length}`);
   check('anotacije znotraj slike', r.lines.every((l) => [l.x1, l.x2].every((v) => v >= 0 && v <= 100) && [l.y1, l.y2].every((v) => v >= 0 && v <= 100)));
   check('zanesljivost ≥ 70', r.confidence >= 70, `got ${r.confidence}`);
@@ -90,7 +90,7 @@ function makeDeck(W: number, H: number, opts: Opts = {}): Buffer {
   check('zaznana', r.ok, `warnings: ${r.warnings.join('; ')}`);
   check('smer desk ≈ 45° (33–57 ali 123–147)', (r.boardAngleDeg >= 33 && r.boardAngleDeg <= 57) || (r.boardAngleDeg >= 123 && r.boardAngleDeg <= 147), `got ${r.boardAngleDeg}`);
   check('diagonalno', r.diagonal, `got ${r.diagonal}`);
-  check('nosilci: predlog 0,3 m', r.joistSpacingSuggestM === 0.3, `got ${r.joistSpacingSuggestM}`);
+  check('nosilci: diagonalno dobi ISTO utemeljeno vrednost (ROKSAL za diagonalno ne objavlja druge meje)', r.joistSpacingSuggestM === JOIST_SUGGEST_M, `got ${r.joistSpacingSuggestM}`);
   check('deska ≈ 14 cm (12,8–15,4)', r.boardCm !== null && r.boardCm >= 12.8 && r.boardCm <= 15.4, `got ${r.boardCm}`);
 }
 

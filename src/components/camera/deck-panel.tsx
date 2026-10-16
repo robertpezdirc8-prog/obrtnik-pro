@@ -5,7 +5,8 @@
 // korak in režo ter po kalibraciji (referenčni objekt ALI znana širina deske)
 // predlaga širino deske s snapom na standardne WPC formate. Uporabnik klikne
 // 4 oglisča terase → površina + stranice → prefill kalkulatorja WPC terase
-// (deckLength, deckWidth, joistSpacing — diagonalno 0,3 / ravno 0,4 m).
+// (deckLength, deckWidth, joistSpacing — predlog je ROKSALov spodnji rob pasu
+// 33–35 cm, NE več »ravno 0,4 / diagonalno 0,3«).
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Layers, RotateCcw, Ruler, Wand2, AlertTriangle, Copy, Check, MousePointerClick } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { analyzeDeck, deckQuadArea, type RgbaImage, type DeckResult } from '@/lib/deck-analysis';
+import { analyzeDeck, deckQuadArea, JOIST_SUGGEST_M, type RgbaImage, type DeckResult } from '@/lib/deck-analysis';
+import { maxAllowedSpan } from '@/lib/roksal-span-rules';
 import type { XY } from '@/lib/measure-geometry';
 import { refBoxHeightPx } from '@/lib/measure-geometry';
 
@@ -31,7 +33,11 @@ type CalibChoice = 'auto' | 'known' | 'none';
 const fmt1 = (v: number): string => v.toFixed(1).replace('.', ',');
 const fmt2 = (v: number): string => v.toFixed(2).replace('.', ',');
 
-const JOIST_OPTIONS = [0.3, 0.35, 0.4, 0.45, 0.5];
+const BAND = maxAllowedSpan({ family: 'terasa', context: 'battens' });
+/** Znotraj objavljenega pasu sta oba robu. Nad pasom so možnosti, ki jih
+ *  aplikacija označi kot preširoke — monter jih vseeno lahko izbere, ker je
+ *  vpisana vrednost lahko dejanska meritev obstoječe podkonstrukcije. */
+const JOIST_OPTIONS = [BAND.maxSpanCm / 100, (BAND.binding?.bandCm?.[1] ?? 35) / 100, 0.4, 0.45, 0.5];
 
 export function DeckPanel({ dataUrl, reference, onSendToCalculator }: DeckPanelProps) {
   const { toast } = useToast();
@@ -140,13 +146,13 @@ export function DeckPanel({ dataUrl, reference, onSendToCalculator }: DeckPanelP
 
   const setPattern = (diag: boolean) => {
     setDiagonalSel(diag);
-    setJoistSel(diag ? 0.3 : 0.4);
+    setJoistSel(JOIST_SUGGEST_M);
   };
 
   const summaryText = (r: DeckResult): string => {
     const L: string[] = ['WPC terasa (samodejna analiza desk)'];
     const diag = diagonalSel ?? r.diagonal;
-    L.push(`- Vgradnja: ${diag ? 'diagonalno (nosilci 0,30 m)' : 'ravno (nosilci 0,40 m)'}`);
+    L.push(`- Vgradnja: ${diag ? 'diagonalno' : 'ravno'} (predlog nosilcev ${fmt2(JOIST_SUGGEST_M)} m — ROKSALov spodnji rob objavljenega pasu)`);
     L.push(`- Smer desk: ≈ ${fmt1(r.boardAngleDeg)}° (0 = vodoravno)`);
     if (r.boardCm !== null) {
       const snapTxt = r.snapBoard !== null ? ` (standard ${fmt1(r.snapBoard)} cm)` : '';
@@ -364,7 +370,7 @@ export function DeckPanel({ dataUrl, reference, onSendToCalculator }: DeckPanelP
                   !activeDiag ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:bg-accent'
                 }`}
               >
-                Ravno · nosilci 0,40 m
+                Ravno polaganje
               </button>
               <button
                 type="button"
@@ -375,7 +381,7 @@ export function DeckPanel({ dataUrl, reference, onSendToCalculator }: DeckPanelP
                   activeDiag ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:bg-accent'
                 }`}
               >
-                Diagonalno · nosilci 0,30 m
+                Diagonalno polaganje
               </button>
             </div>
           </div>
@@ -394,7 +400,7 @@ export function DeckPanel({ dataUrl, reference, onSendToCalculator }: DeckPanelP
                     joistSel === j ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:bg-accent'
                   }`}
                 >
-                  {fmt2(j)} m{j === (diagonalSel ?? shown.diagonal ? 0.3 : 0.4) ? ' · predlog' : ''}
+                  {fmt2(j)} m{j === JOIST_SUGGEST_M ? ' · predlog (ROKSAL)' : ''}
                 </button>
               ))}
             </div>

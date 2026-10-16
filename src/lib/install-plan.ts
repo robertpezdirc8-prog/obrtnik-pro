@@ -1,5 +1,6 @@
 import type { CraftId, CraftInputs } from './types';
 import { maxAllowedSpan, profileLabel } from './roksal-span-rules';
+import { resolveTerasaInputs, terasaProblemText } from './terasa-inputs';
 
 // ─── Material & montaža — čiste deterministične skripte ─────
 // Brez AI: geometrija, enakomerni razmaki, 1D rezalni načrt
@@ -312,19 +313,31 @@ function keramikaPlan(i: CraftInputs): InstallPlan {
 }
 
 function wpcTerasaPlan(i: CraftInputs): InstallPlan {
-  const L = Math.max(0, i.deckLength ?? 0);
-  const W = Math.max(0, i.deckWidth ?? 0);
-  const spacing = Math.min(0.6, Math.max(0.3, i.joistSpacing ?? 0.4));
-  const sideGap = i.sideGapMm ?? 5;
-  const endGap = i.endGapMm ?? 4;
-  if (L <= 0 || W <= 0) return { buys: [], cuts: [], checks: [] };
+  if ((i.deckLength ?? 0) <= 0 || (i.deckWidth ?? 0) <= 0) return { buys: [], cuts: [], checks: [] };
+
+  const inp = resolveTerasaInputs(i);
+  if (!inp.ok) {
+    return {
+      buys: [],
+      cuts: [],
+      checks: inp.problems.map((p) => ({ label: 'Izračun ni opravljen', detail: terasaProblemText(p), status: 'bad' as const })),
+    };
+  }
+
+  const L = inp.v.deckLength;
+  const W = inp.v.deckWidth;
+  const spacing = inp.v.joistSpacing;
+  const sideGap = inp.v.sideGapMm;
+  const endGap = inp.v.endGapMm;
 
   const joistCount = Math.ceil(L / spacing) + 1;
   const joists = cutPlan1D(Array.from({ length: joistCount }, () => W), JOIST_STOCK_M);
-  // ROKSAL objavlja za TERASO razmik podložnih letev 33–35 cm (center). Do sedaj
-  // je ta plan trdil »maks. 60 cm« — številka brez vira, hkrati pa je bil test
-  // `spacing <= 0.6` vedno resničen, ker vhod že omeji na 0,6 m: vejstvo je bilo
-  // mrtvo in montera nikoli ni opozorilo. Zdaj primerja proti citiranemu pasu.
+  // ROKSAL objavlja za TERASO razmik podložnih letev 33–35 cm (center). Plan je
+  // prej trdil »maks. 60 cm« — številka brez vira — in preizkus `spacing <= 0.6`
+  // je bil vedno resničen, ker ga vhodni usek (`Math.min(0.6, …)`) nikoli ni
+  // spustil nad 0,6 m: opozorilo montera nikoli ni zadelo. Usek je zdaj
+  // odstranjen, primerjava pa gre proti citiranemu pasu (vedno velja spodnji rob
+  // = meja; znotraj pasu je `warn`, čez pas `bad`).
   const batten = maxAllowedSpan({ family: 'terasa', context: 'battens' });
   const spacingCm = Math.round(spacing * 100);
   const bandHiCm = batten.binding?.bandCm?.[1] ?? batten.maxSpanCm;
@@ -346,11 +359,11 @@ function wpcTerasaPlan(i: CraftInputs): InstallPlan {
     ],
     checks: [
       sideGap >= 3
-        ? { label: 'Stranska dilatacija', detail: `${sideGap} mm — v priporočenem območju 3–6 mm`, status: 'ok' }
-        : { label: 'Stranska dilatacija', detail: `${sideGap} mm — preozko; minimum 3 mm, sicer deske dvigne poleti`, status: 'bad' },
+        ? { label: 'Stranska dilatacija', detail: `${sideGap} mm — v priporočenem območju 3–6 mm (tržna praksa WPC desk, ROKSAL za teraso reže ne objavlja)`, status: 'ok' }
+        : { label: 'Stranska dilatacija', detail: `${sideGap} mm — preozko; priporočilo 3–6 mm (tržna praksa, ne ROKSALova meja), sicer deske dvigne poleti`, status: 'bad' },
       endGap >= 3
-        ? { label: 'Čelna dilatacija', detail: `${endGap} mm — v priporočenem območju 3–5 mm`, status: 'ok' }
-        : { label: 'Čelna dilatacija', detail: `${endGap} mm — preozko; minimum 3 mm na spojih`, status: 'bad' },
+        ? { label: 'Čelna dilatacija', detail: `${endGap} mm — v priporočenem območju 3–5 mm (tržna praksa WPC desk, ROKSAL za teraso reže ne objavlja)`, status: 'ok' }
+        : { label: 'Čelna dilatacija', detail: `${endGap} mm — preozko; priporočilo 3–5 mm na spojih (tržna praksa, ne ROKSALova meja)`, status: 'bad' },
       {
         label: 'Razmak nosilcev',
         detail: `${nf.format(spacingCm)} cm — ROKSAL za teraso objavlja pas ${batten.binding?.bandCm?.[0]}–${bandHiCm} cm ` +
@@ -362,8 +375,8 @@ function wpcTerasaPlan(i: CraftInputs): InstallPlan {
               : ' — PREŠIROKO: nad objavljenim pasom, deske se lahko zvijajo'),
         status: battenStatus,
       },
-      { label: 'Naklon terase', detail: '1–2 % s padcem od hiše za odtek vode (≈ 1–2 cm na meter)', status: 'info' },
-      { label: 'Reža ob steni', detail: '15–20 mm pri hiši — nikoli tesno k steni', status: 'info' },
+      { label: 'Naklon terase', detail: '1–2 % s padcem od hiše za odtek vode (≈ 1–2 cm na meter) — tržna praksa, ROKSAL ne objavlja', status: 'info' },
+      { label: 'Reža ob steni', detail: '15–20 mm pri hiši — nikoli tesno k steni (tržna praksa, ROKSAL ne objavlja)', status: 'info' },
     ],
   };
 }

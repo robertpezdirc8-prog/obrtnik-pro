@@ -259,7 +259,7 @@ export function measureFromPoints(a: XY, b: XY, work: ImgSize, pxPerCm: number |
   };
 }
 
-/** Št. stebrov po razponu: ≤ 3,5 m → 2, ≤ 7 m → 3, sicer 4 (jeklo 80×80, praksа EU). */
+/** Št. stebrov po razponu: ≤ 3,5 m → 2, ≤ 7 m → 3, sicer 4 (jeklo 80×80, praksa EU). */
 export function suggestPosts(widthM: number): number {
   if (widthM <= 3.5) return 2;
   if (widthM <= 7) return 3;

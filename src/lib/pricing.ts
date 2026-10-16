@@ -1,4 +1,5 @@
 import type { CalcResult, CraftInputs, CraftId } from './types';
+import { resolveTerasaInputs, terasaProblemShort } from './terasa-inputs';
 
 // ─── Izračunski pogon ───────────────────────────────────────
 // Čiste funkcije za odmerek po posameznih dejavnostih.
@@ -281,24 +282,35 @@ export function calculateKeramika(input: CraftInputs, laborRate: number): CalcRe
   };
 }
 
-/** WPC terasa – deske glede na smer polaganja, nosilci na 0,4 m, skrite kljukice.
- *  Vključuje dilatacijske reže (proizvajalci: stransko 3–6 mm, čelno 3–5 mm, od stene 15–20 mm)
- *  in deterministični rezalni načrt — koliko nabavnih desk je treba naročiti (z odpadkom),
- *  koliko rezov in koliko se odpadek lahko izkoristi s premaknjenimi spoji. */
+/** WPC terasa – deske glede na smer polaganja, nosilci na vpisani razmak, skrite kljukice.
+ *  Dilatacijske reže (stranska in čelna) in deterministični rezalni načrt — koliko
+ *  nabavnih desk je treba naročiti (z odpadkom), koliko rezov in koliko se
+ *  odpadek lahko izkoristi s premaknjenimi spoji.
+ *  Vpisan razmak se NE sme več usekati (glej `terasa-inputs.ts`): zunaj okna
+ *  vnosa izračun vrne razlog in ne zaračuna ničesar, znotraj okna pa računa
+ *  točno tako, kot je vpisano. */
 export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcResult {
-  const L = Math.max(0, input.deckLength ?? 0);
-  const W = Math.max(0, input.deckWidth ?? 0);
-  const spacing = Math.min(0.6, Math.max(0.3, input.joistSpacing ?? 0.4));
-  const boardPrice = Math.max(1, input.boardPricePerM ?? 12.5);
-  const sideGapMm = Math.min(10, Math.max(2, input.sideGapMm ?? 5));
-  const endGapMm = Math.min(12, Math.max(2, input.endGapMm ?? 4));
-  const boardStock = Math.min(6, Math.max(2, input.boardLengthM ?? 4));
-  const sideGapM = sideGapMm / 1000;
-  const endGapM = endGapMm / 1000;
-
-  if (L <= 0 || W <= 0) {
+  if ((input.deckLength ?? 0) <= 0 || (input.deckWidth ?? 0) <= 0) {
     return { lines: [], summary: [{ label: 'Površina', value: '0 m²' }] };
   }
+
+  const inp = resolveTerasaInputs(input);
+  if (!inp.ok) {
+    return {
+      lines: [],
+      summary: [{ label: 'Izračun ni opravljen', value: inp.problems.map(terasaProblemShort).join(' · ') }],
+    };
+  }
+
+  const L = inp.v.deckLength;
+  const W = inp.v.deckWidth;
+  const spacing = inp.v.joistSpacing;
+  const boardPrice = inp.v.boardPricePerM;
+  const sideGapMm = inp.v.sideGapMm;
+  const endGapMm = inp.v.endGapMm;
+  const boardStock = inp.v.boardLengthM;
+  const sideGapM = sideGapMm / 1000;
+  const endGapM = endGapMm / 1000;
 
   const area = r2(L * W);
   // deske tečejo vzdolž dolžine L: vrste = W / (0,14 deska + stranska reža)
@@ -399,7 +411,7 @@ export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcR
   };
 }
 
-/** Okna in vrata – števec kosov z montażo in odstranitvijo. */
+/** Okna in vrata – števec kosov z montažo in odstranitvijo. */
 export function calculateOknaVrata(input: CraftInputs, laborRate: number): CalcResult {
   const windows = Math.max(0, input.windowCount ?? 0);
   const windowSize = Math.max(0.5, input.windowSize ?? 2);
