@@ -2022,3 +2022,75 @@ Stage Summary:
 - Prava omejitev, izrečena z besedami: proizvajalec si sam nasprotuje (150 proti 180). Aplikacija tega ne reši tiho — pove ga in vzame nižjo mejo; razrešitev lahko da samo dobavitelj.
 - Nič pushano. Lokalni commit: ta. Na Robertu ostaja: ročne meritve s trakom (`04..08` + ≥5 parov), katere fotke smejo v repozitorij, katalogske višine in lestvica dekorja (`realCm: 45` je ugibanje), pravilo 11, `examples/`.
 - 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega; `src/` spremenjen v treh krajih (nov modul, svetovalni blok v panelu, nov vnos v zavihku Pripomočki).
+
+## Task 81 — pravila razmika VEŽEJO PO IZDELKU (popravek lastne prve verzije), 2026-10-16
+
+- KAJ JE BILO NAPAČNO: Task 80 je vezal mejo samo na ELEMENT (stebriček / nosilec / letev). ROKSAL
+  pa isto besedo uporablja za različne IZDELKE in številke se prav po tem razhajajo. Prva verzija je
+  zato naredila dve napaki, obe v isto smer (preširoko): (1) izmislila si je proizvajalčevo
+  »razhajanje 150/180 cm« — 150 je meja profila POLNA DESKA-57-32, 180 pa meja profila POLNA
+  DESKA-100 pri ograji do 150 cm višine, si pa ne nasprotujeta; (2) pri profilu POLNA DESKA-128 je
+  pokazala 150 cm, objavljenih pa je 110 cm — monter bi razmik postavil 40 cm čez mejo in aplikacija
+  bi to potrdila kot »utemeljeno«.
+- MODUL: vsakih **22** pravil nosi zdaj `family` (ograja / terasa / fasada / pregrada / ročaj / korito)
+  in `heading` (dobeseden naslov odseka na strani). Klicatelj mora družino izreči, sicer modul vrne
+  `UNKNOWN` in UI NE SME pokazati številke. Tretji vir `roksal.com/pogosta-vprasanja-wpc/` je dodan
+  (prej sta bila dva). Dva nova tipa pravil: `range` (priporočen pas reže 0,5–3 cm oziroma 5–6 mm) ne
+  more biti meja, `consequence` (»≥ 180 cm ⇒ dodaten stebriček«) ne more znižati meje. `ADJACENT` je
+  ostalo samo za eno pravilo in to je tisto z 5–6 mm, kjer številka stoji v samem VPRAŠANJU ne v
+  odgovoru. Id pravil je zamrznjen seznam 22 oznak, prefix id-ja MORA biti enak `family` — en id
+  (`ograja-korito-battens-70`) je lagal in je preimenovan v `korito-battens-70`.
+- RAZHARANJA: javijo se samo med ENAKO SPLOŠNIMA citatoma (med praviloma, ki imata enako množico
+  pogojev) in takrat je vzeta NIŽJA meja, višjo mora potrditi dobavitelj. Profilno pogojena pravila
+  (150 pri 57-32, 180 pri 100 do 150 cm) si NE nasprotujejo — preizkus to zaklene in s tem prepove
+  ponovitev napake prve verzije.
+- MANJKAJOČ ODGOVOR ni več enaka trditev: kadar je profil izbran, meja pa čaka na višino polnila ali
+  orientacijo desk, modul napiše »objavlja mejo, a te ni bilo mogoče ovrednotiti — manjka: …« in NE
+  »ROKSAL tega ne objavlja«. Obe trditvi sta različni in sta zapisani v ločenih vejah.
+- UI (`post-layout-panel.tsx`): panel ima zdaj vprašanje po PROFILU in po POSTAVITVI desk. Tri
+  testna stanja: (a) profil ni izbran → tabela mej po profilih + najstrožja (110 cm), ene same
+  številke ni; (b) profil izbran in meja utemeljena → citat z virom; (c) utemeljene meje ni →
+  »Utemeljene meje ni« in nobena številka. Opozorilo nad mejo se ne more več oglasiti proti 0 cm,
+  kar bi bila čisto nova izmišljena trditev. Pasovna opomba »spodnji rob 133 cm« mora priti do
+  monitorja, sicer 133–145 izgleda kot dovoljenje 145.
+- NAKUPOVNA NAČRTA: terasa je imela mrtvo vejo (`spacing <= 0.6` je bil VEDNA resničen, ker vhod že
+  seka na 0,6 m) in je trdila »maks. 60 cm« brez vira; zdaj primerja proti citiranemu pasu 33–35 cm
+  v treh conah (ok / znotraj pasu a nad varno spodnjo mejo / nad pasom). Razmik 1,5 m v ponudbi in
+  načrtu je označen kot *predpostavka izračuna, ne ROKSALova meja*; 11 cm za palice kot *varnostna
+  praksa, ki je ROKSAL ne objavlja*; fasadna 40 cm ostane samo primerjava (info), ne meja.
+- ARITMETIKA OSTANE MONTERJEVA: `planPostLayout` dobi `maxSpanCm: maxSpan` (uporabnikova izbira),
+  nikoli meje iz pravil. Pravila svetujejo. Količine, cene in razporedi se niso spremenili.
+- TESTI: `tests/verify/roksal-span-rules.ts` **130/130** (13 sklopov: izvor s preizkusom, da
+  je vsaka številka dobesedno v svojem citatu, 22 zamrznjenih id-jev, trije viri, slovenski vezniki,
+  doslednost družin, matrika 6×6×7 = nobeno pravilo ne more zamenjati izdelka, tabela brez
+  profila, razrešitev po profilih/orientacijah/višinah, mehanizem razhajanj, tipovna varnost
+  (`range`/`consequence`/`ADJACENT` nikoli meja), KUBO, `checkSpan`, `spanAdvice`, meje 60..300,
+  mutacije in DVE vir-gledni pogodbi (panel, načrti/ponudba)). `tests/e2e-span-rule-ui.ts`
+  **44/44** v živo: tabela brez profila → 150 pri 57-32 → 133 pri prečno → 180 pri 100 na 140 cm →
+  150 istega profila na 190 cm → 110 pri 128, izpisani citati in viri, opozorilo nad mejo,
+  monterjev izračun nedotaknjen (640 cm / 3 = 2,13 m) in mutacija: ob isti izbiri 1,50 m se
+  opozorilo pri profilu 128 prižge.
+- OKOLJSKI POUK: razvojni server na :3000 je bil na tej stroji OBESAN (TCP sprejme povezavo, nikoli
+  ne odgovori) in ga je držil tuji proces, katerega ubiti je bilo prepovedano. E2E zato zdaj
+  sprejme `APP_URL`, `next.config.ts` pa `NEXT_DIST_DIR`, da si drugi instance vzame lastno
+  `.next/dev/lock`. To ni bližnjica mimo težave — je pa pouk, da dokazni skript ne sme biti
+  odvisen od tega, kateri proces je pritisnil na vrata.
+- IZMERE: `roksal-span-rules` 74 → **130**, sweep **49/49** z izhodom 0, `bun tests/verify-counts.ts`
+  → **2867 OK / 0 NAPAK** v **42** od **49** skriptov (delta +56, v celoti iz tega sklopa),
+  `tsc --noEmit` izhod 0, `eslint` na vseh spremenjenih datotekah izhod 0. Posnetek
+  `span-rule-ui.png` (100 kB) preverjen po velikosti NA DISKU, zapisnik gre skozi
+  `guardOutSideRepo`.
+- ČESA NI (iskreno): (1) nobenega citata ni potrdil dobavitelj; (2) `roksal-assets.ts` `gapCm 0.4`
+  in `defaults.ts` `joistSpacing 0.4` sta še vedno privzetka brez vira, objavljena reža je
+  0,5–3 cm; (3) trditev o regulativi v `install-plan.ts:209` in »maks. 3 m za običajno kritino«
+  `:400` nista citirani; (4) cene na enoto ostajajo brez vira (ROKSAL cen ne objavlja).
+
+Stage Summary:
+- To, kar Robert vidi: razpored stebrov brez izbranega profila NE pokaže ene meje, ampak tabelo
+  (110 / 150 / 180 cm s svojimi viri) in opozori na najstrožjo. Izbrati mora profil — šele takrat
+  je številka utemeljena. Pri profilu 128 je meja 110 cm in monterjeva izbira 1,50 m je označena
+  kot čez mejo, čeprav ga je prejšnja verzija tukaj potrdila.
+- Moja lastna napaka, izrečena z besedami: prva verzija modula je bila videti urejena in je bila
+  napačna — izmislila si je proizvajalčevo razhajanje in je za en profil pokazala mejo, ki je za
+  40 cm preširoka. Popravlja jo to, da ima vsak citat zdaj tudi izdelek, in test, ki meri prav to.
+- Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.

@@ -20,10 +20,19 @@ import {
   planPostLayout, formatLayoutText, downloadLayoutCsv,
   type LayoutMode, type PostLayoutResult,
 } from '@/lib/post-layout';
-import { maxAllowedSpan } from '@/lib/roksal-span-rules';
+import { maxAllowedSpan, profileLabel, type RoksalProfileKind } from '@/lib/roksal-span-rules';
 import { formatCm } from '@/lib/measure-geometry';
 
 const MAX_SPANS = [100, 125, 150, 175, 200, 250];
+
+/** Profili, za katere ROKSAL objavlja mejo razmika stebrov (v tej applicaciji). */
+const SPAN_PROFILES: RoksalProfileKind[] = ['polna-57-32', 'polna-100', 'polna-128', 'romb-67', 'terasna-150'];
+
+const ORIENTATIONS: ['horizontal' | 'cross' | 'vertical', string][] = [
+  ['horizontal', 'Vodoravno'],
+  ['cross', 'Prečno'],
+  ['vertical', 'Pokončno'],
+];
 
 /** Kandidati za razpored: verige (profil) in daljice/laser/glas/AR ≥ 100 cm (ravno). */
 export function layoutSources(measures: PhotoMeasure[]): PhotoMeasure[] {
@@ -57,6 +66,8 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
   const [mode, setMode] = useState<LayoutMode>('racked');
   const [maxSpan, setMaxSpan] = useState(150);
   const [panelH, setPanelH] = useState(190);
+  const [profile, setProfile] = useState<RoksalProfileKind | null>(null);
+  const [orientation, setOrientation] = useState<'horizontal' | 'cross' | 'vertical' | null>(null);
 
   // učinkoviti vir: izbrani, sicer prvi (verige imajo prednost — glej layoutSources)
   const src = sources.find((s) => s.id === srcId) ?? sources[0] ?? null;
@@ -64,13 +75,25 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
   // Objavljena meja razmika (ROKSALova navodila montaže). Do sedaj je bil 150
   // privzetek v kodi; zdaj je številka citirana in monter vidi, od kod je — in
   // kdaj je njegova izbira nad njo. Kadar meja ni utemeljena, UI je ne kaže.
-  const spanRule = useMemo(() => maxAllowedSpan({ context: 'posts', panelHeightCm: panelH }), [panelH]);
-  const spanOptions = useMemo(
-    () => (spanRule.assurance === 'SOURCED' && !MAX_SPANS.includes(spanRule.maxSpanCm)
-      ? [...MAX_SPANS, spanRule.maxSpanCm].sort((a, b) => a - b)
-      : MAX_SPANS),
-    [spanRule],
+  // Meja je VEZANA NA PROFIL (150 velja samo za 57-32), zato UI mora vprašati
+  // po profilu in ne sme pokazati ene same številke, če profil ni izbran.
+  const spanRule = useMemo(
+    () => maxAllowedSpan({ family: 'ograja', context: 'posts', panelHeightCm: panelH, profile, orientation }),
+    [panelH, profile, orientation],
   );
+  /** meja, glede na katero UI opozarja: citirana, ali najstrožja po profilih */
+  const warnLimitCm = spanRule.assurance === 'SOURCED' ? spanRule.maxSpanCm : spanRule.profileFloorCm ?? 0;
+  // Opozorilo sme biti samo tam, kjer JE neka objavljena meja. Brez nje (0) bi
+  // UI trdil, da je izbira „nad mejo 0 cm“ — nova izmisljena številka.
+  const overLimit = warnLimitCm > 0 && maxSpan > warnLimitCm;
+  const spanOptions = useMemo(() => {
+    const extra = spanRule.assurance === 'SOURCED'
+      ? spanRule.maxSpanCm
+      : spanRule.profileFloorCm ?? 0;
+    return extra > 0 && !MAX_SPANS.includes(extra)
+      ? [...MAX_SPANS, extra].sort((a, b) => a - b)
+      : MAX_SPANS;
+  }, [spanRule]);
 
   const layout: PostLayoutResult | null = useMemo(() => {
     if (!src) return null;
@@ -146,32 +169,86 @@ export function PostLayoutPanel({ measures }: PostLayoutPanelProps) {
         </label>
       </div>
 
-      {/* Objavljena meja razmika — vir namesto privzetka (Task 24) */}
-      {spanRule.binding ? (
+      {/* Profil in orientacija — brez njiju meja ni utemeljena (Task 25) */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">Profil polnila</span>
+          <Select value={profile ?? 'ni'} onValueChange={(v) => setProfile(v === 'ni' ? null : v as RoksalProfileKind)}>
+            <SelectTrigger className="min-h-11 w-full" aria-label="Profil polnila">
+              <SelectValue placeholder="Izberi profil" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ni">— profil ni izbran —</SelectItem>
+              {SPAN_PROFILES.map((p) => (
+                <SelectItem key={p} value={p}>{profileLabel(p)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-muted-foreground">Postavitev desk</span>
+          <Select
+            value={orientation ?? 'ni'}
+            onValueChange={(v) => setOrientation(v === 'ni' ? null : v as 'horizontal' | 'cross' | 'vertical')}
+          >
+            <SelectTrigger className="min-h-11 w-full" aria-label="Postavitev desk">
+              <SelectValue placeholder="Izberi postavitev" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ni">— ni izbrano —</SelectItem>
+              {ORIENTATIONS.map(([id, lbl]) => (
+                <SelectItem key={id} value={id}>{lbl}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+      </div>
+
+      {/* Objavljena meja razmika — vir namesto privzetka (Task 24/25) */}
+      {spanRule.binding || spanRule.byProfile.length > 0 || spanRule.notes.length > 0 ? (
         <p
           className={`flex items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] ${
-            maxSpan > spanRule.maxSpanCm
+            overLimit
               ? 'border-amber-300/60 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300'
               : 'border-transparent bg-secondary/50 text-muted-foreground'
           }`}
           data-testid="post-layout-span-rule"
         >
-          {maxSpan > spanRule.maxSpanCm
+          {overLimit
             ? <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             : <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
           <span className="space-y-0.5">
-            <span className="block">
-              <b>Največ {spanRule.maxSpanCm} cm</b> po ROKSALovih navodilih ({spanRule.binding.source})
-              — „{spanRule.binding.quote}“
-            </span>
-            {maxSpan > spanRule.maxSpanCm && (
+            {spanRule.binding ? (
               <span className="block">
-                Izbrana meja {(maxSpan / 100).toFixed(2).replace('.', ',')} m je NAD objavljeno — razmiki med
+                <b>Največ {spanRule.maxSpanCm} cm</b> po ROKSALovih navodilih ({spanRule.binding.source})
+                — „{spanRule.binding.quote}“
+              </span>
+            ) : spanRule.byProfile.length > 0 ? (
+              <span className="block" data-testid="post-layout-profile-table">
+                <b>Meja je odvisna od profila</b> — ene same številke ni, dokler profil ni izbran:
+                <span className="mt-1 block space-y-0.5">
+                  {spanRule.byProfile.map((r) => (
+                    <span key={r.profile} className="block">
+                      {profileLabel(r.profile)}: <b>{r.limitCm} cm</b> ({r.source})
+                    </span>
+                  ))}
+                </span>
+              </span>
+            ) : (
+              <span className="block" data-testid="post-layout-no-limit">
+                <b>Utemeljene meje ni</b> — {spanRule.notes.find((n) => /ovrednot|ne bi bila/.test(n))
+                  ?? 'ROKSAL te meje ne objavlja.'}
+              </span>
+            )}
+            {overLimit && (
+              <span className="block">
+                Izbrana meja {(maxSpan / 100).toFixed(2).replace('.', ',')} m je NAD objavljeno mejo
+                {spanRule.binding ? '' : ` (najstrožja od njih je ${warnLimitCm} cm)`} — razmiki med
                 stebri so lahko predolgi.
               </span>
             )}
             {spanRule.conflicts.map((c) => <span key={c} className="block">{c}</span>)}
-            {spanRule.notes.filter((n) => /Orientacija|Višina polnila/.test(n))
+            {spanRule.notes.filter((n) => /Orientacija|Višina polnila|odvisna od profila|Najstrožja|ovrednot|manjka|spodnji rob/.test(n))
               .map((n) => <span key={n} className="block">{n}</span>)}
           </span>
         </p>

@@ -1,4 +1,5 @@
 import type { CraftId, CraftInputs } from './types';
+import { maxAllowedSpan, profileLabel } from './roksal-span-rules';
 
 // ─── Material & montaža — čiste deterministične skripte ─────
 // Brez AI: geometrija, enakomerni razmaki, 1D rezalni načrt
@@ -182,11 +183,17 @@ function ograjePlan(i: CraftInputs): InstallPlan {
 
   const posts = evenPosts(L, 1.5);
   const rails = cutPlan1D(evenSplit(L, RAIL_STOCK_M - 0.1), RAIL_STOCK_M);
+  // 1,5 m je PREDPOSTAVKA ponudbe, ne ROKSALova meja. ROKSAL objavlja mejo
+  // razmika stebrov PO PROFILU (110–150 cm), zato brez izbranega profila ene
+  // same številke ni — pokaže se tabela in najstrožja meja.
+  const roksalPosts = maxAllowedSpan({ family: 'ograja', context: 'posts', panelHeightCm: Math.round(H * 100) });
+  const postsFloorCm = roksalPosts.profileFloorCm ?? 0;
+  const postsOverFloor = postsFloorCm > 0 && posts.gapM * 100 > postsFloorCm + 0.5;
 
   return {
     buys: [
       { label: `Ročajni profil — ${rails.bars} ${plural(rails.bars, BAT)} po ${RAIL_STOCK_M} m`, detail: `${nf.format(L)} m ograje razdeljeno enakomerno po batih` },
-      { label: `Stebri — ${posts.posts} ${plural(posts.posts, KOS)}`, detail: `enakomerni razmak ${nf.format(posts.gapM)} m (maks. 1,5 m)` },
+      { label: `Stebri — ${posts.posts} ${plural(posts.posts, KOS)}`, detail: `enakomerni razmak ${nf.format(posts.gapM)} m (predpostavka 1,5 m, ne ROKSALova meja)` },
     ],
     cuts: [
       {
@@ -203,8 +210,22 @@ function ograjePlan(i: CraftInputs): InstallPlan {
         : H >= 0.9
           ? { label: 'Višina ograje', detail: `${nf.format(H)} m — pod priporočilom 1,0 m; preveri lokalne predpise`, status: 'warn' }
           : { label: 'Višina ograje', detail: `${nf.format(H)} m — prenizko; predpis zahteva ≥ 1,0 m`, status: 'bad' },
-      { label: 'Razmak palic (vertikalno polnilo)', detail: 'največ 11 cm — kontrola pri montaži z merilnim vložkom 11 cm', status: 'info' },
-      { label: 'Razmak stebrov', detail: `${nf.format(posts.gapM)} m — enakomerno, brez nestandarnih praznin`, status: 'ok' },
+      { label: 'Razmak palic (vertikalno polnilo)', detail: 'največ 11 cm — kontrola pri montaži z merilnim vložkom 11 cm (varnostna praksa, ROKSAL tega ne objavlja)', status: 'info' },
+      postsOverFloor
+        ? {
+            label: 'Razmak stebrov',
+            detail: `${nf.format(posts.gapM)} m — enakomerno, a NAD najstrožjo ROKSALovo mejo ${postsFloorCm} cm ` +
+              `(${roksalPosts.byProfile.map((r) => `${profileLabel(r.profile)} ${r.limitCm} cm`).join(', ')}). ` +
+              `Če montiraš ta profil, dodaj steber.`,
+            status: 'warn',
+          }
+        : {
+            label: 'Razmak stebrov',
+            detail: `${nf.format(posts.gapM)} m — enakomerno, brez nestandarnih praznin${
+              postsFloorCm > 0 ? `; ROKSALova meja po profilih: ${roksalPosts.byProfile.map((r) => `${r.profile} ${r.limitCm} cm`).join(', ')}` : ''
+            }`,
+            status: 'ok',
+          },
       ...(i.gates ?? 0) > 0
         ? [{ label: 'Vgrajeni prehodi', detail: `${i.gates} × prehod 0,9 m — pusti montažni tlak 1–2 cm na stran`, status: 'info' as const }]
         : [],
@@ -300,6 +321,15 @@ function wpcTerasaPlan(i: CraftInputs): InstallPlan {
 
   const joistCount = Math.ceil(L / spacing) + 1;
   const joists = cutPlan1D(Array.from({ length: joistCount }, () => W), JOIST_STOCK_M);
+  // ROKSAL objavlja za TERASO razmik podložnih letev 33–35 cm (center). Do sedaj
+  // je ta plan trdil »maks. 60 cm« — številka brez vira, hkrati pa je bil test
+  // `spacing <= 0.6` vedno resničen, ker vhod že omeji na 0,6 m: vejstvo je bilo
+  // mrtvo in montera nikoli ni opozorilo. Zdaj primerja proti citiranemu pasu.
+  const batten = maxAllowedSpan({ family: 'terasa', context: 'battens' });
+  const spacingCm = Math.round(spacing * 100);
+  const bandHiCm = batten.binding?.bandCm?.[1] ?? batten.maxSpanCm;
+  const battenStatus: PlanCheck['status'] =
+    spacingCm <= batten.maxSpanCm ? 'ok' : spacingCm <= bandHiCm ? 'warn' : 'bad';
 
   return {
     buys: [
@@ -321,9 +351,17 @@ function wpcTerasaPlan(i: CraftInputs): InstallPlan {
       endGap >= 3
         ? { label: 'Čelna dilatacija', detail: `${endGap} mm — v priporočenem območju 3–5 mm`, status: 'ok' }
         : { label: 'Čelna dilatacija', detail: `${endGap} mm — preozko; minimum 3 mm na spojih`, status: 'bad' },
-      spacing <= 0.6
-        ? { label: 'Razmak nosilcev', detail: `${nf.format(spacing * 100)} cm — OK (maks. 60 cm)`, status: 'ok' }
-        : { label: 'Razmak nosilcev', detail: `${nf.format(spacing * 100)} cm — preširoko; maks. 60 cm, sicer deske ugrezajo`, status: 'bad' },
+      {
+        label: 'Razmak nosilcev',
+        detail: `${nf.format(spacingCm)} cm — ROKSAL za teraso objavlja pas ${batten.binding?.bandCm?.[0]}–${bandHiCm} cm ` +
+          `(${batten.binding?.source}): „${batten.binding?.quote}“` +
+          (battenStatus === 'ok'
+            ? ' — znotraj objavljenega pasu'
+            : battenStatus === 'warn'
+              ? ' — znotraj pasu, a nad varno spodnjo mejo; deske se lahko zvijajo'
+              : ' — PREŠIROKO: nad objavljenim pasom, deske se lahko zvijajo'),
+        status: battenStatus,
+      },
       { label: 'Naklon terase', detail: '1–2 % s padcem od hiše za odtek vode (≈ 1–2 cm na meter)', status: 'info' },
       { label: 'Reža ob steni', detail: '15–20 mm pri hiši — nikoli tesno k steni', status: 'info' },
     ],
@@ -376,12 +414,27 @@ function fasadaPlan(i: CraftInputs): InstallPlan {
   if (gross <= 0) return { buys: [], cuts: [], checks: [] };
 
   const openingShare = openings / gross;
+  // ROKSAL za FASADO objavlja razmik podložne letve 70–80 cm — druga številka
+  // kot na terasi (33–35 cm), kljub isti besedi »letev«. Splošna praksa 40 cm
+  // je strožja, zato ni v navzkrižju; monter pa mora vedeti, kateri izdelek
+  // katero številko ima, da ju ne združi.
+  const roksalFacade = maxAllowedSpan({ family: 'fasada', context: 'battens' });
+  const spaceAbove40 = roksalFacade.maxSpanCm - 40;
 
   return {
     buys: [],
     cuts: [],
     checks: [
       { label: 'Razmak letv podkonstrukcije', detail: '40 cm (centrično); pri težji oblogi 30 cm — kontrola z vodilom', status: 'info' },
+      {
+        label: 'Razmak letv (ROKSAL WPC fasada)',
+        detail: `ROKSAL za WPC fasado objavlja ${roksalFacade.binding?.bandCm?.[0]}–${roksalFacade.binding?.bandCm?.[1] ?? roksalFacade.maxSpanCm} cm ` +
+          `(${roksalFacade.binding?.source}): „${roksalFacade.binding?.quote}“. ` +
+          (spaceAbove40 > 0
+            ? `Zgoraj navajan 40 cm je ${spaceAbove40} cm STROŽJI in zato skladen; za ROKSAL WPC oblogo je objavljen širši pas.`
+            : 'Zgoraj navajan 40 cm je širši od objavljenega — uporabiti je treba objavljenega.'),
+        status: 'info',
+      },
       { label: 'Rezerva obloge', detail: '5 % za rez in odpad; pri diagonalni smeri 10 %', status: 'info' },
       openingShare > 0.35
         ? { label: 'Delež odprtin', detail: `${Math.round(openingShare * 100)} % bruto površine — velik delež; preveri izmero odprtin`, status: 'warn' }

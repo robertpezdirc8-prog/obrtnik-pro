@@ -31,7 +31,7 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
     },
     {
       name: 'Stebri',
-      description: 'Razmak cca. 1,5 m, s pritrdilnim kompletom',
+      description: 'Razmak cca. 1,5 m (predpostavka izračuna, ne ROKSALova meja — ta je odvisna od profila), s pritrdilnim kompletom',
       quantity: posts,
       unit: 'kos',
       unitPrice: material === 'inox' ? 52 : 38,
