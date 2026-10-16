@@ -11,7 +11,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 44/44 skript zeleno** (pet, ki je bilo doslej rdečih, je
+> Zadnja polna preverba: **regresija 46/46 skript zeleno** (pet, ki je bilo doslej rdečih, je
 > padalo samo zaradi poti, vezanih na razvojni stroj — `/tmp/*.png` in ena absolutna
 > kontejnerska pot; odpravljeno 2026-10-16, Task 71, z novim varovalnim skriptom
 > `portable-paths`), **photo-replace 391/391, assertion 119/119**
@@ -253,7 +253,7 @@ bun tests/verify/portable-paths.ts  # Task 71: nobena pot ne sme biti vezana na 
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71): **44 skript, 44 z izhodno kodo 0**.
+Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9): **46 skript, 46 z izhodno kodo 0**.
 Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
 `stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
 `import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
@@ -263,10 +263,10 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
-25/25**. Assertivnih preverjanj skupaj: **2522** = 2024 (izmerjeni baseline,
+25/25**. Assertivnih preverjanj skupaj: **2597** = 2024 (izmerjeni baseline,
 `../baseline/BASELINE-2026-10-15.md`) + 251 (štiri NOVE FAZA-8 skripte: 119 + 56 + 50 + 26) + 25
 (render-promise, F3) + 194 (pet doslej rdečih, izmerjenih na tej stroji po Task 71) + 28
-(`portable-paths`). Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
+(`portable-paths`) + 75 (FAZA-9: `band-suggest` 54 + `suggest-gate` 21) = **2597**. Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
 
 ### E2E dokazi
 
@@ -319,7 +319,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (44 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (46 skript), e2e-*.png, make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```

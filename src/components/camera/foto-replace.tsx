@@ -60,6 +60,7 @@ import {
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
+import { suggestBandQuadPct, type BandSuggestion } from '@/lib/band-suggest';
 import {
   suggestProfiles,
   suggestionText,
@@ -271,9 +272,17 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   // ── Stanje: orodja na prizorišču ──
   const stageRef = useRef<HTMLDivElement>(null);
   const stageCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [tool, setTool] = useState<'corners' | 'brush' | 'clone' | 'measure' | 'none'>('corners');
+  const [tool, setTool] = useState<'corners' | 'band' | 'brush' | 'clone' | 'measure' | 'none'>('corners');
   const [quadPct, setQuadPct] = useState<[number, number][] | null>(null);
   const [cornerCount, setCornerCount] = useState(0);
+  /**
+   * FAZA-9: je štirikotnik potrdil človek? `false` samo takrat, ko ga rodil
+   * pasovni predlog — jedro takrat geometrijo drži na SUGGESTED in izris
+   * ostane zaprt. Ročna oglišča in demo kvadrant ostanejo potrjeni.
+   */
+  const [planeConfirmed, setPlaneConfirmed] = useState(true);
+  const [bandTaps, setBandTaps] = useState<[number, number][] | null>(null);
+  const [bandInfo, setBandInfo] = useState<BandSuggestion | null>(null);
   const dragCornerRef = useRef<number | null>(null);
   const paintingRef = useRef(false);
   const lastPaintRef = useRef<XY | null>(null);
@@ -457,7 +466,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   /** Para trditev (geometrija / merilo) — obe osi ločeno, nikoli seštejeni. */
   const assurance = useMemo<{ geo: GeometricAssurance; met: MetricAssurance }>(() => {
     const planeCalibrated = !!planeCm && !!quadPct && quadPct.length === 4 && !!dims;
-    const geo = validateGeometry({ method: 'plane-homography', planeCalibrated }).assurance;
+    const geo = validateGeometry({ method: 'plane-homography', planeCalibrated, planeConfirmed }).assurance;
     // Merilo nosi samo tista dimenzija, ki jo je monter dejansko vtipkal.
     // Kadar širina NI izmerjena, os merila v širini nima ničesar — stanje je
     // NONE (manjka mera), ne ASSUMED (domneva). Po pravilu 14 to zapre vrata
@@ -475,12 +484,16 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   // kalibracija ravnine za merjenje (ista homografija kot v jedru — ni duplikata)
   const measurePlane = useMemo(() => {
     if (!quadPct || quadPct.length !== 4 || !planeCm || !dims) return null;
+    // Nepotrjen predlog nima domene veljavnosti: številka cm, izmerjena čez
+    // samodejni štirikotnik, bi bila trditev iz nečesa, kar monter še samo
+    // preverja. Enako pravilo kot pri zaprtih vratih izrisa (FAZA-9).
+    if (!planeConfirmed) return null;
     // Izmera poljubne razdalje v cm potrebuje OBOJE smeri v cm; brez
     // izmerjene širine je canonična notranja mera lahko usedena za perspektivo,
     // ne pa za številke cm (pravilo 13).
     if (planeCm.wCm === null) return null;
     return calibratePlane(quadPct.map(([x, y]) => ({ x, y })), planeCm.wCm, planeCm.hCm, dims);
-  }, [quadPct, planeCm, dims]);
+  }, [quadPct, planeCm, dims, planeConfirmed]);
 
   // izmerjena deska → najbližji uradni profili (čista knjižnica photo-profile-suggest)
   const measureSuggest = useMemo<{
@@ -532,7 +545,11 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     if (!imgEl) return 'Najprej naloži fotografijo (korak 1).';
     if (!quadPct || !quadPx) return 'Označi 4 oglišča ravnine stare ograje (korak 2).';
     if (!planeCm) return 'Vnesi višino ravnine v cm (korak 2). Širino lahko pustiš prazno.';
-    if (!canRenderMontage(assurance.geo)) return 'Geometrija ravnine ni potrjena (4 oglišča) — brez nje izris ni utemeljen.';
+    if (!canRenderMontage(assurance.geo)) {
+      return planeConfirmed
+        ? 'Geometrija ravnine ni potrjena (4 oglišča) — brez nje izris ni utemeljen.'
+        : 'Štirikotnik je samodejni predlog in ga monter še ni potrdil — izris je zaprt, dokler oglišč ne pregledaš (korak 2).';
+    }
     if (layoutInfo.error) return layoutInfo.error;
     if (!layoutInfo.layout) return 'Postavitev elementov ni izračunana (korak 2).';
     if (!inpaintRes) return 'Zaženi odstranitev stare ograje (korak 4).';
@@ -647,26 +664,74 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     if (tool === 'corners') {
       if (!quadPct || quadPct.length < 4) {
         // zaporedno postavljanje: 1 = zgornji levi … 4 = spodnji levi
+        const becomesFourth = (quadPct?.length ?? 0) + 1 >= 4;
         setQuadPct((prev) => {
           const arr = (prev ? [...prev] : []) as [number, number][];
           if (arr.length < 4) arr.push(p);
           return arr;
         });
         setCornerCount((c) => Math.min(4, c + 1));
+        // Četrtročno oglišče postavi človek → ravnina je potrjena. Vlečenje
+        // predlaganega oglišča SAMEGA ne pomeni potrditve.
+        if (becomesFourth) { setPlaneConfirmed(true); setBandInfo(null); }
         return;
       }
       dragCornerRef.current = handleHitHandle(p);
       return;
     }
-    if (tool === 'measure') {
-      if (!measurePlane) {
+    if (tool === 'band') {
+      const taps = [...(bandTaps ?? []), p] as [number, number][];
+      if (taps.length < 2) { setBandTaps(taps); return; }
+      setBandTaps(null);
+      const orig = originalCanvasRef.current;
+      if (!orig) {
+        toast({ title: 'Predlog ni mogoč', description: 'Ni nespremenjenega originala — osveži stran in naloži fotko znova.', variant: 'destructive' });
+        return;
+      }
+      let res: ReturnType<typeof suggestBandQuadPct> = null;
+      try {
+        res = suggestBandQuadPct(
+          imgDataFrom(orig),
+          { xPct: taps[0][0], yPct: taps[0][1] },
+          { xPct: taps[1][0], yPct: taps[1][1] },
+        );
+      } catch (err) {
+        toast({ title: 'Predlog ni mogoč', description: err instanceof Error ? err.message : String(err), variant: 'destructive' });
+        return;
+      }
+      if (!res) {
         toast({
-          title: 'Najprej kalibriraj ravnino',
-          description: planeCm && planeCm.wCm === null
-            ? 'Merjenje deske potrebuje tudi izmerjeno širino ravnine (vpiši jo v koraku 2) — brez cm razdalja v pikslih ni mera.'
-            : 'Merjenje po fotki potrebuje oglisča ravnine + realne mere (korak 2) — sicer izmera ne bi bila prava.',
+          title: 'Pasu ograje ni bilo mogoče najti',
+          description: 'Modul noče ugibati — klikni dve točki bolj sredinsko ob robu ograje (ohromjeno ozadje, močna senca ali prekratka miza lahko zakrijeta tirnici) ali označi 4 oglišča ročno.',
           variant: 'destructive',
         });
+        return;
+      }
+      setQuadPct(res.quadPct);
+      setCornerCount(4);
+      setPlaneConfirmed(false);
+      setBandInfo(res.band);
+      setTool('corners');
+      setMeasurePts(null); // predlog ni kalibracija — morebitna mera ne velja več
+      toast({
+        title: 'Predlog štirikotnika — ŠE NI potrjen',
+        description: 'Zgornja in spodnja tirnica sta iz fotke, levi in desni rob sta tvoja klika. Preveri oglišča in klikni »Potrdi predlog« — izris je do takrat zaprt.',
+      });
+      return;
+    }
+    if (tool === 'measure') {
+      if (!measurePlane) {
+        // Vrsta pogojev je namenjena: najprej se preveri, kaj merjenju dejansko
+        // manjka — sicer toast trdi napačen razlog (npr. manjkajočo širino, ko
+        // je širina zapisana, ravnina pa je še nepotrjen predlog).
+        const noPlane = !quadPct || quadPct.length !== 4 || !dims;
+        let why = 'Merjenje po fotki potrebuje oglisča ravnine + realne mere (korak 2) — sicer izmera ne bi bila prava.';
+        if (!noPlane && !planeConfirmed) {
+          why = 'Štirikotnik je samodejni predlog in še ni potrjen — centimetri čezenj ne veljajo. Potrdi ga ali označi oglišča (korak 2).';
+        } else if (planeCm && planeCm.wCm === null) {
+          why = 'Merjenje deske potrebuje tudi izmerjeno širino ravnine (vpiši jo v koraku 2) — brez cm razdalja v pikslih ni mera.';
+        }
+        toast({ title: 'Najprej kalibriraj ravnino', description: why, variant: 'destructive' });
         return;
       }
       // 1. klik = začetek, 2. = konec meritve; tretji klik začne NOVO meritev
@@ -730,8 +795,23 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     setQuadPct(null);
     setCornerCount(0);
     setTool('corners');
+    setPlaneConfirmed(true);
+    setBandTaps(null);
+    setBandInfo(null);
     setMeasurePts(null); // kalibracija pade — meritve ni več prava
     dragCornerRef.current = null;
+  };
+
+  /**
+   * Potrditev predloga (FAZA-9): MONTER je oglišča pogledal in rekel, da
+   * držijo. To je edini gumb, ki iz SUGGESTED naredi FITTED — predlog se sam
+   * ne more potrditi, ker pasovni modul nima domene veljavnosti (izmerjeno:
+   * na fotkah izven zajema znaša napaka predloga do +37 %).
+   */
+  const confirmSuggestion = () => {
+    setPlaneConfirmed(true);
+    setBandInfo(null);
+    toast({ title: 'Ravnina potrjena', description: 'Izris montaže je od tukaj naprej utemeljen na tvojih ogliščih.' });
   };
 
   /**
@@ -744,6 +824,8 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     setQuadPct([[12, 48], [88, 48], [88, 92], [12, 92]]);
     setCornerCount(4);
     setTool('corners');
+    setPlaneConfirmed(true); // gumb pritisne človek (ali test) — ni samodejni predlog
+    setBandInfo(null);
   };
 
   // ── Korak 3: samodejni predlog + čopič + ovire ──
@@ -1319,8 +1401,14 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     tool === 'corners' && !quadComplete
       ? `Klikni ${['zgornji LEVI', 'zgornji DESNI', 'spodnji DESNI', 'spodnji LEVI'][cornerCount] ?? 'oglišče'} kot ravnine (${Math.min(cornerCount + 1, 4)}/4).`
       : tool === 'corners' && quadComplete
-        ? 'Oglišča lahko vlečeš za natančnost.'
-        : tool === 'measure'
+        ? planeConfirmed
+          ? 'Oglišča lahko vlečeš za natančnost.'
+          : 'Predlog je na zaslonu — preveri, da tirnici ležita na robu ograje, in ga potrdi (ali popravi z vlečenjem). Izris ostane zaprt, dokler ga ne potrdiš.'
+        : tool === 'band'
+          ? bandTaps && bandTaps.length === 1
+            ? 'Klikni še DESNO stran ograje (na višini sredine trakova) — pas išče zgornji in spodnji rob vodoravno.'
+            : 'Klikni LEVO in DESNO stran ograje, vsako na višini sredine trakova. Modul poišče zgornji in spodnji rob; levi in desni ostaneta tvoja klika.'
+          : tool === 'measure'
           ? measurePts && measurePts.length === 2
             ? 'Izmerjeno — klikni še enkrat za novo meritev ali izberi predlog profila (korak 5).'
             : measurePts && measurePts.length === 1
@@ -1337,7 +1425,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               : 'Izberi orodje v korakih 2–5.';
 
   const cursorCls =
-    tool === 'none' ? 'cursor-default' : tool === 'corners' ? 'cursor-crosshair' : tool === 'measure' ? 'cursor-crosshair' : tool === 'clone' ? 'cursor-copy' : 'cursor-cell';
+    tool === 'none' ? 'cursor-default' : tool === 'corners' ? 'cursor-crosshair' : tool === 'band' ? 'cursor-crosshair' : tool === 'measure' ? 'cursor-crosshair' : tool === 'clone' ? 'cursor-copy' : 'cursor-cell';
 
   return (
     <div className="space-y-4" data-testid="foto-replace">
@@ -1399,14 +1487,24 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                 {/* oglišča + maske (SVG v % — enako kot foto-canvas point clicking) */}
                 <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                   {quadPct && quadPct.length >= 2 && (
+                    // nepotrjen predlog = črtkana obroba — ista zanka kot pri
+                    // manjkajočih ogliščih, ker je stanje enako: še ne velja
                     <polygon
                       points={[...quadPct, ...(quadComplete ? [] : [quadPct[0]])].map(([x, y]) => `${x},${y}`).join(' ')}
                       fill="rgba(245,158,11,0.10)"
                       stroke="#d97706"
-                      strokeWidth={quadComplete ? 1.5 : 1}
-                      strokeDasharray={quadComplete ? undefined : '6 4'}
+                      strokeWidth={quadComplete && planeConfirmed ? 1.5 : 1}
+                      strokeDasharray={quadComplete && planeConfirmed ? undefined : '6 4'}
                       vectorEffect="non-scaling-stroke"
                     />
+                  )}
+                  {/* dvotapni vnos (FAZA-9): klika leva/desna stran ograje */}
+                  {bandTaps && bandTaps.length >= 1 && (
+                    <g>
+                      {bandTaps.map(([x, y], i) => (
+                        <circle key={`bt${i}`} cx={x} cy={y} r={1.2} fill="#2563eb" stroke="white" strokeWidth="0.4" vectorEffect="non-scaling-stroke" />
+                      ))}
+                    </g>
                   )}
                   {oldPolys.map((poly, i) => (
                     <polygon key={`om${i}`} points={poly.map(([x, y]) => `${x},${y}`).join(' ')} fill="rgba(245,158,11,0.42)" stroke="rgba(180,83,9,0.8)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
@@ -1461,11 +1559,22 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           </h3>
           <p className="text-sm text-muted-foreground">
             Klikni 4 oglisča ravnine ograje na fotografiji (zgornji levi → zgornji desni → spodnji desni → spodnji levi),
-            nato vnesi REALNO širino in višino ravnine v cm — perspektiva novih elementov sledi tem merama.
+            ali uporabi »Predlog ravnine« in klikni samo levo ter desno stran ograje — zgornji in spodnji rob poišče iz fotke.
+            Nato vnesi REALNO širino in višino ravnine v cm — perspektiva novih elementov sledi tem merama.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant={tool === 'corners' ? 'default' : 'outline'} onClick={() => { setTool('corners'); }} data-testid="fr-tool-corners">
               {quadComplete ? 'Premakni oglisča' : 'Označi oglisča'}
+            </Button>
+            <Button
+              size="sm"
+              variant={tool === 'band' ? 'default' : 'outline'}
+              onClick={() => { setBandTaps(null); setTool('band'); }}
+              disabled={!imgEl}
+              data-testid="fr-tool-band"
+              title="Dva klika: leva in desna stran ograje. Zgornji in spodnji rob poišče modul — predlog moraš še potrditi."
+            >
+              Predlog ravnine (2 klika)
             </Button>
             <Button size="sm" variant="ghost" onClick={resetQuad} data-testid="fr-reset-quad">
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
@@ -1475,9 +1584,33 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               Demo kvadrant (test)
             </Button>
             <Badge variant={quadComplete ? 'default' : 'secondary'} className="text-[10px]" data-testid="fr-quad-status">
-              {quadComplete ? 'ravnina označena (4/4)' : `oglišča: ${cornerCount}/4`}
+              {quadComplete
+                ? planeConfirmed
+                  ? 'ravnina označena (4/4)'
+                  : 'predlog (4/4) — ŠE NI potrjen'
+                : `oglišča: ${cornerCount}/4`}
             </Badge>
           </div>
+
+          {/* Potrditev predloga (FAZA-9): vrata izrisa odpre samo človek, nikoli modul. */}
+          {quadComplete && !planeConfirmed && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2" data-testid="fr-suggest-confirm">
+              <p className="text-xs text-amber-900">
+                Ravnina je <strong>samodejni predlog</strong> iz zgornje in spodnje tirnice fotke. Povprečna
+                zanesljivost robov: {bandInfo ? `zgornja ${(bandInfo.top.support * 100).toFixed(0)} %, spodnja ${(bandInfo.bottom.support * 100).toFixed(0)} %` : 'ni na voljo'}.
+                Izris je zaprt, dokler oglišč ne pogledaš in potrdiš — predlog ne ve, ali je na sliki sploh ograja.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={confirmSuggestion} data-testid="fr-confirm-suggestion">
+                  Potrdi predlog
+                </Button>
+                <Button size="sm" variant="outline" onClick={resetQuad} data-testid="fr-reject-suggestion">
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                  Označi ročno
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1">

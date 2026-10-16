@@ -274,6 +274,14 @@ export interface ScaleValidationInput {
   pxPerCm?: number | null;
   method?: CalibrationMethod | null;
   planeCalibrated?: boolean;
+  /**
+   * Je štirikotnik potrdil človek? `false` = samodejni predlog (FAZA-9), ki
+   * še NIMA domene veljavnosti: geometrija pade na `SUGGESTED` in izris
+   * ostane zaprt. `undefined` je NAMENJENO enako `true` — vsi obstoječi
+   * vnosi (90 merilnih + 391 fotomontažnih trditev) opisujejo ročno
+   * označena oglišča, zato se njihovo obnašanje ne sme spremeniti.
+   */
+  planeConfirmed?: boolean;
   minPxPerCm?: number;
 }
 
@@ -312,6 +320,14 @@ export function validateGeometry(input: ScaleValidationInput): GeometryValidatio
   const ppm = input.pxPerCm;
   const hasScale = typeof ppm === 'number' && Number.isFinite(ppm) && ppm > 0;
   if (input.planeCalibrated === true) {
+    if (input.planeConfirmed === false) {
+      return {
+        assurance: 'SUGGESTED',
+        code: 'OK',
+        message: 'Štirikotnik je samodejno predlagan iz fotke in ga monter še ni potrdil. Perspektiva zato NI dokazana in izris montaže ni dovoljen — nobena mera se ne sme opreti nanjo.',
+        nextStep: 'Potrdi ali popravi štiri oglišča',
+      };
+    }
     return {
       assurance: 'FITTED',
       code: 'OK',

@@ -458,8 +458,17 @@ function profilePeriodicity(profile: Float32Array): { conf: number; pitch: numbe
 
 // ─── Izvlečenje vseh značilk iz slike ───────────────────────
 
-export function extractFeatures(img: RgbaImage): Features {
-  const ds = downscale(img, 256);
+/**
+ * `maxSide` je delovna ločljivost (najdaljša stranica). Privzeto 256, ker so
+ * pragovi analize kalibrirani tam — in to velja tudi za samodejni predlog
+ * pasu (`band-suggest`): na 10 ročno prebranih fotkah je mediana napake
+ * položaja tirnice 2,3 % višine slike pri 256 px, 6,5 % pri 384 px in 13,2 %
+ * pri 512 px. Višja ločljivost roba NE izboljša, ker detektor potrebuje
+ * črto, ki je zvezna čez celoten vzorčni pas, globinski robovi lamel pa pri
+ * več pikslih postanejo močnejši od tirnice.
+ */
+export function extractFeatures(img: RgbaImage, maxSide = 256): Features {
+  const ds = downscale(img, maxSide);
   const W = ds.width;
   const H = ds.height;
   const N = W * H;
