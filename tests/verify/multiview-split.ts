@@ -188,6 +188,10 @@ for (const row of SFM_V1) {
     registeredCount: 5, totalImages: 5, minPerImageInliers: 40, reprojRmsPx: 1,
     warnings: [], focalSource: 'known', hasScale: true,
   };
+  // Metrični vhodi se geometriji namerno podajo VEPREK širšega tipa: s tem
+  // trditev "metrično polje ne sme premakniti geometrije" ostane branjena s
+  // tipom, ne samo z izpisom.
+  const geoOf = (input: SfmGeometryInput & Partial<SfmMetricInput>) => validateSfmGeometry(input);
   check('SfM brez merila → geometrija CONSISTENT, merilo NONE, brez statusa',
     validateSfmGeometry(base).assurance === 'CONSISTENT'
       && validateSfmMetric({ ...base, hasScale: false }).assurance === 'NONE'
@@ -204,9 +208,9 @@ for (const row of SFM_V1) {
     })());
   check('fokalna izbira NE vpliva na geometrijo SfM',
     (['known', 'preset', 'selfcal'] as const).every((focalSource) =>
-      validateSfmGeometry({ ...base, focalSource }).assurance === 'CONSISTENT'));
+      geoOf({ ...base, focalSource }).assurance === 'CONSISTENT'));
   check('hasScale NE vpliva na geometrijo SfM',
-    validateSfmGeometry({ ...base, hasScale: false }).assurance === 'CONSISTENT');
+    geoOf({ ...base, hasScale: false }).assurance === 'CONSISTENT');
   check('razlaga ob CALIBRATED pove ŠTEVILO fotk in RMS (ovojnica ju sestavi)',
     validateSfm({ ...base, warnings: ['a', 'b'] }).message.includes('5 fotk')
       && validateSfm({ ...base, warnings: ['a', 'b'] }).message.includes('2 opozoril'));

@@ -14,10 +14,16 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > Zadnja polna preverba: **regresija 37/42 skript zeleno** (pet rdečih je zaradi
 > okolja, ne logike: štirje pišejo na `/tmp/*.png`, ki ga na Windowsu ni, en bere
 > trdo kodirano tujo pot), **photo-replace 391/391, assertion 119/119**
-> (FAZA-8, oktober 2026). E2E v brskalniku in `tsc`/`eslint` po FAZA-8 spremembah
-> UI-ja **ŠE NISTA bila pognana** — ta kopija nima `node_modules` in brez njega
-> dev strela ne teče; namestitev je Robertova odločitev. Zadnji dokazani E2E tok
-> (namizje + mobilni 390, 0 konzolnih napak) je iz Task 66, PRED temi spremembami.
+> (FAZA-8, oktober 2026). **PONOVLJENO PO FAZA-8 (2026-10-16, `node_modules` nameščeni):**
+> `tsc --noEmit` — v `src/` **0 napak**; preostane 5 napak IZVEN aplikacije (`examples/websocket/`
+> ×2 manjkata `socket.io`/`socket.io-client`, `tests/e2e-compare-fixture.ts` ×3 manjka
+> `@types/bun`) — zavestno NE popravljene, ker bi popravek pomenil novo odvisnost, in nobena
+> ni na merilni ali fotomontažni poti. `eslint .` izhod 0. E2E v brskalniku: mobilni 390×844 in
+> namizni 1280, **0 konzolnih napak**, brez vodoravnega drsenja, dokazana FAZA-8 veja (širina
+> pusta ⇒ značka »Širina ravnine NI izmerjena«, izris odprt, naročilnica zaprta z razlogom,
+> merjenje onemogočeno). E2E je našel in odpravil DVA resnična UI problema, ki ju 391 statičnih
+> preverjanj ne vidi: napačen vrstni red vej značke (je pisala »Kalibrirano · znane mere« kljub
+> prazni širini) in prelivanje besedila čez 390 px. Dokaz: `tests/e2e-faza8-mobile-390.png`.
 
 ---
 
@@ -248,7 +254,9 @@ tuja pot), ne zaradi logike. Izmerjeno posamezno: **photo-replace 391/391**,
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
 **photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**. Assertivnih
-preverjanj skupaj: **2275** (pred FAZA-8 2024).
+preverjanj skupaj: **2275** = 2024 (izmerjeni baseline, `../baseline/BASELINE-2026-10-15.md`)
++ 251 (štiri NOVE skripte: 119 + 56 + 50 + 26). Oba delova številke sta izmerjena, ne sešteta
+iz spomina.
 
 ### E2E dokazi
 

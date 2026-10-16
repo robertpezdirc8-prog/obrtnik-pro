@@ -32,17 +32,25 @@ kanoničnih 100 cm samo znotraj homografije.
 
 Čaka samo na Roberta in ni bilo simulirano:
 
-1. **`bun install`** (dovoli prenos) → nato `tsc --noEmit`, `eslint` in E2E v brskalniku. UI je
-   bil spremenjen in **vizualno še ni pregledan**; v tej kopiji brez `node_modules` `next dev`
-   ne teče, `bun build` pa je javil samo manjkajoče module (sintaktičnih napak ni).
+1. **OPRAVLJENO 2026-10-16** (Robertov »odlično, nadaljuj« je dovolil `bun install` in
+   naslednje korake): `tsc --noEmit` — `src/` 0 napak, 5 napak izven aplikacije
+   (`examples/websocket` ×2, `tests/e2e-compare-fixture.ts` ×3 zaradi `@types/bun`);
+   `eslint .` izhod 0; E2E mobilni 390×844 + namizni 1280, `overflow false` na obeh, 0
+   konzolnih napak, FAZA-8 veja dokazana od uploada do izrisa. **E2E je bil nujen, ne
+   formalnost:** našel je nepošteno značko (vrstni red vej je naredil iskreno vejo nedosegljivo) in
+   prelivanje čez 390 px; oboje je popravljeno in ponovno izmerjeno. Posnetek:
+   `tests/e2e-faza8-mobile-390.png`.
 2. **Ročne meritve na fotkah `05..08`** in ≥ 5 parov resnica/izmerjeno v »Test natančnosti« —
    edino, kar napako premakne iz cilja v meritev.
 3. **Potrditev pravila 11** (katalogska višina → `ASSUMED` → brez naročilnice) ali njegova
    sprememba.
 4. **Manjkajoča gradiva ROKSAL** (višine, mm preseki, teksture) — pravilo 4 velja naprej.
 
-Nič ni pushano, nič nameščeno, nič pobrisano; HEAD je še `e0d0934` (Task 66), FAZA-8 datoteke so
-v delovnem drevesu (9 spremenjenih, 7 nezabeleženih). Odločitev o commitu pripada Robertu.
+Nič ni pushano in nič ni bilo pobrisano. Edina namestitev je `bun install` (385,41 s, 826
+paketov), ki je bil izrecno dovoljen; `.env` ni bil dotaknjen — lokalna `DATABASE_URL` je bila
+podana samo v okolju dev strežnika, `db/e2e-local.db` je nova lokalna datoteka. HEAD je
+`4db835d` (FAZA-8, lokalni commit), rezultati te verifikacije so v drugem lokalnem commitu.
+Odločitev o pushu pripada Robertu.
 
 ---
 
@@ -469,11 +477,13 @@ Celoten izid: `../baseline/BASELINE-2026-10-15.md` + `run-01.txt`.
 - Skriptov je **38**, ne 34; trditev §7 „obstoječa 34/34 skriptija" je bila zastarela.
 - Zelenih je **33/38**. Pet rdečih ŽE PRED posegom in vsi peti zaradi okolja, ne logike:
   štirje pišejo na `/tmp/*.png` (na Windows `/tmp` ni), `fasada-analysis` bere trdo kodirano
-  `/home/z/my-project/tests/task32-fasada.jpg`. Noben od petih ne hoda skozi
+  `/home/z/my-project/tests/task32-fasada.jpg`. Noben od petih ne hodi skozi
   merilno pogodbo; v tej fazi se NE popravlja (preurediti tuje teste z drugim namenom ni
   posledica razcepa).
 - `photo-replace` ima **391** preverjanj, ne 152. Vseh 391 mora ostati zelenih.
-- Skupaj zelenih trditev: **2024** v 27 counting skriptih + 6 diagnostičnih brez števca.
+- Skupaj zelenih trditev: **2024** v 27 counting skriptih + 6 diagnostičnih brez števca
+  (izmerjeno in zabeleženo v `../baseline/BASELINE-2026-10-15.md` §"Z preštevilnimi
+  preverjanji", ne iz spomina).
   Posledično: „38/38" v nobenem poročilu te faze ne sme nastopiti kot trditev.
 
 ### 9.2 Odločitev §8.3 je sprejeta v smeri ničelne spremembe obnašanja ( fokus → `met`, ne `geo`)
@@ -578,11 +588,22 @@ Izvedbe, ki jih spec ni mogel predvideti do konca:
    §4.4 (Test natančnosti) **nista izvedena** — potrebna je ročna vbrona oglišč in trak na
    objektu; ne simulirata se.
 5. **Celoten sweep po FAZA-8**: **42** skriptov v `tests/verify`, **37 exit 0**, petih rdečih je
-   istih pet kot pred posegom in vsi zaradi okolja (`/tmp/*.png`, trdo kodirana pot), ne logike.
-   Assertivnih preverjanj je **2024 → 2275** (+251 novih).
-6. **Korak 8**: `MEASUREMENT-BASELINE.md` posodoblen — nova §2.6 (dve osi, z dokazi), §3
+   istih pet kot pred posegom in vsi zaradi okolja (zajeti nizi: `/tmp/t30-front.png`,
+   `/tmp/t29-flat.png`, `/tmp/t26-front.png`, `/tmp/t27-stack.png` → "unable to open for
+   write"; `Input file is missing: /home/z/my-project/tests/task32-fasada.jpg`), ne logike.
+   Assertivnih preverjanj je **2024 → 2275**: 2024 = izmerjeni baseline 27 counting
+   skriptov (BASELINE-2026-10-15.md), +251 = izmerjeni števci štirih NOVIH skriptov ta
+   teden (assertion 119 + scale-split 56 + multiview-split 50 + plank-layout-width 26).
+   Agregata ni bilo mogoče ponovno izračunati samodejno (nekateri skripti v izpisu
+   tiskajo decimalke z vejico, kar regex-a prenabije), zato je zapisana vsota dveh
+   MERJENJI, ne ena samodejna številka.
+6. **Korak 8**: `MEASUREMENT-BASELINE.md` posodobljen — nova §2.6 (dve osi, z dokazi), §3
    približka 8–9, §4 tri iskrene vrstice (realne meritve manjkajo, `tsc`/`eslint` nista bila
    pognana, katalogske višine ne obstajajo), §5 popravljene številke in §6 pravila 10–14.
+   **Amandma 2026-10-16 (verifikacija):** srednja vrstica §4 (= `tsc`/`eslint` nista bila
+   pognana) je bila napačna po tem, ko je Robert dovolil install — nadomeščena je izmerjenimi
+   rezultati, §2.6 in §5 pa vsebujeta E2E na 390 px in 1280 px namesto opombe »še ni pognan«.
+   §6 pravilu 11 je dodana meja (najdba F3: pokončni profil brez širine zavrne izris).
    Odstopanje od §7.8: pravil je **pet**, ne tri — 13 (neznana širina je izpisana) in 14 (vrata
    se sklenejo po paru) sta rodila izvedba, ne načrt.
 

@@ -25,6 +25,7 @@ import {
   ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Ruler, Save, ShoppingCart, Upload, ZoomIn,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import { processImage } from '@/lib/image-quality';
 import {
   EXPORT_LABEL,
@@ -1491,7 +1492,24 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             </label>
           </div>
 
-          {planeCm && quadComplete ? (
+          {planeCm && planeCm.wCm === null ? (
+            <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 p-3">
+              <Badge
+                className={cn(statusColor('AUTO_SUGGESTED').badge, 'whitespace-normal text-left leading-snug')}
+                data-testid="fr-plane-status"
+              >
+                Širina ravnine NI izmerjena
+              </Badge>
+              <p className="text-xs text-green-900">
+                {quadComplete
+                  ? <>Geometrija: potrjena (4 oglišča) · merilo: samo izmerjena višina ravnine ({fmtN(planeCm.hCm, 0)} cm).
+                    Širine ni izmeril nihče, zato je ne prikazujemo kot mero.
+                    Izris: {canRenderMontage(assurance.geo) ? 'dovoljen' : 'NI dovoljen'} — naročilnica: {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).</>
+                  : <>Višina je izmerjena ({fmtN(planeCm.hCm, 0)} cm), širina ne, oglišča pa še niso dokončana (manj kot 4/4) —
+                    zato ni ne geometrije ne mere. Označi 4 oglisča.</>}
+              </p>
+            </div>
+          ) : planeCm && quadComplete ? (
             <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 p-3">
               <Badge className={statusColor('CALIBRATED').badge} data-testid="fr-plane-status">
                 {statusLabel('CALIBRATED')} · znane mere
@@ -1499,16 +1517,6 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               <p className="text-xs text-green-900">
                 {statusHint('CALIBRATED')} Perspektiva sledi vnesenima merama ravnine ({fmtN(planeCm.wCm, 0)}×{fmtN(planeCm.hCm, 0)} cm)
                 — metoda: znane mere, transformacija: ravninska homografija (4 oglišča).
-              </p>
-            </div>
-          ) : planeCm && planeCm.wCm === null ? (
-            <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 p-3">
-              <Badge className={statusColor('AUTO_SUGGESTED').badge} data-testid="fr-plane-status">
-                Geometrija: potrjena · Merilo: širina ni izmerjena
-              </Badge>
-              <p className="text-xs text-green-900">
-                Perspektiva sledi izmerjeni višini ravnine ({fmtN(planeCm.hCm, 0)} cm) in 4 ogliščem.
-                Širine ni izmeril nihče, zato je ne prikazujemo kot mero. Izris: {canRenderMontage(assurance.geo) ? 'dovoljen' : 'NI dovoljen'} — naročilnica: {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).
               </p>
             </div>
           ) : (

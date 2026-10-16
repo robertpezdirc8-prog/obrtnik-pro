@@ -93,8 +93,10 @@ for (const row of V1_TABLE) {
   const mets = V1_TABLE.map((r) => validateMetric(r.input as ScaleValidationInput));
   check('validateGeometry pozna samo OK in PLANE_REQUIRED',
     geos.every((g) => g.code === 'OK' || g.code === 'PLANE_REQUIRED'));
+  // `PLANE_REQUIRED` je geometrijska koda; da Meritveni kod ji sploh ne more
+  // vsebovati, ve že tip, zato primerjava poteka prek stringa.
   check('validateMetric ne pozna PLANE_REQUIRED',
-    mets.every((m) => m.code !== 'PLANE_REQUIRED'));
+    mets.every((m) => (m.code as string) !== 'PLANE_REQUIRED'));
   check('validateGeometry ne pozna DEGENERATE_REFERENCE',
     geos.every((g) => !(g.code as string).includes('DEGENERATE')));
   check('os geometrije ne pozna NO_CALIBRATION (to je vprašanje cm)',

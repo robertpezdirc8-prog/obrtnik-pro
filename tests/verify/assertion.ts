@@ -45,8 +45,11 @@ const check = (name: string, cond: boolean, info?: string) => {
   check('geometryAtLeast: CONSISTENT doseže FITTED', geometryAtLeast('CONSISTENT', 'FITTED'));
   check('metricAtLeast: ASSUMED NE doseže REFERENCED', !metricAtLeast('ASSUMED', 'REFERENCED'));
   check('metricAtLeast: MEASURED doseže REFERENCED', metricAtLeast('MEASURED', 'REFERENCED'));
+  // Osi sta disjunktni množici — to ve že tip, zato primerjava poteka prek
+  // stringov: neposredna `g !== m` bi TS javil "no overlap", kar je ravno to,
+  // kar test trdi.
   check('osi nista urejeni ena glede na drugo (ravni sta ločeni množici)',
-    GEOMETRY_ORDER.every((g) => METRIC_ORDER.every((m) => g !== m)));
+    GEOMETRY_ORDER.every((g) => METRIC_ORDER.every((m) => (g as string) !== (m as string))));
 }
 
 // ── 2. TOTALNA tabela projekcije — 25/25 parov ──────────────
