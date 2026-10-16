@@ -10,6 +10,11 @@
 //  · Vsaka mera nosi izvor (provenance): skripta, metoda, status, točke,
 //    referenca, transformacija.
 
+import {
+  projectStatus, geometryRank, metricRank,
+  type GeometricAssurance, type MetricAssurance,
+} from './assertion';
+
 /** Verzija merilne skripte — gre v vsako provenance oznako. */
 export const MEASUREMENT_SCRIPT_VERSION = '1.0.0';
 
@@ -243,8 +248,8 @@ export function makeProvenance(input: ProvenanceInput): MeasurementProvenance {
 
 export interface ScaleValidation {
   ok: boolean;
-  code: 'OK' | 'NO_CALIBRATION' | 'ASSUMED_SCALE' | 'DEGENERATE_REFERENCE' | 'PLANE_REQUIRED'
-    | 'MULTIVIEW_DEGENERATE' | 'RESIDUAL_HIGH' | 'SFM_REPROJECTION_HIGH';
+  /** Vsota obeh osi — istih 8 vrednosti kot pred razcepom, brez nove kode. */
+  code: GeometryCode | MetricCode;
   status: MeasurementStatus | null;
   message: string;
   nextStep: string;
@@ -261,40 +266,103 @@ export const MIN_MULTIVIEW_INLIERS = 12;
 export const MAX_MULTIVIEW_RESIDUAL_PX = 3;
 
 /**
- * Validacija merila glede na metodo izvora. Nikoli NE vrne privzetega
- * merila: če kalibracija manjka, je odgovor eksplicitna napaka
- * NO_CALIBRATION. Ravninska kalibracija (4 oglišča) ima prednost pred
- * globalnim merilom in velja za vse smeri.
+ * Skupni vhod obeh osevnih validacij (in `validateScale`, ki ju sestavi).
+ * `planeCalibrated` pomeni umerjeno ravnino po štirih ogliščih; `pxPerCm` je
+ * globalno merilo; `method` pove, od kod je vrednost.
  */
-export function validateScale(input: {
+export interface ScaleValidationInput {
   pxPerCm?: number | null;
   method?: CalibrationMethod | null;
   planeCalibrated?: boolean;
   minPxPerCm?: number;
-}): ScaleValidation {
+}
+
+/** Koda, ki jo sme napovedati GEOMETRIJSKA os. */
+export type GeometryCode =
+  | 'OK' | 'PLANE_REQUIRED' | 'MULTIVIEW_DEGENERATE' | 'RESIDUAL_HIGH' | 'SFM_REPROJECTION_HIGH';
+
+/** Koda, ki jo sme napovedati METRIČNA os. */
+export type MetricCode =
+  | 'OK' | 'NO_CALIBRATION' | 'ASSUMED_SCALE' | 'DEGENERATE_REFERENCE';
+
+/** Rezultat validacije GEOMETRIJSKE domene veljavnosti. */
+export interface GeometryValidation {
+  assurance: GeometricAssurance;
+  /** Eksplicitna napaka te osi. `PLANE_REQUIRED` živi SAMO tukaj. */
+  code: GeometryCode;
+  message: string;
+  nextStep: string;
+}
+
+/** Rezultat validacije METRIČNEga izvora centimetra. */
+export interface MetricValidation {
+  assurance: MetricAssurance;
+  /** `DEGENERATE_REFERENCE` in `NO_CALIBRATION` živita SAMO tukaj. */
+  code: MetricCode;
+  message: string;
+  nextStep: string;
+}
+
+/**
+ * Katero DOMENO veljavnosti posnetka imamo? Samo geometrija: umerjena ravnina
+ * > ena smer znanega merila > nič. Merilo, njegova domneva in njegova
+ * kakovost spadajo na `validateMetric` — tu nimata besede.
+ */
+export function validateGeometry(input: ScaleValidationInput): GeometryValidation {
+  const ppm = input.pxPerCm;
+  const hasScale = typeof ppm === 'number' && Number.isFinite(ppm) && ppm > 0;
+  if (input.planeCalibrated === true) {
+    return {
+      assurance: 'FITTED',
+      code: 'OK',
+      message: 'Ravnina je umerjena po 4 ogliščih — meritve na ravnini so korigirane za perspektivo in veljajo za vse smeri.',
+      nextStep: 'Meri na umerjeni ravnini',
+    };
+  }
+  if (input.method === 'plane-homography') {
+    return {
+      assurance: 'UNDEFINED',
+      code: 'PLANE_REQUIRED',
+      message: 'NEZADOSTNI PODATKI: ravnina ni umerjena. Za korekcijo perspektive umeri ravnino po 4 ogliščih znane ravnine (stena, fasada, tla).',
+      nextStep: 'Kalibriraj ravnino (4 oglišča)',
+    };
+  }
+  if (hasScale) {
+    return {
+      assurance: 'ORIENTED',
+      code: 'OK',
+      message: 'Poznamo eno smer merila (global px/cm); perspektiva ni korigirana, zato v drugih smereh številke ne držijo.',
+      nextStep: 'Kalibriraj ravnino (4 oglišča)',
+    };
+  }
+  return {
+    assurance: 'UNDEFINED',
+    code: 'OK',
+    message: 'Geometrija posnetka ni umerjena.',
+    nextStep: 'Umeri merilo',
+  };
+}
+
+/**
+ * Od kod pride centimeter? Iz domneve, iz dejansko znane dolžine, ali pa sploh
+ * ne iz fotke (trak/laser — tedaj geometrija posnetka ni relevantna).
+ *
+ * Vrstni red je pogojen z dolžansko pogodbo: ročna izmera ima prednost pred
+ * vsem, nato domnevna referenca (umerjena ravnina je NE dvigne — FAZA-8
+ * §3.2.1), nato šele prisotnost in pas merila.
+ */
+export function validateMetric(input: ScaleValidationInput): MetricValidation {
   const ppm = input.pxPerCm;
   const hasScale = typeof ppm === 'number' && Number.isFinite(ppm) && ppm > 0;
   const plane = input.planeCalibrated === true;
   const min = input.minPxPerCm ?? DEFAULT_MIN_PX_PER_CM;
 
-  // 1) Metoda zahteva ravnino, a ravnina ni umerjena → eksplicitna napaka.
-  if (input.method === 'plane-homography' && !plane) {
-    return {
-      ok: false,
-      code: 'PLANE_REQUIRED',
-      status: null,
-      message: 'NEZADOSTNI PODATKI: ravnina ni umerjena. Za korekcijo perspektive umeri ravnino po 4 ogliščih znane ravnine (stena, fasada, tla).',
-      nextStep: 'Kalibriraj ravnino (4 oglišča)',
-    };
-  }
-
-  // 2) Ročna izmera / laser — vrednost NE izhaja iz fotke, zato kalibracija
-  //    (ali njena odsotnost) za to meritev ni relevantna.
+  // 1) Vrednost NE izhaja iz fotke — kalibracija (ali njena odsotnost) za to
+  //    meritev ni relevantna.
   if (input.method === 'manual-measure' || input.method === 'laser') {
     return {
-      ok: true,
+      assurance: 'MEASURED',
       code: 'OK',
-      status: 'MANUAL',
       message: input.method === 'laser'
         ? 'Izmera z zunanjim laserskim merilnikom — neodvisna od fotografije in kalibracije.'
         : 'Ročna izmera (trak/laser) — neodvisna od fotografije in kalibracije.',
@@ -302,77 +370,96 @@ export function validateScale(input: {
     };
   }
 
-  // 3) Ravninska kalibracija — velja za VSE smeri (single-view metrology).
+  // 2) Domnevna referenca ostane domneva, tudi če je ravnina umerjena —
+  //    umerjena geometrija ne dvigne metrične domneve (FAZA-8 §3.2.1).
+  if (input.method === 'assumed-reference') {
+    if (hasScale && (ppm! < min || ppm! > MAX_PX_PER_CM)) return degenerate(ppm!, min);
+    if (!hasScale && !plane) {
+      return { assurance: 'NONE', code: 'NO_CALIBRATION', message: NO_SCALE_MESSAGE, nextStep: 'Umeri merilo' };
+    }
+    return {
+      assurance: 'ASSUMED',
+      code: 'ASSUMED_SCALE',
+      message: 'Samodejni predlog: merilo iz domnevne reference (npr. vrata ≈ 200 cm). Mera NI potrjena in pri poševnem posnetku eno merilo ne velja za vse smeri.',
+      nextStep: 'Kalibriraj ravnino (4 oglišča)',
+    };
+  }
+
+  // 3) Umerjena ravnina pomeni, da sta širina in višina ravnine vneseni —
+  //    merilo torej izvira iz dejansko znane dolžine, ne iz domneve.
   if (plane) {
     return {
-      ok: true,
+      assurance: 'REFERENCED',
       code: 'OK',
-      status: 'CALIBRATED',
-      message: 'Ravnina je umerjena po 4 ogliščih — meritve na ravnini so korigirane za perspektivo in veljajo za vse smeri.',
+      message: 'Merilo izhaja iz dimenzij umerjene ravnine.',
       nextStep: 'Meri na umerjeni ravnini',
     };
   }
 
-  // 4) Brez kalibracije → NIKOLI privzetega merila.
+  // 4) Brez merila → NIKOLI privzetega merila.
   if (!hasScale) {
-    return {
-      ok: false,
-      code: 'NO_CALIBRATION',
-      status: null,
-      message: 'MERITEV NI NA VOLJO: kalibracija manjka. Vnesi znano dolžino referenčnega objekta (npr. vrata 200 cm) ali kalibriraj ravnino po 4 ogliščih.',
-      nextStep: 'Umeri merilo',
-    };
+    return { assurance: 'NONE', code: 'NO_CALIBRATION', message: NO_SCALE_MESSAGE, nextStep: 'Umeri merilo' };
   }
 
   // 5) Degenerirana referenca (premajhna/prevelika na fotki).
-  if (ppm! < min || ppm! > MAX_PX_PER_CM) {
-    return {
-      ok: false,
-      code: 'DEGENERATE_REFERENCE',
-      status: null,
-      message: `NEZADOSTNI PODATKI: umerjeno merilo (${ppm!.toFixed(3)} px/cm) je izven zanesljivega razpona (${min}–${MAX_PX_PER_CM}). Referenčni objekt je na fotografiji preveč majhen ali je oznaka netočna — ponovi umerjanje z večjim znanim objektom (npr. vrata 200 cm).`,
-      nextStep: 'Ponovi umerjanje z večjim objektom',
-    };
-  }
+  if (ppm! < min || ppm! > MAX_PX_PER_CM) return degenerate(ppm!, min);
 
-  // 6) Po metodi izvora.
-  switch (input.method) {
-    case 'assumed-reference':
-      return {
-        ok: true,
-        code: 'ASSUMED_SCALE',
-        status: 'AUTO_SUGGESTED',
-        message: 'Samodejni predlog: merilo iz domnevne reference (npr. vrata ≈ 200 cm). Mera NI potrjena in pri poševnem posnetku eno merilo ne velja za vse smeri.',
-        nextStep: 'Kalibriraj ravnino (4 oglišča)',
-      };
-    case 'plane-homography':
-      // Ravnina bi morala biti zajeta v koraku 3; doseženo le pri
-      // nedoslednem vnosu — tukaj je zato varen CALIBRATED izhod.
-      return {
-        ok: true,
+  // 6) Dejansko znana dolžina ALI njezen izvor (starejši zapisi).
+  return input.method === 'known-length'
+    ? {
+        assurance: 'REFERENCED',
         code: 'OK',
-        status: 'CALIBRATED',
-        message: 'Ravninska kalibracija (homografija) — meritve korigirane za perspektivo.',
-        nextStep: 'Meri na umerjeni ravnini',
-      };
-    case 'known-length':
-      return {
-        ok: true,
-        code: 'OK',
-        status: 'CALIBRATED',
         message: 'Merilo kalibrirano po znani dolžini. Merilo velja za smer reference; pri poševnem posnetku lahko ostale smeri odstopajo — za natančnost kalibriraj ravnino.',
         nextStep: 'Kalibriraj ravnino (4 oglišča)',
-      };
-    default:
-      // Merilo obstaja, izvor ni zabeležen (starejši zapisi brez sledljivosti).
-      return {
-        ok: true,
+      }
+    : {
+        assurance: 'REFERENCED',
         code: 'OK',
-        status: 'CALIBRATED',
         message: 'Merilo je umerjeno, izvor kalibracije pa ni zabeležen — za sledljivost ponovi umerjanje po znani dolžini.',
         nextStep: 'Ponovi umerjanje po znani dolžini',
       };
+}
+
+const NO_SCALE_MESSAGE = 'MERITEV NI NA VOLJO: kalibracija manjka. Vnesi znano dolžino referenčnega objekta (npr. vrata 200 cm) ali kalibriraj ravnino po 4 ogliščih.';
+
+function degenerate(ppm: number, min: number): MetricValidation {
+  return {
+    assurance: 'NONE',
+    code: 'DEGENERATE_REFERENCE',
+    message: `NEZADOSTNI PODATKI: umerjeno merilo (${ppm.toFixed(3)} px/cm) je izven zanesljivega razpona (${min}–${MAX_PX_PER_CM}). Referenčni objekt je na fotografiji preveč majhen ali je oznaka netočna — ponovi umerjanje z večjim znanim objektom (npr. vrata 200 cm).`,
+    nextStep: 'Ponovi umerjanje z večjim objektom',
+  };
+}
+
+/**
+ * Sestavi obe osi v staro enoletno pogodbo. Vrstni red sporočil je današnji:
+ * geometrijska napaka > metrična napaka/domneva > ročna izmera > ravnina >
+ * smer reference. `status` je `projectStatus` para, ne več izvirna trditev.
+ *
+ * NIKOLI ne vrne privzetega merila: če kalibracija manjka, je odgovor
+ * eksplicitna napaka NO_CALIBRATION.
+ */
+export function validateScale(input: ScaleValidationInput): ScaleValidation {
+  const geo = validateGeometry(input);
+  const met = validateMetric(input);
+
+  if (geo.code === 'PLANE_REQUIRED') {
+    return { ok: false, code: 'PLANE_REQUIRED', status: null, message: geo.message, nextStep: geo.nextStep };
   }
+  if (met.code === 'NO_CALIBRATION' || met.code === 'DEGENERATE_REFERENCE') {
+    return { ok: false, code: met.code, status: null, message: met.message, nextStep: met.nextStep };
+  }
+  const status = projectStatus(geo.assurance, met.assurance);
+  if (met.code === 'ASSUMED_SCALE') {
+    return { ok: true, code: 'ASSUMED_SCALE', status, message: met.message, nextStep: met.nextStep };
+  }
+  if (met.assurance === 'MEASURED') {
+    return { ok: true, code: 'OK', status, message: met.message, nextStep: met.nextStep };
+  }
+  //REFERENCED: ravnina pove svojo domeno, sicer merilo pove svojo.
+  return geo.assurance === 'FITTED'
+    ? { ok: true, code: 'OK', status, message: geo.message, nextStep: geo.nextStep }
+    : { ok: true, code: 'OK', status, message: met.message, nextStep: met.nextStep };
 }
 
 // ─── Validacija geometrije iz dveh fotk (Faza 3: multi-view) ───
@@ -382,57 +469,96 @@ export function validateScale(input: {
  * zanesljivost geometrije (inlierji, residuala), nato merilo (referenca) in
  * na koncu izvor fokusa. Nikoli NE prerazredi šibke geometrije v mero —
  * vsak primanjkljaj je eksplicitna koda z naslednjim korakom.
+ *
+ * Razcep (FAZA-8 §3.3): geometrijo para določata inlierjev in residuala;
+ * `referenceKnown` in `focalMode` določata, od kod je cm. Fokus je tu NAMESTO
+ * na geometrijski osi, ker pri triangulaciji goriščna razdalja neposredno
+ * določa, kako se razmerje pretvori v centimetre — številka v cm torej počiva
+ * na domnevi enako kot domnevna dolžina reference. Posledica: 292 multi-view
+ * trditev (multiview 104 + chain 66 + sfm 122) ostane zelenih dobesedno.
  */
-export function validateMultiView(input: {
+export function validateMultiView(input: MultiViewGeometryInput & MultiViewMetricInput): ScaleValidation {
+  const geo = validateMultiViewGeometry(input);
+  if (geo.code !== 'OK') {
+    return { ok: false, code: geo.code, status: null, message: geo.message, nextStep: geo.nextStep };
+  }
+  const met = validateMultiViewMetric(input);
+  if (met.code === 'NO_CALIBRATION') {
+    return { ok: false, code: 'NO_CALIBRATION', status: null, message: met.message, nextStep: met.nextStep };
+  }
+  return {
+    ok: true,
+    code: met.code === 'ASSUMED_SCALE' ? 'ASSUMED_SCALE' : 'OK',
+    status: projectStatus(geo.assurance, met.assurance),
+    message: met.message,
+    nextStep: met.nextStep,
+  };
+}
+
+/** Vhod geometrijske validacije para fotk. */
+export interface MultiViewGeometryInput {
   inlierCount: number;
   meanResidualPx: number;
-  focalMode: 'known' | 'preset' | 'selfcal';
-  referenceKnown: boolean;
   minInliers?: number;
   maxResidualPx?: number;
-}): ScaleValidation {
+}
+
+/** Vhod metrične validacije para fotk. */
+export interface MultiViewMetricInput {
+  focalMode: 'known' | 'preset' | 'selfcal';
+  referenceKnown: boolean;
+}
+
+/** Ali par fotk sploh DOLAČA geometrijo? (pragova 12 inlierjev in 3 px ostajata) */
+export function validateMultiViewGeometry(input: MultiViewGeometryInput): GeometryValidation {
   const min = input.minInliers ?? MIN_MULTIVIEW_INLIERS;
   const max = input.maxResidualPx ?? MAX_MULTIVIEW_RESIDUAL_PX;
   if (input.inlierCount < min) {
     return {
-      ok: false,
+      assurance: 'UNDEFINED',
       code: 'MULTIVIEW_DEGENERATE',
-      status: null,
       message: `NEZADOSTNI PODATKI: premalo zanesljivih povezav med fotkama (< ${min}). Ponovi posnetek z večjim prekrivanjem in večjim kotom.`,
       nextStep: 'Posnemi par fotk z večjim prekrivanjem',
     };
   }
   if (input.meanResidualPx > max) {
     return {
-      ok: false,
+      assurance: 'UNDEFINED',
       code: 'RESIDUAL_HIGH',
-      status: null,
       message: `NEZADOSTNI PODATKI: povezave med fotkama so preveč raztresene (srednja residuala ${input.meanResidualPx.toFixed(1).replace('.', ',')} px > ${max}). Geometrija ni zanesljiva.`,
       nextStep: 'Ponovi označbo povezav ali posnemi nove fotke',
     };
   }
+  // Drugi pogled JE neodvisna preverba prvega — tu je CONSISTENT, ne FITTED.
+  return {
+    assurance: 'CONSISTENT',
+    code: 'OK',
+    message: 'Geometrija para fotk je preverjena z drugim pogledom (inlierji in residuala v pragu).',
+    nextStep: 'Izmeri na preverjeni geometriji',
+  };
+}
+
+/** Od kod je cm pri merjenju iz dveh fotk? */
+export function validateMultiViewMetric(input: MultiViewMetricInput): MetricValidation {
   if (!input.referenceKnown) {
     return {
-      ok: false,
+      assurance: 'NONE',
       code: 'NO_CALIBRATION',
-      status: null,
       message: 'MERITEV NI NA VOLJO v cm: manjka znana referenčna dolžina med označenima točkama — izračunana so samo razmerja.',
       nextStep: 'Označi znani odsek (npr. vrata 80 cm)',
     };
   }
   if (input.focalMode === 'preset' || input.focalMode === 'selfcal') {
     return {
-      ok: true,
+      assurance: 'ASSUMED',
       code: 'ASSUMED_SCALE',
-      status: 'AUTO_SUGGESTED',
       message: 'Fokus kamere je ocenjen (preset/iz fotk), merilo pa iz znane reference — mera je orientacijska, za proizvodno uporabi EXIF fokus ali laserski merilnik.',
       nextStep: 'Preveri mero s trakom/laserjem',
     };
   }
   return {
-    ok: true,
+    assurance: 'REFERENCED',
     code: 'OK',
-    status: 'CALIBRATED',
     message: 'Izmerjeno s triangulacijo iz dveh fotk (znani fokus + znana referenčna dolžina).',
     nextStep: 'Po potrebi preveri z neodvisno metodo (VERIFIED)',
   };
@@ -447,71 +573,112 @@ export function validateMultiView(input: {
  * napaka je ≤ 3 px in je vsaka registrirana fotka dovolj podprta s 3D
  * točkami; preset/selfcal fokus → AUTO_SUGGESTED; vsak primanjkljaj je
  * eksplicitna koda s slovensko razlago. NIKOLI ne prerazredi šibke
- * geometrije v mero. Aditivno (Faza 5) — ne spreminja obstoječih funkcij.
+ * geometrije v mero.
+ *
+ * Razcep (FAZA-8 §3.3): `registeredCount` / `minPerImageInliers` /
+ * `reprojRmsPx` in `focalSource`-ova geometrijska posledica (ŠTEVILO fotk,
+ * RMS) grejo na os geometrije, `hasScale` in domneven fokus na os merila.
+ * Pragovi (12 inlierjev, 3 px) ostanejo identični.
  */
-export function validateSfm(input: {
+export interface SfmGeometryInput {
   registeredCount: number;
   totalImages: number;
   minPerImageInliers: number;
   reprojRmsPx: number;
-  focalSource: 'known' | 'preset' | 'selfcal';
-  hasScale: boolean;
   warnings: string[];
   minInliers?: number;
   maxResidualPx?: number;
-}): ScaleValidation {
+}
+
+/** Vhod metrične validacije SfM. `registeredCount`/`totalImages` sta SAMO za
+ *  razlago — odločata `hasScale` in `focalSource`. */
+export interface SfmMetricInput {
+  focalSource: 'known' | 'preset' | 'selfcal';
+  hasScale: boolean;
+  registeredCount: number;
+  totalImages: number;
+}
+
+export function validateSfm(input: SfmGeometryInput & SfmMetricInput): ScaleValidation {
+  const geo = validateSfmGeometry(input);
+  if (geo.code !== 'OK') {
+    return { ok: false, code: geo.code, status: null, message: geo.message, nextStep: geo.nextStep };
+  }
+  const met = validateSfmMetric(input);
+  if (met.code === 'NO_CALIBRATION') {
+    return { ok: false, code: 'NO_CALIBRATION', status: null, message: met.message, nextStep: met.nextStep };
+  }
+  if (met.code === 'ASSUMED_SCALE') {
+    return { ok: true, code: 'ASSUMED_SCALE', status: projectStatus(geo.assurance, met.assurance), message: met.message, nextStep: met.nextStep };
+  }
+  // Oboje znano: razlaga mora povedati OBOJE, zato jo sestavi ovojnica.
+  return {
+    ok: true,
+    code: 'OK',
+    status: projectStatus(geo.assurance, met.assurance),
+    message: `Izmerjeno z inkrementalnim SfM iz ${input.registeredCount} fotk (znani fokus + znana referenčna dolžina, RMS ${input.reprojRmsPx.toFixed(1).replace('.', ',')} px${input.warnings.length > 0 ? `, ${input.warnings.length} opozoril` : ''}).`,
+    nextStep: 'Po potrebi preveri z neodvisno metodo (VERIFIED)',
+  };
+}
+
+/** Ali je rekonstrukcija iz več fotk sploh Določljiva? */
+export function validateSfmGeometry(input: SfmGeometryInput): GeometryValidation {
   const min = input.minInliers ?? MIN_MULTIVIEW_INLIERS;
   const max = input.maxResidualPx ?? MAX_MULTIVIEW_RESIDUAL_PX;
   if (!Number.isFinite(input.registeredCount) || input.registeredCount < 2) {
     return {
-      ok: false,
+      assurance: 'UNDEFINED',
       code: 'MULTIVIEW_DEGENERATE',
-      status: null,
       message: `NEZADOSTNI PODATKI: registriranih je samo ${input.registeredCount} fotk (potrebnih ≥ 2) — 3D rekonstrukcija ni izvedljiva. Posnemi fotke z večjim prekrivanjem.`,
       nextStep: 'Posnemi fotke z večjim prekrivanjem',
     };
   }
   if (input.minPerImageInliers < min) {
     return {
-      ok: false,
+      assurance: 'UNDEFINED',
       code: 'MULTIVIEW_DEGENERATE',
-      status: null,
       message: `NEZADOSTNI PODATKI: najslabše podprta registrirana fotka ima samo ${input.minPerImageInliers} 3D točk (potrebnih ≥ ${min}) — geometrija ni zanesljiva. Posnemi fotke z večjim prekrivanjem, da se isti objekt vidi na več posnetkih.`,
       nextStep: 'Posnemi fotke z večjim prekrivanjem',
     };
   }
   if (input.reprojRmsPx > max) {
     return {
-      ok: false,
+      assurance: 'UNDEFINED',
       code: 'SFM_REPROJECTION_HIGH',
-      status: null,
       message: `NEZADOSTNI PODATKI: reprojekcijska napaka rekonstrukcije je prevelika (${input.reprojRmsPx.toFixed(1).replace('.', ',')} px > ${max} px) — 3D točke se ne vrnejo na svoje položaje na fotkah. Geometrija ni zanesljiva.`,
       nextStep: 'Ponovi posnetek (ostro, fiksni zoom, več prekrivanja)',
     };
   }
+  return {
+    assurance: 'CONSISTENT',
+    code: 'OK',
+    message: `Rekonstrukcija je skladna sama s seboj (${input.registeredCount}/${input.totalImages} fotk registriranih).`,
+    nextStep: 'Izmeri na preverjeni geometriji',
+  };
+}
+
+/** Od kod je cm pri rekonstrukciji iz več fotk? */
+export function validateSfmMetric(input: SfmMetricInput): MetricValidation {
   if (!input.hasScale) {
     return {
-      ok: false,
+      assurance: 'NONE',
       code: 'NO_CALIBRATION',
-      status: null,
       message: `MERITEV NI NA VOLJO v cm: SfM je registriral ${input.registeredCount}/${input.totalImages} fotk, a manjka znana referenčna dolžina — izračunana so samo razmerja med 3D točkami.`,
       nextStep: 'Označi znani odsek (npr. vrata 80 cm) na eni od registriranih fotk',
     };
   }
   if (input.focalSource === 'preset' || input.focalSource === 'selfcal') {
     return {
-      ok: true,
+      assurance: 'ASSUMED',
       code: 'ASSUMED_SCALE',
-      status: 'AUTO_SUGGESTED',
       message: `SfM iz ${input.registeredCount} fotk z ocenjenim fokusom (${input.focalSource === 'preset' ? 'preset' : 'samokalibracija'}) in merilom iz znane reference — mera je orientacijska, za proizvodno uporabi EXIF fokus ali laserski merilnik.`,
       nextStep: 'Preveri mero s trakom/laserjem',
     };
   }
   return {
-    ok: true,
+    assurance: 'REFERENCED',
     code: 'OK',
-    status: 'CALIBRATED',
-    message: `Izmerjeno z inkrementalnim SfM iz ${input.registeredCount} fotk (znani fokus + znana referenčna dolžina, RMS ${input.reprojRmsPx.toFixed(1).replace('.', ',')} px${input.warnings.length > 0 ? `, ${input.warnings.length} opozoril` : ''}).`,
+    message: 'Merilo iz znane referenčne dolžine na rekonstrukciji z znanim fokusom.',
     nextStep: 'Po potrebi preveri z neodvisno metodo (VERIFIED)',
   };
 }
@@ -523,6 +690,11 @@ export function validateSfm(input: {
  * meritev ni več veljavna: CALIBRATED, VERIFIED in CONFIRMED padejo na
  * AUTO_SUGGESTED (ostanejo samo kot orientacijski predlog). Slabši
  * statusi ostanejo nespremenjeni.
+ *
+ * TA FUNKCIJA JE PROJEKCIJSKI OVOJ — deluje na izgubljenem statusu, zato ne
+ * more vedeti, katera od dveh osi je bila prizadeta, in razveljavi tudi
+ * lasersko mero. Nova klica naj uporabi `downgradeMetricOnReferenceChange`
+ * in `downgradeGeometryOnQuadChange` (D4, FAZA-8 §3.3).
  */
 export function downgradeOnReferenceChange(
   prev: MeasurementStatus,
@@ -530,6 +702,40 @@ export function downgradeOnReferenceChange(
 ): MeasurementStatus {
   if (!referenceChanged) return prev;
   if (statusRank(prev) >= statusRank('CALIBRATED')) return 'AUTO_SUGGESTED';
+  return prev;
+}
+
+/**
+ * Sprememba referenčne dolžine razveljavi SAMO merilo in samo tistega, ki
+ * iz fotke izhaja: REFERENCED pade na ASSUMED (še vedno vemo, kje je bila
+ * noga, le števka ni več potrjena). CROSS_CHECKED pade na MEASURED —
+ * preverba med dvema viri razpade, neodvisna izmera sama ostane.
+ * MEASURED / ASSUMED / NONE se ne dotakne: trak in laser od reference
+ * neodvisita, domneva pa je že bila domneva. Geometrija (umerjena ravnina)
+ * se z novim centimetrom ne premakne — nje ta funkcija NE sme braniti.
+ */
+export function downgradeMetricOnReferenceChange(
+  prev: MetricAssurance,
+  referenceChanged: boolean,
+): MetricAssurance {
+  if (!referenceChanged) return prev;
+  if (prev === 'REFERENCED') return 'ASSUMED';
+  if (prev === 'CROSS_CHECKED') return 'MEASURED';
+  return prev;
+}
+
+/**
+ * Sprememba štirikotnika razveljavi SAMO geometrijo. Ročna izmera (trak,
+ * laser) je od posnetka neodvisna, zato je nova oznaka oglišč ne sme
+ * dotakniti. FITTED in CONSISTENT padeta na SUGGESTED (nov predlog,
+ * nepotrjen); UNDEFINED in SUGGESTED ostaneta.
+ */
+export function downgradeGeometryOnQuadChange(
+  prev: GeometricAssurance,
+  quadChanged: boolean,
+): GeometricAssurance {
+  if (!quadChanged) return prev;
+  if (geometryRank(prev) >= geometryRank('FITTED')) return 'SUGGESTED';
   return prev;
 }
 

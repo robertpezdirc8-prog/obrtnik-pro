@@ -67,7 +67,11 @@ export interface BomResult {
  */
 export function buildBomFromMeta(meta: ReplaceMetadata): BomResult {
   if (!meta || typeof meta !== 'object') throw new Error('NEZADOSTNI PODATKI: metapodatki manjkajo.');
-  if (!Number.isFinite(meta.planeCm?.wCm) || !Number.isFinite(meta.planeCm?.hCm) || meta.planeCm.wCm <= 0 || meta.planeCm.hCm <= 0) {
+  const wCmBom = meta.planeCm?.wCm ?? null;
+  if (wCmBom === null) {
+    throw new Error('KOSOVNICA NI DOLOČENA: širina ravnine ni izmerjena. Iz same geometrije (4 oglišča) se da izrisati deske, ne pa izračunati dolgov rezov in metrov — pravilo 11 (FAZA-8). Izmeri eno samo dolžino in potrdi umerjanje ravnine.');
+  }
+  if (!Number.isFinite(wCmBom) || wCmBom <= 0 || !Number.isFinite(meta.planeCm?.hCm) || meta.planeCm.hCm <= 0) {
     throw new Error('NEZADOSTNI PODATKI: realni meri ravnine morajo biti pozitivni števili.');
   }
 
@@ -88,8 +92,8 @@ export function buildBomFromMeta(meta: ReplaceMetadata): BomResult {
   const orientation = profile ? profile.orientation : (meta.params.pattern === 'terasa' ? 'horizontal' : 'vertical');
 
   // TOČNO ista logika kot computePlankLayouts (photo-replace-core.ts)
-  const cross = orientation === 'horizontal' ? meta.planeCm.hCm : meta.planeCm.wCm;
-  const cutLenCm = orientation === 'horizontal' ? meta.planeCm.wCm : meta.planeCm.hCm;
+  const cross = orientation === 'horizontal' ? meta.planeCm.hCm : wCmBom;
+  const cutLenCm = orientation === 'horizontal' ? wCmBom : meta.planeCm.hCm;
   const pitch = plankCm + gapCm;
   const boards = Math.floor((cross + gapCm) / pitch);
   const totalMeters = Math.round(((boards * cutLenCm) / 100) * 100) / 100;
@@ -122,7 +126,7 @@ export function buildBomFromMeta(meta: ReplaceMetadata): BomResult {
       name: meta.profileLabel,
       description:
         `Iz fotomontaže (${meta.createdAt.slice(0, 10)}): ravnina ` +
-        `${Math.round(meta.planeCm.wCm)} × ${Math.round(meta.planeCm.hCm)} cm, ` +
+        `${Math.round(wCmBom)} × ${Math.round(meta.planeCm.hCm)} cm, ` +
         `${kosLabel(boards)} × rez ${Math.round(cutLenCm * 10) / 10} cm (skupaj ${totalMeters.toFixed(2)} m), ` +
         `element ${plankCm} cm + reža ${gapCm} cm, smer ${orientation === 'horizontal' ? 'vodoravno' : 'pokončno'}. ` +
         `Cena NI znana (ROKSAL cen ne prevajamo) — vpiši nabavno ceno.`,

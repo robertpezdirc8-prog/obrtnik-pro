@@ -11,9 +11,13 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 38/38, photo-replace 391/391, E2E celoten tok
-> fotomontaže zeleno, mobilni 390 brez prelivanja, 0 konzolnih napak**
-> (Task 59–66, oktober 2026).
+> Zadnja polna preverba: **regresija 37/42 skript zeleno** (pet rdečih je zaradi
+> okolja, ne logike: štirje pišejo na `/tmp/*.png`, ki ga na Windowsu ni, en bere
+> trdo kodirano tujo pot), **photo-replace 391/391, assertion 119/119**
+> (FAZA-8, oktober 2026). E2E v brskalniku in `tsc`/`eslint` po FAZA-8 spremembah
+> UI-ja **ŠE NISTA bila pognana** — ta kopija nima `node_modules` in brez njega
+> dev strela ne teče; namestitev je Robertova odločitev. Zadnji dokazani E2E tok
+> (namizje + mobilni 390, 0 konzolnih napak) je iz Task 66, PRED temi spremembami.
 
 ---
 
@@ -216,7 +220,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (38)
+### Verifikacijske skripte (42)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):
@@ -230,14 +234,21 @@ bun tests/verify/roksal-tiles.ts      # kakovost VSEH 32 dekor tlakov — 199 pr
 bun tests/verify/multiview-chain.ts   # veriga fotk / od AB
 bun tests/verify/colmap-model.ts      # SfM/COLMAP
 bun tests/verify/deck-analysis.ts     # analiza dek
+bun tests/verify/assertion.ts         # FAZA-8: dve osi trditev, totalna 25/25 projekcija
+bun tests/verify/plank-layout-width.ts # FAZA-8: neznana širina ravnine (kanon. mera, pravilo 13)
 # … (celoten seznam: tests/verify/)
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (Task 66): polna regresija **38/38 skript zeleno** (pognano z
-izhodnimi kodami, ne citirano), vključno z **photo-replace 391/391**,
-**roksal-tiles 199/199**, **photo-bom 25/25**, **photo-compare 45/45** in
-**photo-profile-suggest 59/59**.
+Zadnja preverba (FAZA-8, 2026-10-15): **42 skript, 37 z izhodno kodo 0**;
+pet rdečih (`canopy-analysis`, `deck-analysis`, `fasada-analysis`, `stair-profile`,
+`tile-grid`) pade samo zaradi okolja (manjkajo `/tmp/*.png` in ena trdo kodirana
+tuja pot), ne zaradi logike. Izmerjeno posamezno: **photo-replace 391/391**,
+**assertion 119/119**, **measurement-status 90/90** (besedilo testa nespremenjeno),
+**multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
+**scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
+**photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**. Assertivnih
+preverjanj skupaj: **2275** (pred FAZA-8 2024).
 
 ### E2E dokazi
 
@@ -290,8 +301,8 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (38 skript), e2e-*.png, make-* orodja
-docs/             # MEASUREMENT-BASELINE.md, gitlab-issues/
+tests/            # verify/ (42 skript), e2e-*.png, make-* orodja
+docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```
 

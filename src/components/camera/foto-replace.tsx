@@ -72,7 +72,8 @@ import {
   drawCompareExport,
 } from '@/lib/photo-compare';
 import { useDraft, useView } from '@/lib/store';
-import { statusColor, statusHint, statusLabel } from '@/lib/measurement-status';
+import { statusColor, statusHint, statusLabel, validateGeometry, validateMetric } from '@/lib/measurement-status';
+import { canExportOrder, canRenderMontage, type GeometricAssurance, type MetricAssurance } from '@/lib/assertion';
 import type { CraftCategory } from '@/lib/camera-types';
 
 // ─── Preslikava ROKSAL profil → barva v VIZ_COLORS (viz.ts) ──────
@@ -153,8 +154,8 @@ interface VersionAux {
   topAlpha: number;
   bottomAlpha: number;
   warnings: string[];
-  scaleTop: number;
-  scaleBottom: number;
+  scaleTop: number | null;
+  scaleBottom: number | null;
 }
 interface VersionRec {
   id: string;
@@ -231,8 +232,8 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
-const fmtN = (v: number, d = 2): string =>
-  v.toLocaleString('sl-SI', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtN = (v: number | null, d = 2): string =>
+  v === null ? '—' : v.toLocaleString('sl-SI', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /** Mali predogled upodobitve za mrežo primerjave profilov (determinističen, širina ≤ maxW). */
 function thumbDataUrl(c: HTMLCanvasElement, maxW: number): string {
@@ -432,12 +433,35 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     return { tl: map(quadPct[0]), tr: map(quadPct[1]), br: map(quadPct[2]), bl: map(quadPct[3]) };
   }, [quadPct, dims]);
 
-  const planeCm = useMemo(() => {
-    const w = Number(wCm.replace(',', '.'));
+  /**
+   * Ravnina iz vnosov monterja. Širina sme ostati PRAZNA — pravilo 11
+   * (FAZA-8 §6): vrata fotomontaže ne sprašujejo po merilu, izris pa
+   * potrebuje eno samo dolžino. Kadar je širina neznana, jo jedro
+   * računa iz kanonične notranje mere (desk je polne širine — rezultat
+   * je na izbiro številke nepremazen), izris navpičnih desk pa JE
+   * nedoločen in jedro to pove z eksplicitno napako.
+   */
+  const planeCm = useMemo<{ wCm: number | null; hCm: number } | null>(() => {
     const h = Number(hCm.replace(',', '.'));
-    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    if (!Number.isFinite(h) || h <= 0) return null;
+    if (wCm.trim() === '') return { wCm: null, hCm: h };
+    const w = Number(wCm.replace(',', '.'));
+    if (!Number.isFinite(w) || w <= 0) return null;
     return { wCm: w, hCm: h };
   }, [wCm, hCm]);
+
+  /** Para trditev (geometrija / merilo) — obe osi ločeno, nikoli seštejeni. */
+  const assurance = useMemo<{ geo: GeometricAssurance; met: MetricAssurance }>(() => {
+    const planeCalibrated = !!planeCm && !!quadPct && quadPct.length === 4 && !!dims;
+    const geo = validateGeometry({ method: 'plane-homography', planeCalibrated }).assurance;
+    // Merilo nosi samo tista dimenzija, ki jo je monter dejansko vtipkal.
+    // Kadar širina NI izmerjena, os merila v širini nima ničesar — stanje je
+    // NONE (manjka mera), ne ASSUMED (domneva). Po pravilu 14 to zapre vrata
+    // naročilnici in jih pusti odprte za izris; jedro isto pove z napako
+    // 'KOSOVNICA NI DOLOČENA', tu pa jo prehitimo pred klikom.
+    const met: MetricAssurance = !planeCalibrated || planeCm?.wCm === null ? 'NONE' : 'REFERENCED';
+    return { geo, met };
+  }, [planeCm, quadPct, dims]);
 
   const selProfile = useMemo(
     () => ROKSAL_PROFILES.find((p) => p.id === profileId) ?? null,
@@ -447,6 +471,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   // kalibracija ravnine za merjenje (ista homografija kot v jedru — ni duplikata)
   const measurePlane = useMemo(() => {
     if (!quadPct || quadPct.length !== 4 || !planeCm || !dims) return null;
+    // Izmera poljubne razdalje v cm potrebuje OBOJE smeri v cm; brez
+    // izmerjene širine je canonična notranja mera lahko usedena za perspektivo,
+    // ne pa za številke cm (pravilo 13).
+    if (planeCm.wCm === null) return null;
     return calibratePlane(quadPct.map(([x, y]) => ({ x, y })), planeCm.wCm, planeCm.hCm, dims);
   }, [quadPct, planeCm, dims]);
 
@@ -499,12 +527,13 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   const baseRenderBlocker = useMemo<string | null>(() => {
     if (!imgEl) return 'Najprej naloži fotografijo (korak 1).';
     if (!quadPct || !quadPx) return 'Označi 4 oglišča ravnine stare ograje (korak 2).';
-    if (!planeCm) return 'Vnesi realno širino in višino ravnine v cm (korak 2).';
+    if (!planeCm) return 'Vnesi višino ravnine v cm (korak 2). Širino lahko pustiš prazno.';
+    if (!canRenderMontage(assurance.geo)) return 'Geometrija ravnine ni potrjena (4 oglišča) — brez nje izris ni utemeljen.';
     if (layoutInfo.error) return layoutInfo.error;
     if (!layoutInfo.layout) return 'Postavitev elementov ni izračunana (korak 2).';
     if (!inpaintRes) return 'Zaženi odstranitev stare ograje (korak 4).';
     return null;
-  }, [imgEl, quadPct, quadPx, planeCm, layoutInfo, inpaintRes]);
+  }, [imgEl, quadPct, quadPx, planeCm, assurance, layoutInfo, inpaintRes]);
 
   const renderBlocker = useMemo<string | null>(() => {
     if (baseRenderBlocker) return baseRenderBlocker;
@@ -616,7 +645,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       if (!measurePlane) {
         toast({
           title: 'Najprej kalibriraj ravnino',
-          description: 'Merjenje po fotki potrebuje oglisča ravnine + realne mere (korak 2) — sicer izmera ne bi bila prava.',
+          description: planeCm && planeCm.wCm === null
+            ? 'Merjenje deske potrebuje tudi izmerjeno širino ravnine (vpiši jo v koraku 2) — brez cm razdalja v pikslih ni mera.'
+            : 'Merjenje po fotki potrebuje oglisča ravnine + realne mere (korak 2) — sicer izmera ne bi bila prava.',
           variant: 'destructive',
         });
         return;
@@ -799,7 +830,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           ...defaultParamsForPattern(profile.pattern as VizPattern),
           elementCm: profile.plankCm,
           spacingCm: profile.gapCm,
-          quadWidthCm: pc.wCm, // prava širina ravnine → gostota vzorca v realnem merilu
+          // 0 = širina NI izmerjena → viz vzame gostoto teksture iz katalogove
+          // privzete širine (defaultQuadWidthCm), ne iz izmišljene mere te ograje.
+          quadWidthCm: pc.wCm ?? 0,
           quadHeightCm: pc.hCm, // prava višina ravnine → pravo število elementov navpično (skladno s postavitvijo po homografiji)
         },
       };
@@ -921,7 +954,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           pattern: profile.pattern,
           elementCm: profile.plankCm,
           spacingCm: profile.gapCm,
-          quadWidthCm: Math.round(pc.wCm),
+          quadWidthCm: pc.wCm === null ? 'ni izmerjena' : Math.round(pc.wCm),
           postEveryCm: 'null',
           materialHonesty: readiness.honestyLabel, // iskrenost gradiva v metapodatkih (original vs. realna fotka)
         },
@@ -1078,6 +1111,17 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   // (ROKSAL cen ne prevajamo); stebri/pritrdilni material se NE izmišljajo — opozorilo.
   const onAddBom = () => {
     if (!result) return;
+    // Par trditve SHRANJENE različice — ne live stanja drsnikov (pravilo 14).
+    const storedGeo: GeometricAssurance = 'FITTED';
+    const storedMet: MetricAssurance = result.meta.planeCm.wCm === null ? 'NONE' : 'REFERENCED';
+    if (!canExportOrder(storedGeo, storedMet)) {
+      toast({
+        title: 'Naročilnica ni mogoča',
+        description: 'Geometrija ravnine je potrjena, merila v širini pa ni: iz te fotomontaže se da pokazati videz, ne pa izračunati dolžin rezov. Izmeri eno samo dolžino (širino ali višino) in potrdi umerjanje.',
+        variant: 'destructive',
+      });
+      return;
+    }
     let bom;
     try {
       bom = buildBomFromMeta(result.meta);
@@ -1457,6 +1501,16 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                 — metoda: znane mere, transformacija: ravninska homografija (4 oglišča).
               </p>
             </div>
+          ) : planeCm && planeCm.wCm === null ? (
+            <div className="space-y-1 rounded-lg border border-green-200 bg-green-50 p-3">
+              <Badge className={statusColor('AUTO_SUGGESTED').badge} data-testid="fr-plane-status">
+                Geometrija: potrjena · Merilo: širina ni izmerjena
+              </Badge>
+              <p className="text-xs text-green-900">
+                Perspektiva sledi izmerjeni višini ravnine ({fmtN(planeCm.hCm, 0)} cm) in 4 ogliščem.
+                Širine ni izmeril nihče, zato je ne prikazujemo kot mero. Izris: {canRenderMontage(assurance.geo) ? 'dovoljen' : 'NI dovoljen'} — naročilnica: {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).
+              </p>
+            </div>
           ) : (
             <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <Badge className="border-amber-300 bg-amber-100 text-amber-800" data-testid="fr-plane-missing">Ni kalibracije</Badge>
@@ -1681,7 +1735,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             </div>
             {!imgEl || !measurePlane ? (
               <p className="text-xs text-amber-900" data-testid="fr-measure-need">
-                Merjenje potrebuje fotografijo + kalibrirano ravnino (korak 2: oglisča + realni meri) — sicer izmera ne bi bila prava.
+                {planeCm && planeCm.wCm === null
+                  ? 'Merjenje deske potrebuje TUDI izmerjeno širino ravnine (izris je geometrijsko potrjen, mere pa ni). Vpiši širino ali izmeri eno dolžino — brez cm na ravnini razdalja v pikslih ni mera.'
+                  : 'Merjenje potrebuje fotografijo + kalibrirano ravnino (korak 2: oglisča + realni meri) — sicer izmera ne bi bila prava.'}
               </p>
             ) : measureSuggest.error ? (
               <p className="text-xs text-destructive" role="alert" data-testid="fr-measure-error">{measureSuggest.error}</p>
@@ -1930,7 +1986,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               </p>
 
               <p className="text-xs text-muted-foreground" data-testid="fr-provenance">
-                Perspektiva: ravnina {fmtN(result.meta.planeCm.wCm, 0)}×{fmtN(result.meta.planeCm.hCm, 0)} cm · merilo vzdolž robov: zgornji {fmtN(result.aux.scaleTop, 3)} cm/px, spodnji {fmtN(result.aux.scaleBottom, 3)} cm/px · ambientna svetloba: faktor {fmtN(result.aux.factor)} ({result.aux.samples} vzorcev) · sence: {fmtN(result.aux.topAlpha)} / {fmtN(result.aux.bottomAlpha)}
+                Perspektiva: ravnina {result.meta.planeCm.wCm === null ? `${fmtN(result.meta.planeCm.hCm, 0)} cm visoka, širina ni izmerjena` : `${fmtN(result.meta.planeCm.wCm, 0)}×${fmtN(result.meta.planeCm.hCm, 0)} cm`} · merilo vzdolž robov: zgornji {fmtN(result.aux.scaleTop, 3)} cm/px, spodnji {fmtN(result.aux.scaleBottom, 3)} cm/px · ambientna svetloba: faktor {fmtN(result.aux.factor)} ({result.aux.samples} vzorcev) · sence: {fmtN(result.aux.topAlpha)} / {fmtN(result.aux.bottomAlpha)}
               </p>
 
               {result.aux.warnings.length > 0 && (

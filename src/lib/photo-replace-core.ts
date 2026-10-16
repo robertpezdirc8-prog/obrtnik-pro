@@ -482,11 +482,26 @@ export function inpaintMask(
 
 export interface PlankLayout { index: number; quad: QuadPx; isPost: boolean }
 
+/**
+ * Kanonična NOTRANJA širina ravnine (cm), uporabljena samo, kadar prava
+ * širina NI znana. Homografija je pri polnih širinah deska invariantna na
+ * izbiro te številke (H' = H ∘ A, dokaz v tests/verify/plank-layout-width.ts),
+ * zato izris desk in rež ne more odvisati od nje. Pravilo 13 (FAZA-8 §6):
+ * ta številka je implementacijski detajl in NIKOLI ne sme biti izpisana
+ * kot mera — zunaj tega modula je edini izhod "širina ni znana".
+ */
+export const CANONICAL_PLANE_WIDTH_CM = 100;
+
 export interface LayoutResult {
   planks: PlankLayout[];
   gaps: QuadPx[];
   posts: PlankLayout[];
-  scaleCmPerPxAtQuad: { top: number; bottom: number };
+  /** cm/px vzdolž zgornjega in spodnjega roba. `null` = širina ravnine ni
+   *  izmerjena (pravilo 13: brez mera ni številke, tudi ne nulice). */
+  scaleCmPerPxAtQuad: { top: number | null; bottom: number | null };
+  /** Ali je širina ravnine (wCm) dejanska izmera? `false` = izris je brez
+   *  stebrov in brez cm/px — geometrija je potrjena, merilo na osi širine ne. */
+  widthKnown: boolean;
   warnings: string[];
 }
 
@@ -500,7 +515,7 @@ export interface LayoutResult {
 export function computePlankLayouts(args: {
   quadPct: [number, number][];        // 4 oglisča v % slike (tl,tr,br,bl po orderQuad)
   imgSize: { w: number; h: number };
-  planeCm: { wCm: number; hCm: number };
+  planeCm: { wCm: number | null; hCm: number };
   plankCm: number; gapCm: number;
   orientation: 'horizontal' | 'vertical';
   postCm: number;
@@ -514,13 +529,24 @@ export function computePlankLayouts(args: {
   if (!Number.isInteger(imgSize?.w) || !Number.isInteger(imgSize?.h) || imgSize.w < 1 || imgSize.h < 1) {
     throw new Error('NEZADOSTNI PODATKI: velikost slike mora biti par pozitivnih celih števil.');
   }
-  if (!Number.isFinite(planeCm?.wCm) || !Number.isFinite(planeCm?.hCm) || planeCm.wCm <= 0 || planeCm.hCm <= 0) {
+  const wGiven = planeCm?.wCm;
+  const widthKnown = wGiven !== null && wGiven !== undefined;
+  if (widthKnown && (!Number.isFinite(wGiven) || (wGiven as number) <= 0)) {
+    throw new Error('NEZADOSTNI PODATKI: realni meri ravnine (wCm, hCm) morata biti pozitivni števili.');
+  }
+  if (!Number.isFinite(planeCm?.hCm) || planeCm.hCm <= 0) {
     throw new Error('NEZADOSTNI PODATKI: realni meri ravnine (wCm, hCm) morata biti pozitivni števili.');
   }
   if (!Number.isFinite(plankCm) || plankCm < 0.3) throw new Error('NEZADOSTNI PODATKI: debelina elementa (plankCm) mora biti ≥ 0,3 cm.');
   if (!Number.isFinite(gapCm) || gapCm < 0) throw new Error('NEZADOSTNI PODATKI: reža (gapCm) ne sme biti negativna.');
   if (orientation !== 'horizontal' && orientation !== 'vertical') {
     throw new Error('NEZADOSTNI PODATKI: smer mora biti "horizontal" ali "vertical".');
+  }
+  // Brez znane širine je številko elementov določiti mogoče SAMO vodoravno
+  // (takrat je prečna mera višina ravnine). Pravilo 11: izris potrebuje eno
+  // samo dolžino — tu je to hCm. Za navpične deske bi bila tista dolžina wCm.
+  if (!widthKnown && orientation !== 'horizontal') {
+    throw new Error('NEZADOSTNI PODATKI: brez znane širine ravnine (wCm) je izris določen samo za vodoravne deske — število navpičnih elementov je odvisno od širine.');
   }
   if (!Number.isFinite(postCm) || postCm < 0) throw new Error('NEZADOSTNI PODATKI: širina stebra (postCm) ne sme biti negativna.');
   if (postCm > 0 && postCm < 0.5) throw new Error('NEZADOSTNI PODATKI: širina stebra pod 0,5 cm ni realna — preveri mere.');
@@ -530,16 +556,20 @@ export function computePlankLayouts(args: {
   const pitch = plankCm + gapCm;
   if (!(pitch > 0)) throw new Error('NEZADOSTNI PODATKI: element + reža morata biti > 0 cm.');
 
+  // Kadar širina ni izmerjena, jo homografija dobi iz kanonične NOTRANJE
+  // mere — izris polnih desk je na to izbiro nepremazen (dokaz: plank-layout-width).
+  const wCm = widthKnown ? (wGiven as number) : CANONICAL_PLANE_WIDTH_CM;
+
   const size = { w: imgSize.w, h: imgSize.h };
   const quadPx = orderQuad(quadPct.map(([x, y]) => pctToPx({ x, y }, size)));
-  const plane = calibratePlane(quadPct.map(([x, y]) => ({ x, y })), planeCm.wCm, planeCm.hCm, size);
+  const plane = calibratePlane(quadPct.map(([x, y]) => ({ x, y })), wCm, planeCm.hCm, size);
   if (!plane) throw new Error('NEZADOSTNI PODATKI: ravnine ni mogoče kalibrirati (degenerirana oglisča).');
   // INVERZNA homografija: ravnina (cm) → fotka (px). Natanko 4 točke
   // določijo homografijo, zato je to resnični inverz kalibracije.
   const planeQuad: XY[] = [
     { x: 0, y: 0 },
-    { x: planeCm.wCm, y: 0 },
-    { x: planeCm.wCm, y: planeCm.hCm },
+    { x: wCm, y: 0 },
+    { x: wCm, y: planeCm.hCm },
     { x: 0, y: planeCm.hCm },
   ];
   const Hinv = solveHomography(planeQuad, quadPx);
@@ -554,15 +584,17 @@ export function computePlankLayouts(args: {
   const dTop = Math.hypot(quadPx[1].x - quadPx[0].x, quadPx[1].y - quadPx[0].y);
   const dBottom = Math.hypot(quadPx[2].x - quadPx[3].x, quadPx[2].y - quadPx[3].y);
   if (dTop < 1e-9 || dBottom < 1e-9) throw new Error('NEZADOSTNI PODATKI: ravnine ni mogoče kalibrirati (degenerirana oglisča).');
-  const scaleTop = planeCm.wCm / dTop;
-  const scaleBottom = planeCm.wCm / dBottom;
+  const scaleTop = widthKnown ? wCm / dTop : null;
+  const scaleBottom = widthKnown ? wCm / dBottom : null;
 
   const warnings: string[] = [];
-  const ratio = Math.max(scaleTop, scaleBottom) / Math.min(scaleTop, scaleBottom);
-  if (ratio > 2.2) warnings.push('Močna perspektiva — preveri oglisča.');
+  if (scaleTop !== null && scaleBottom !== null) {
+    const ratio = Math.max(scaleTop, scaleBottom) / Math.min(scaleTop, scaleBottom);
+    if (ratio > 2.2) warnings.push('Močna perspektiva — preveri oglisča.');
+  }
 
   // elementi: meje LINEARNO v cm-ravnini, št. elementov po dogovorjeni formuli
-  const len = orientation === 'horizontal' ? planeCm.hCm : planeCm.wCm;
+  const len = orientation === 'horizontal' ? planeCm.hCm : wCm;
   const n = Math.floor((len + gapCm) / pitch);
   const planks: PlankLayout[] = [];
   const gaps: QuadPx[] = [];
@@ -572,12 +604,12 @@ export function computePlankLayouts(args: {
     planks.push({
       index: k,
       isPost: false,
-      quad: orientation === 'horizontal' ? rectQuad(0, a, planeCm.wCm, b) : rectQuad(a, 0, b, planeCm.hCm),
+      quad: orientation === 'horizontal' ? rectQuad(0, a, wCm, b) : rectQuad(a, 0, b, planeCm.hCm),
     });
     if (gapCm > 0 && k < n - 1) {
       const g0 = a + plankCm;
       const g1 = (k + 1) * pitch;
-      gaps.push(orientation === 'horizontal' ? rectQuad(0, g0, planeCm.wCm, g1) : rectQuad(g0, 0, g1, planeCm.hCm));
+      gaps.push(orientation === 'horizontal' ? rectQuad(0, g0, wCm, g1) : rectQuad(g0, 0, g1, planeCm.hCm));
     }
   }
   if (n === 0) warnings.push('Ni elementov — preveri mere elementa in reže ter velikost ravnine.');
@@ -586,9 +618,13 @@ export function computePlankLayouts(args: {
   // stebri: vedno NAVPIČNI traki na ravninskih x položajih (širina postCm)
   const posts: PlankLayout[] = [];
   if (postEveryCm !== null && postCm > 0) {
-    for (let k = 0; k * postEveryCm + postCm <= planeCm.wCm + 1e-9; k++) {
-      const x0 = k * postEveryCm;
-      posts.push({ index: k, isPost: true, quad: rectQuad(x0, 0, x0 + postCm, planeCm.hCm) });
+    if (!widthKnown) {
+      warnings.push('Širina ravnine ni izmerjena — vmesni stebri niso izrisani (njihov položaj je odvisen od cm širine).');
+    } else {
+      for (let k = 0; k * postEveryCm + postCm <= wCm + 1e-9; k++) {
+        const x0 = k * postEveryCm;
+        posts.push({ index: k, isPost: true, quad: rectQuad(x0, 0, x0 + postCm, planeCm.hCm) });
+      }
     }
   }
 
@@ -602,7 +638,7 @@ export function computePlankLayouts(args: {
   for (const el of [...planks, ...posts]) if (bboxMax(el.quad) < 4) smallCount++;
   if (smallCount > 0) warnings.push(`Nekateri elementi so v pikslih manjši od 4 px (${smallCount}) — preveri oglisča ali merilo.`);
 
-  return { planks, gaps, posts, scaleCmPerPxAtQuad: { top: scaleTop, bottom: scaleBottom }, warnings };
+  return { planks, gaps, posts, scaleCmPerPxAtQuad: { top: scaleTop, bottom: scaleBottom }, widthKnown, warnings };
 }
 
 // ─── 2e Okluzije (plasti) + svetlobno ujemanje ───────────────
@@ -763,7 +799,7 @@ export interface ReplaceMetadata {
   profileLabel: string;
   catalogSku: string | null;
   texture: { id: string; src: string | null; origin: AssetOriginRef; verification: AssetVerificationRef; realCm: number } | null;
-  planeCm: { wCm: number; hCm: number };
+  planeCm: { wCm: number | null; hCm: number };
   params: Record<string, number | string | boolean>;
   maskHash: string;
   layoutHash: string;
@@ -783,7 +819,7 @@ export interface ReplaceMetadataInput {
   profileLabel: string;
   catalogSku: string | null;
   texture: ReplaceMetadata['texture'];
-  planeCm: { wCm: number; hCm: number };
+  planeCm: { wCm: number | null; hCm: number };
   params: Record<string, number | string | boolean>;
   mask: MaskGrid;
   layout: LayoutResult;
@@ -805,8 +841,23 @@ export function buildReplaceMetadata(input: ReplaceMetadataInput): ReplaceMetada
     throw new Error('NEZADOSTNI PODATKI: catalogSku mora biti null ali neprazen niz (SKU se ne izmišljuje).');
   }
   if (typeof input.createdAt !== 'string' || input.createdAt.length === 0) throw new Error('NEZADOSTNI PODATKI: createdAt je obvezen (podan od zunaj).');
-  if (!Number.isFinite(input.planeCm?.wCm) || !Number.isFinite(input.planeCm?.hCm) || input.planeCm.wCm <= 0 || input.planeCm.hCm <= 0) {
-    throw new Error('NEZADOSTNI PODATKI: realni meri ravnine morata biti pozitivni števili.');
+  const wGivenMeta = input.planeCm?.wCm;
+  const widthKnownMeta = wGivenMeta !== null && wGivenMeta !== undefined;
+  if (widthKnownMeta && (!Number.isFinite(wGivenMeta) || (wGivenMeta as number) <= 0)) {
+    throw new Error('NEZADOSTNI PODATKI: realni meri ravnine morata biti pozitivni števili (ali null, kadar širina ni izmerjena).');
+  }
+  if (!Number.isFinite(input.planeCm?.hCm) || input.planeCm.hCm <= 0) {
+    throw new Error('NEZADOSTNI PODATKI: realni meri ravnine morata biti pozitivni števili (ali null, kadar širina ni izmerjena).');
+  }
+  // Pravilo 13: shranjena različica NE SME trditi, da pozna širino, če jo je
+  // geometrija računala iz kanonične notranje mere — in obratno.
+  if (input.layout && typeof input.layout === 'object'
+    && typeof input.layout.widthKnown === 'boolean' && input.layout.widthKnown !== widthKnownMeta) {
+    throw new Error(
+      widthKnownMeta
+        ? 'NESKLADJJE: metapodatki trdijo izmerjeno širino ravnine, postavitev pa je izračunana brez nje (kanonična notranja mera).'
+        : 'NESKLADJJE: postavitev je izračunana iz izmerjene širine ravnine, metapodatki pa širine ne poznajo.',
+    );
   }
   if (!Number.isInteger(input.imgSize?.w) || !Number.isInteger(input.imgSize?.h) || input.imgSize.w < 1 || input.imgSize.h < 1) {
     throw new Error('NEZADOSTNI PODATKI: velikost slike mora biti par pozitivnih celih števil.');

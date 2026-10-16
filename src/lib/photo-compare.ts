@@ -143,7 +143,11 @@ export interface CompareLabels {
  */
 export function buildCompareLabels(meta: ReplaceMetadata): CompareLabels {
   if (!meta || typeof meta !== 'object') throw new Error('NEZADOSTNI PODATKI: metapodatki manjkajo.');
-  if (!Number.isFinite(meta.planeCm?.wCm) || !Number.isFinite(meta.planeCm?.hCm) || meta.planeCm.wCm <= 0 || meta.planeCm.hCm <= 0) {
+  const wCmLbl = meta.planeCm?.wCm ?? null;
+  if (wCmLbl !== null && (!Number.isFinite(wCmLbl) || wCmLbl <= 0)) {
+    throw new Error('NEZADOSTNI PODATKI: realni meri ravnine morajo biti pozitivni števili.');
+  }
+  if (!Number.isFinite(meta.planeCm?.hCm) || meta.planeCm.hCm <= 0) {
     throw new Error('NEZADOSTNI PODATKI: realni meri ravnine morajo biti pozitivni števili.');
   }
   const date = typeof meta.createdAt === 'string' && meta.createdAt.length >= 10 ? meta.createdAt.slice(0, 10) : 'neznan datum';
@@ -156,7 +160,10 @@ export function buildCompareLabels(meta: ReplaceMetadata): CompareLabels {
   return {
     pred: 'PRED — originalna fotografija (delovna kopija)',
     po: `PO — fotomontaža: ${meta.profileLabel}`,
-    metaLine: `Ravnina ${Math.round(meta.planeCm.wCm)} × ${Math.round(meta.planeCm.hCm)} cm${mere} · ${date} · skripta v${meta.scriptVersion}`,
+    // Pravilo 13 (FAZA-8): neznana širina je IZPISANA, ne tiho nadomeščena.
+    metaLine: wCmLbl === null
+      ? `Ravnina ${Math.round(meta.planeCm.hCm)} cm visoka, širina NI izmerjena${mere} · ${date} · skripta v${meta.scriptVersion}`
+      : `Ravnina ${Math.round(wCmLbl)} × ${Math.round(meta.planeCm.hCm)} cm${mere} · ${date} · skripta v${meta.scriptVersion}`,
     zig: EXPORT_LABEL,
   };
 }

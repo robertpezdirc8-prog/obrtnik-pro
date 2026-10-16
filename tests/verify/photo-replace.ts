@@ -32,6 +32,16 @@ import { ROKSAL_ASSETS, ROKSAL_PROFILES, assetById, profileReadiness } from '../
 import { VIZ_TEXTURES, texturesForPattern } from '../../src/lib/viz-textures';
 import { defaultParamsForPattern, patternPlaneHeightCm } from '../../src/lib/viz';
 
+/**
+ * `scaleCmPerPxAtQuad` je od FAZA-8 naprej lahko `null` (širina ravnine ni
+ * izmerjena). V teh starih preizkusih je širina VEDNO izmerjena, zato
+ * branje zahteva številko in razpade glasno, če jo jedro izgubi.
+ */
+const cmPerPx = (v: number | null): number => {
+  if (v === null || !Number.isFinite(v)) throw new Error(`merilo cm/px ni na voljo (${String(v)}) — pričakovana izmerjena širina`);
+  return v;
+};
+
 let pass = 0, fail = 0;
 const check = (name: string, cond: boolean, info?: string) => {
   if (cond) { pass++; console.log(`  ✓ ${name}`); }
@@ -246,7 +256,7 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('zgornji rob prvega planka x ≈ 20…220 (tol. 2)',
     Math.abs(first.tl.x - 20) <= 2 && Math.abs(first.tr.x - 220) <= 2, `${first.tl.x}…${first.tr.x}`);
   check('scaleCmPerPxAtQuad.top ≈ 1,0 (tol. 0,05)',
-    Math.abs(layout.scaleCmPerPxAtQuad.top - 1.0) <= 0.05, String(layout.scaleCmPerPxAtQuad.top));
+    Math.abs(cmPerPx(layout.scaleCmPerPxAtQuad.top) - 1.0) <= 0.05, String(layout.scaleCmPerPxAtQuad.top));
   check('frontalni pogled: brez opozoril', layout.warnings.length === 0, layout.warnings.join('; '));
   check('reže: ena manj kot elementov (gapCm > 0)', layout.gaps.length === layout.planks.length - 1);
 }
@@ -551,8 +561,8 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('brez vmesnih stebrov (postEveryCm null — iskreno v opombah)', layout.posts.length === 0);
   check('reže: ena manj kot piket (gapCm > 0)', layout.gaps.length === layout.planks.length - 1);
   check('merilo okvirno 0,42–0,44 cm/px (ocenjene mere demo pasu)',
-    layout.scaleCmPerPxAtQuad.top > 0.4 && layout.scaleCmPerPxAtQuad.top < 0.45
-    && layout.scaleCmPerPxAtQuad.bottom > 0.4 && layout.scaleCmPerPxAtQuad.bottom < 0.45,
+    cmPerPx(layout.scaleCmPerPxAtQuad.top) > 0.4 && cmPerPx(layout.scaleCmPerPxAtQuad.top) < 0.45
+    && cmPerPx(layout.scaleCmPerPxAtQuad.bottom) > 0.4 && cmPerPx(layout.scaleCmPerPxAtQuad.bottom) < 0.45,
     JSON.stringify(layout.scaleCmPerPxAtQuad));
   // pikete so NAVPIČNI trakovi: vsaka ožja kot široka (width < height)
   const picketW = (q: QuadPx): number => Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
@@ -637,8 +647,8 @@ const frontalLayoutArgs = (): LayoutArgs => ({
   check('deke so vodoravni trakovi (širina > višina)', layout.planks.every((k) => deckW(k.quad) > deckH(k.quad)));
   // merilo na demo pasu (ocenjene mere — kot 1. primer okvirno 0,42–0,45)
   check('merilo okvirno 0,40–0,46 cm/px (ocenjene mere demo pasu)',
-    layout.scaleCmPerPxAtQuad.top > 0.40 && layout.scaleCmPerPxAtQuad.top < 0.46
-    && layout.scaleCmPerPxAtQuad.bottom > 0.40 && layout.scaleCmPerPxAtQuad.bottom < 0.46,
+    cmPerPx(layout.scaleCmPerPxAtQuad.top) > 0.40 && cmPerPx(layout.scaleCmPerPxAtQuad.top) < 0.46
+    && cmPerPx(layout.scaleCmPerPxAtQuad.bottom) > 0.40 && cmPerPx(layout.scaleCmPerPxAtQuad.bottom) < 0.46,
     JSON.stringify(layout.scaleCmPerPxAtQuad));
   // TILE BREZ SPOJEV: JPEG dekodiran s sharp (že odvisnost) — neodvisna
   // preverba istih invariant, ki jih zagotavlja tests/make-tikovina-tile.ts:
@@ -1348,8 +1358,7 @@ const frontalLayoutArgs = (): LayoutArgs => ({
     const lay = computePlankLayouts(args);
     check(`primerjava profilov: "${p.id}" ima elemente in končno merilo`,
       lay.planks.length > 0
-      && Number.isFinite(lay.scaleCmPerPxAtQuad.top) && lay.scaleCmPerPxAtQuad.top > 0
-      && Number.isFinite(lay.scaleCmPerPxAtQuad.bottom) && lay.scaleCmPerPxAtQuad.bottom > 0,
+      && cmPerPx(lay.scaleCmPerPxAtQuad.top) > 0 && cmPerPx(lay.scaleCmPerPxAtQuad.bottom) > 0,
       JSON.stringify({ planks: lay.planks.length, scale: lay.scaleCmPerPxAtQuad }));
   }
   // PROFILE_COLOR_ID (foto-replace.tsx) pokrije TOČNO vse profile — brez tihega fallbacka
