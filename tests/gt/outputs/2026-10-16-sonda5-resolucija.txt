@@ -1,0 +1,17 @@
+
+===== tests/gt/probe-resolution =====
+fotokorpus: ../fb-hi
+prag 0.85 | toleranca ±2 px | vzorcev 64
+pri vsaki ločljivosti je nespremenjen ISTI modul in ISTI GT.
+Toleranca ±2 px je v deležu višine slike odvisna od ločljivosti, zato
+spodnji stolpec pove, kako stroga je produkcijska mera pri njej:
+maxSide | ±2 px kot % višine | najdenih | zavrnjenih | mediana v obsegu | max v obsegu
+  192 |              1.39 %   |    6     |     4      |          5.5 %          |      20.9 %
+  256 |              1.04 %   |    5     |     5      |          2.3 %          |      10.1 %
+  320 |              0.83 %   |    5     |     5      |          3.0 %          |      10.4 %
+  384 |              0.69 %   |    4     |     6      |          6.5 %          |      10.8 %
+  512 |              0.52 %   |    4     |     6      |          13.2 %          |      19.0 %
+
+ODLOČITEV: izbrana je ločljivost z najmanjšo MEDIANO in MAX napako v
+obsegu, ne tista z največjim številom najdenih pasov. Pokritost je
+posledica, ne cilj.

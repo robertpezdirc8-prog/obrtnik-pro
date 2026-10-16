@@ -1,0 +1,29 @@
+
+===== tests/gt/probe-rail-visibility | maxSide 256 =====
+fotokorpus: ../fb-hi
+prag 0.85 | produkcjska toleranca ±2 px | 64 vzorcev
+Celice so SEG MOD RAZLIKA, kjer je RAZLIKA = SEG − najboljša horizontalka.
+Pozitivna razlika = mera bi lahko ločila; ničelna ali negativasna = NE.
+
+datoteka              rob   nagib |      ±2       |      ±4       |      ±6       |      ±8       | sklep
+../fb-hi/04.jpg       zgoraj  +0.2° |  0.86 0.92 -0.14  |  0.95 0.98 -0.05  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  | NELOČLJIVO z toleranco
+../fb-hi/04.jpg       spodaj  -3.2° |  0.69 1.00 -0.31  |  0.97 1.00 -0.03  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  | NELOČLJIVO z toleranco
+../fb-hi/04.jpg#zgoraj zgoraj  +6.0° |  0.78   —  +0.00  |  0.91   —  +0.06  |  1.00   —  +0.00  |  1.00   —  +0.00  | MERA BI LAHKO POPRAVILA
+../fb-hi/04.jpg#zgoraj spodaj  +4.7° |  1.00   —  +0.00  |  1.00   —  +0.00  |  1.00   —  +0.00  |  1.00   —  +0.00  | NELOČLJIVO z toleranco
+../fb-hi/16.jpg       zgoraj  +1.9° |  0.92 0.95 -0.03  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  | NELOČLJIVO z toleranco
+../fb-hi/16.jpg       spodaj  +1.2° |  0.91 0.95 -0.09  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  | NELOČLJIVO z toleranco
+../fb-hi/15.jpg       zgoraj  -1.5° |  0.89   —  -0.08  |  1.00   —  +0.00  |  1.00   —  +0.00  |  1.00   —  +0.00  | NELOČLJIVO z toleranco
+../fb-hi/15.jpg       spodaj  -9.3° |  0.98   —  +0.22  |  1.00   —  +0.02  |  1.00   —  +0.00  |  1.00   —  +0.00  | MERA BI LAHKO POPRAVILA
+../fb-hi/05.jpg       zgoraj  +2.1° |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  | NELOČLJIVO z toleranco
+../fb-hi/05.jpg       spodaj  +0.0° |  1.00 0.95 +0.00  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  |  1.00 1.00 +0.00  | NELOČLJIVO z toleranco
+
+V obsegu premerjenih tirnic: 10.
+- GT rob (po svoji smernici) preseže prag pri ±2 px: 8 od 10
+- izbrana vrstica ima pri ±2 px VEČ podpore kot GT rob: 4 od 10
+- GT zmaga nad najboljšo horizontalko z razliko > 0,02 pri vsaj eni toleranci: 2 od 10
+- neločljive: ../fb-hi/04.jpg zgoraj; ../fb-hi/04.jpg spodaj; ../fb-hi/04.jpg#zgoraj spodaj; ../fb-hi/16.jpg zgoraj; ../fb-hi/16.jpg spodaj; ../fb-hi/15.jpg zgoraj; ../fb-hi/05.jpg zgoraj; ../fb-hi/05.jpg spodaj
+
+ZAKLJUČEK: samo pri 2 od 10 tirnic bi višja toleranca res odločila v
+prid pravega roba; ostale so neločljive z mero toleranco. Tudi tam, kjer je
+mera odločila, je cena večje tolerance (sonda 3, ±3 px: mediana 16,2 %)
+večja kot korist — robni zemljevid ostane omejitev.

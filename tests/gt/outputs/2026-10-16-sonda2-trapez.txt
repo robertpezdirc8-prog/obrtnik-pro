@@ -1,0 +1,60 @@
+
+===== tests/gt/probe-per-side-rail | maxSide 256 =====
+fotokorpus: ../fb-hi
+prag podpore 0.85 | toleranca 2 px
+Bočno okno = 15 % širine ploskve, sredini pri 25 % in 75 % razteze.
+
+v obsegu ../fb-hi/04.jpg        GT top +0.2° bottom -3.2°
+  GT rob podporen?  celotno okno 0.86 | levo 0.55 | desno 0.91   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik  L +10.1/+0.8  D +9.6/+8.3  (podpora 0.92/1.00, koraka 1/18)
+  V1 → PADEC NA V0 (levo ni pasu, desno ok) — enako kot danes
+
+v obsegu ../fb-hi/04.jpg#zgoraj GT top +6.0° bottom +4.7°
+  GT rob podporen?  celotno okno 0.51 | levo 0.78 | desno 0.75   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik: ZAVRNJEN (brez pasu) → trapež na tej fotki ni kaj definirati
+
+v obsegu ../fb-hi/16.jpg        GT top +1.9° bottom +1.2°
+  GT rob podporen?  celotno okno 0.92 | levo 0.97 | desno 0.77   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik  L +1.3/+2.3  D -4.7/-1.7  (podpora 0.95/0.95, koraka 50/49)
+  V1 TRAPEZ       L -0.4/+4.7  D -2.3/-3.3  (podpora 0.97/1.00 | 1.00/1.00)  vs V0: boljše, SLABŠE, boljše, SLABŠE
+
+v obsegu ../fb-hi/15.jpg        GT top -1.5° bottom -9.3°
+  GT rob podporen?  celotno okno 0.95 | levo 0.91 | desno 0.83   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik: ZAVRNJEN (brez pasu) → trapež na tej fotki ni kaj definirati
+
+v obsegu ../fb-hi/05.jpg        GT top +2.1° bottom +0.0°
+  GT rob podporen?  celotno okno 1.00 | levo 1.00 | desno 0.71   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik  L +2.1/-5.1  D -0.9/-5.1  (podpora 1.00/0.95, koraka 34/25)
+  V1 TRAPEZ       L +2.6/-7.7  D -1.5/-4.6  (podpora 1.00/0.88 | 1.00/1.00)  vs V0: SLABŠE, SLABŠE, SLABŠE, boljše
+
+IZVEN  ../fb-hi/06.jpg        GT top +1.3° bottom +0.6°
+  GT rob podporen?  celotno okno 0.00 | levo 0.00 | desno 0.00   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik: ZAVRNJEN (brez pasu) → trapež na tej fotki ni kaj definirati
+
+IZVEN  ../fb-hi/14.jpg#rombi  GT top +13.7° bottom +3.4°
+  GT rob podporen?  celotno okno 0.45 | levo 0.75 | desno 0.35   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik: ZAVRNJEN (brez pasu) → trapež na tej fotki ni kaj definirati
+
+IZVEN  ../fb-hi/14.jpg#terasa GT top +3.1° bottom +13.6°
+  GT rob podporen?  celotno okno 0.83 | levo 0.88 | desno 1.00   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik  L +5.2/+12.4  D +0.2/-7.6  (podpora 0.94/0.94, koraka 9/18)
+  V1 TRAPEZ       L +7.8/+12.4  D -0.8/-12.3  (podpora 1.00/1.00 | 1.00/1.00)  vs V0: SLABŠE, enako, SLABŠE, SLABŠE
+
+IZVEN  ../fb-hi/22.jpg        GT top -5.1° bottom +0.0°
+  GT rob podporen?  celotno okno 0.86 | levo 1.00 | desno 0.68   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik: ZAVRNJEN (brez pasu) → trapež na tej fotki ni kaj definirati
+
+IZVEN  ../fb-hi/20.jpg        GT top +0.0° bottom +0.0°
+  GT rob podporen?  celotno okno 1.00 | levo 1.00 | desno 1.00   (pod 0.85 = detektor ga NE vidi)
+  V0 pravokotnik  L +1.8/+0.2  D +1.8/+0.2  (podpora 1.00/1.00, koraka 3/5)
+  V1 → PADEC NA V0 (levo ok, desno ni pasu) — enako kot danes
+
+──────── Povzetek (prispevki v obsegu in izven, kot v sondi 1) ────────
+V0 pravokotnik         mediana 2.3 %, max 12.4 %, n=20
+V1 trapež+kombinacija  mediana 3.3 %, max 12.4 %, n=20   (trapezov 3, padcev 2)
+  V1 leva oglišča      mediana 4.7 %, max 12.4 %, n=10
+  V1 desna oglišča     mediana 3.3 %, max 12.3 %, n=10
+
+ODLOČITEV enaka kot pri nagibu: meritev se zavrne, če sta MEDIANA ali MAX
+slabša. Trapež, ki zgreši večje, je dražji od pravokotnika, ker ga mora
+monter popravljati na dveh točkah namesto na eni.

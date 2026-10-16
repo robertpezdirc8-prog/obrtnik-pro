@@ -1,7 +1,8 @@
 // ─── Samodejni predlog namestitvenega pasu (FAZA-9) ──────────
 //
 // DOKUMENTIRANE ODLOČITVE (2026-10-16, meritve na ročno prebranem ground
-// truthu 10 fotk Ograje Lozar — baseline/gt-quads.ts + probe-band-module.ts):
+// truthu 10 fotk Ograje Lozar — dokazno gradivo v tests/gt/, zbrano v
+// tests/gt/README.md):
 //
 //  1. ŠTIRI robovi štirikotnika NISO enakovredni. Zgornji in spodnji rob
 //     namesitvene ploskve sta v robnem zemljevidu resnična črta (podpora
@@ -14,7 +15,9 @@
 //  2. NAKLONA modul NE OCENJUJE. Tri variante (iskanje po nagibu, residualna
 //     prefinitev ±8° s prostim radijem, ista z radijem 3 in pragom koristi) so
 //     izmerjene proti ground truthu: mediana napake POLOŽAJA tirnice na
-//     oglišču kvadrata je 2,3 % višine slike BREZ nagiba in 5,1–6,4 % Z NJEM.
+//     oglišču kvadrata je 2,3 % višine slike BREZ nagiba in 5,1–6,4 % Z NJEM
+//     (te tri številke stojijo v worklog.md, Task 72 — zamrznjenega izpisa sonde
+//     nimata, ker je bila ocenjevalna veja pred meritvijo izvzeta iz kode).
 //     Tirnice v obsegu imajo dejanski nagib 0–3°, pripeti nagib pa zgreši za
 //     2,8–19,1° in vmes tudi NAPAČEN PREDZNAK (16.jpg: GT +1,2° → napoved
 //     −2,5°). Napačen nagib se ekstrapolira do oglišča in uniči položaj, ki je
@@ -32,6 +35,31 @@
 //     3 (04 spodnja terasa, 16 delavnica, 05 fasada); pri 04#zgoraj in 15
 //     ena od tirnic nima podpore → null. Null ni napaka, je pravilen izhod
 //     "ne vem" in UI takrat ostane pri ročnem označevanju.
+//
+//  5. ŠTIRI HIPOTEZI za zmanjšanje preostale napake sta IZMERJENI IN
+//     ZAVRNJENI (skupno pet sond; 5. je diagnostika, ne varianta). Vsaka je
+//     poskušala popraviti tisto, kar ostane po odločitvi 2 (mediana
+//     2,3 %, max 10,1 % na ogliščih v obsegu):
+//       a) TRAPEŽ — tirnici se zmere ločeno v ozkem levem in desnem oknu
+//          (tests/gt/probe-per-side-rail.ts): mediana SKOČI na 3,3 %, pravi GT
+//          rob pa v bočnem oknu podpore 0,85 sploh ne doseže (0,55/0,77/0,71).
+//       b) USTAVI SE NA ZUNANJI zadetek namesto na prvi
+//          (tests/gt/probe-stop-rule.ts): 8,0 % / max 24,3 % z eno hudo napako.
+//       c) USTAVI SE NA NAJBOLJŠO podporo: 4,6 % / max 24,3 % — na mediani je
+//          boljša, na maxu padne, ker je napačna vrstica pogosto MOČNEJE
+//          podprta od prave.
+//       d) DRUGAČNA DELOVNA LOČLJIVOST (tests/gt/probe-resolution.ts):
+//          192 → 5,5 %, 256 → 2,3 %, 320 → 3,0 %, 384 → 6,5 %, 512 → 13,2 %.
+//          maxSide 256 ni privzetek, je izmerjeni optimum.
+//     Razlog zakaj (a)–(d) ne morejo uspeti, je v tests/gt/probe-rail-visibility.ts:
+//     pri ±2 px GT rob sicer preseže prag v 8 od 10 tirnic, a v 4 od 10 ima
+//     napačna vrstica, ki jo izbere modul, VEČ podpore od prave; z občutno
+//     prednostjo (> 0,02) GT zmaga samo v 2 od 10. Omejitev je ROBNI
+//     ZEMLJEVID (Sobel na 256 px), ne pravilo iskanja — notranji spoj panela je
+//     na večini fotk robatejši od dejanskega roba ploskve. Naslednji korak v
+//     natančnosti bi bil drug robni zemljevid, kar je nova odvisnost; dokler
+//     ga ni, je ta modul takšen kot je, njegov rezultat pa sme biti samo
+//     predlog (odločitev 3).
 //
 // Čiste funkcije, deterministično, brez AI in brez novih odvisnosti.
 

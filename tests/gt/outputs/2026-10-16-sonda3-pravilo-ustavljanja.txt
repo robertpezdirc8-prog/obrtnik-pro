@@ -1,0 +1,50 @@
+
+===== tests/gt/probe-stop-rule | maxSide 256 =====
+fotokorpus: ../fb-hi
+prag 0.85 | tol 2 px | vzorcev 64
+VIDNOST = podpora DEJANSKEGA GT roba v istem oknu. Pod pragom = nobeno
+pravilo ustavljanja ga ne more najti.
+
+======== V0 prvi zadetek (produkcija) ========
+v obsegu ../fb-hi/04.jpg        vidnost 0.86/0.95 | podpora 0.92/1.00 koraka 1/18 | višina 18 % | L +10.1/+0.8 D +9.6/+8.3
+v obsegu ../fb-hi/04.jpg#zgoraj → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.51/0.25)
+v obsegu ../fb-hi/16.jpg        vidnost 0.92/0.80 | podpora 0.95/0.95 koraka 50/49 | višina 83 % | L +1.3/+2.3 D -4.7/-1.7
+v obsegu ../fb-hi/15.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.95/0.26)
+v obsegu ../fb-hi/05.jpg        vidnost 1.00/1.00 | podpora 1.00/0.95 koraka 34/25 | višina 33 % | L +2.1/-5.1 D -0.9/-5.1
+IZVEN  ../fb-hi/06.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.00/1.00)
+IZVEN  ../fb-hi/14.jpg#rombi  → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.45/0.20)
+IZVEN  ../fb-hi/14.jpg#terasa vidnost 0.83/0.55 | podpora 0.94/0.94 koraka 9/18 | višina 16 % | L +5.2/+12.4 D +0.2/-7.6
+IZVEN  ../fb-hi/22.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.86/0.42)
+IZVEN  ../fb-hi/20.jpg        vidnost 1.00/1.00 | podpora 1.00/1.00 koraka 3/5 | višina 8 % | L +1.8/+0.2 D +1.8/+0.2
+→ najdenih 5, zavrnjenih 5 | V OBSEGU: mediana 4.7 %, max 10.1 % (n=12) | VSE: mediana 2.3 %, max 12.4 % | hudih (>15 %): 0
+
+======== V2 zunanji zadetek ========
+v obsegu ../fb-hi/04.jpg        vidnost 0.86/0.95 | podpora 1.00/0.95 koraka 46/29 | višina 57 % | L -23.8/+6.5 D -24.3/+14.0
+v obsegu ../fb-hi/04.jpg#zgoraj → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.51/0.25)
+v obsegu ../fb-hi/16.jpg        vidnost 0.92/0.80 | podpora 0.95/1.00 koraka 56/56 | višina 89 % | L -2.0/+4.7 D -8.0/+0.7
+v obsegu ../fb-hi/15.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.95/0.26)
+v obsegu ../fb-hi/05.jpg        vidnost 1.00/1.00 | podpora 1.00/1.00 koraka 58/40 | višina 49 % | L -8.4/+0.6 D -11.4/+0.6
+IZVEN  ../fb-hi/06.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.00/1.00)
+IZVEN  ../fb-hi/14.jpg#rombi  → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.45/0.20)
+IZVEN  ../fb-hi/14.jpg#terasa vidnost 0.83/0.55 | podpora 0.88/0.94 koraka 22/21 | višina 22 % | L -0.5/+12.4 D -5.5/-7.6
+IZVEN  ../fb-hi/22.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.86/0.42)
+IZVEN  ../fb-hi/20.jpg        vidnost 1.00/1.00 | podpora 1.00/1.00 koraka 65/17 | višina 56 % | L -39.8/+5.7 D -39.8/+5.7
+→ najdenih 5, zavrnjenih 5 | V OBSEGU: mediana 8.0 %, max 24.3 % (n=12) | VSE: mediana 7.6 %, max 39.8 % | hudih (>15 %): 2
+
+======== V3 najboljša podpora ========
+v obsegu ../fb-hi/04.jpg        vidnost 0.86/0.95 | podpora 1.00/1.00 koraka 43/18 | višina 52 % | L -23.8/+0.8 D -24.3/+8.3
+v obsegu ../fb-hi/04.jpg#zgoraj → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.51/0.25)
+v obsegu ../fb-hi/16.jpg        vidnost 0.92/0.80 | podpora 0.95/1.00 koraka 50/50 | višina 84 % | L +1.3/+3.1 D -4.7/-0.9
+v obsegu ../fb-hi/15.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.95/0.26)
+v obsegu ../fb-hi/05.jpg        vidnost 1.00/1.00 | podpora 1.00/1.00 koraka 34/26 | višina 33 % | L +2.1/-4.6 D -0.9/-4.6
+IZVEN  ../fb-hi/06.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.00/1.00)
+IZVEN  ../fb-hi/14.jpg#rombi  → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.45/0.20)
+IZVEN  ../fb-hi/14.jpg#terasa vidnost 0.83/0.55 | podpora 0.94/0.94 koraka 9/18 | višina 16 % | L +5.2/+12.4 D +0.2/-7.6
+IZVEN  ../fb-hi/22.jpg        → ZAVRNJENO (vidnost GT zgoraj/spodaj 0.86/0.42)
+IZVEN  ../fb-hi/20.jpg        vidnost 1.00/1.00 | podpora 1.00/1.00 koraka 3/5 | višina 8 % | L +1.8/+0.2 D +1.8/+0.2
+→ najdenih 5, zavrnjenih 5 | V OBSEGU: mediana 4.6 %, max 24.3 % (n=12) | VSE: mediana 3.1 %, max 24.3 % | hudih (>15 %): 1
+
+=== kontrola: differentna V0 mora biti ENAKA produkcijskemu modulu ===
+  enako v 10 od 10 primerov (razlik 0)
+
+ODLOČITEV: odloča MEDIANA in MAX v obsegu, ne število najdenih pasov.
