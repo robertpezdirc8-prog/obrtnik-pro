@@ -77,6 +77,7 @@ import { useDraft, useView } from '@/lib/store';
 import { statusColor, statusHint, statusLabel, validateGeometry, validateMetric } from '@/lib/measurement-status';
 import {
   canExportOrder, canRenderMontage, renderPromiseOf, renderPromiseHint,
+  geometryColor, geometryHint, geometryLabel,
   type GeometricAssurance, type MetricAssurance, type RenderPromise,
 } from '@/lib/assertion';
 import type { CraftCategory } from '@/lib/camera-types';
@@ -390,6 +391,12 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     setInpaintRes(null);
     setQuadPct(null);
     setCornerCount(0);
+    // Nova fotografija ⇒ nobena ravnina ni potrjena in noben predlog ne sme
+    // preživeti menjave slike: potrditev velja samo za tisto sliko, na kateri
+    // jo je monter pogledal (invariant, ne varovalka).
+    setPlaneConfirmed(true);
+    setBandTaps(null);
+    setBandInfo(null);
     setTool('corners');
     setCloneStage('off');
     setCloneSrcUi(null);
@@ -544,17 +551,21 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   const baseRenderBlocker = useMemo<string | null>(() => {
     if (!imgEl) return 'Najprej naloži fotografijo (korak 1).';
     if (!quadPct || !quadPx) return 'Označi 4 oglišča ravnine stare ograje (korak 2).';
-    if (!planeCm) return 'Vnesi višino ravnine v cm (korak 2). Širino lahko pustiš prazno.';
+    // VRATNI RED: domena veljavnosti geometrije je hujša pomanjkljivost kot
+    // manjkajoči centimeter — izris je zaprt zaradi nepotrjenega predloga, ne
+    // zaradi višine, in korak 6 mora reči tisto, kar res drži (izmerjeno v
+    // brskalniku: vrstni red je napovedal cm pred predlogom).
     if (!canRenderMontage(assurance.geo)) {
       return planeConfirmed
         ? 'Geometrija ravnine ni potrjena (4 oglišča) — brez nje izris ni utemeljen.'
         : 'Štirikotnik je samodejni predlog in ga monter še ni potrdil — izris je zaprt, dokler oglišč ne pregledaš (korak 2).';
     }
+    if (!planeCm) return 'Vnesi višino ravnine v cm (korak 2). Širino lahko pustiš prazno.';
     if (layoutInfo.error) return layoutInfo.error;
     if (!layoutInfo.layout) return 'Postavitev elementov ni izračunana (korak 2).';
     if (!inpaintRes) return 'Zaženi odstranitev stare ograje (korak 4).';
     return null;
-  }, [imgEl, quadPct, quadPx, planeCm, assurance, layoutInfo, inpaintRes]);
+  }, [imgEl, quadPct, quadPx, planeCm, planeConfirmed, assurance, layoutInfo, inpaintRes]);
 
   /**
    * Obložen izris (najdba F3): jedrna funkcija, ne lokalna logika — parameter je
@@ -702,7 +713,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       if (!res) {
         toast({
           title: 'Pasu ograje ni bilo mogoče najti',
-          description: 'Modul noče ugibati — klikni dve točki bolj sredinsko ob robu ograje (ohromjeno ozadje, močna senca ali prekratka miza lahko zakrijeta tirnici) ali označi 4 oglišča ročno.',
+          description: 'Modul noče ugibati — klikni dve točki bolj sredinsko ob robu ograje (pestro ozadje, močna senca ali prekratka razdalja med klikoma lahko zakrijejo tirnici) ali označi 4 oglišča ročno.',
           variant: 'destructive',
         });
         return;
@@ -1651,11 +1662,23 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               </Badge>
               <p className="text-xs text-green-900">
                 {quadComplete
-                  ? <>Geometrija: potrjena (4 oglišča) · merilo: samo izmerjena višina ravnine ({fmtN(planeCm.hCm, 0)} cm).
+                  ? <>Geometrija: {planeConfirmed ? 'potrjena (4 oglišča)' : 'PREDLAGANA in še NE potrjena'} · merilo: samo izmerjena višina ravnine ({fmtN(planeCm.hCm, 0)} cm).
                     Širine ni izmeril nihče, zato je ne prikazujemo kot mero.
                     Izris: {renderPromiseHint(renderPromise)} — naročilnica: {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).</>
                   : <>Višina je izmerjena ({fmtN(planeCm.hCm, 0)} cm), širina ne, oglišča pa še niso dokončana (manj kot 4/4) —
                     zato ni ne geometrije ne mere. Označi 4 oglisča.</>}
+              </p>
+            </div>
+          ) : planeCm && quadComplete && !planeConfirmed ? (
+            <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <Badge className={geometryColor('SUGGESTED').badge} data-testid="fr-plane-status">
+                {geometryLabel('SUGGESTED')}
+              </Badge>
+              <p className="text-xs text-amber-900">
+                {geometryHint('SUGGESTED')} Vneseni meri ({fmtN(planeCm.wCm, 0)}×{fmtN(planeCm.hCm, 0)} cm) sta resnični, a
+                perspektiva še NI umerjena — predlog ravnine lahko leži na napačni črti. Potrdi predlog ali označi oglišča
+                sam: izris {renderPromiseHint(renderPromise)}, naročilnica{' '}
+                {canExportOrder(assurance.geo, assurance.met) ? 'mogoča' : 'NI mogoča'} (pravilo 11 in 14, FAZA-8).
               </p>
             </div>
           ) : planeCm && quadComplete ? (
