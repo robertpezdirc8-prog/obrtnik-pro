@@ -1761,3 +1761,26 @@ Work Log:
 Stage Summary:
 - Pravilo 11 je zdaj res vsiljeno do izpisa vrednosti: vrata se sklenejo po paru `(geo, met)`, izjema F3 (pokončen profil potrebuje širino) pa je zapisana v dokumentu in jo UI pove pred klikom, ne šele po napaki.
 - Nič pushano. Lokalni commiti: `4db835d` (FAZA-8), `6aebb83` (verifikacija), ta (F3 UI). 0 AI, 0 novih odvisnosti, 0 mrežnih klicev aplikacije.
+
+---
+Task ID: 70
+Agent: Qoder (glavni agent, refaktorizacija F3 v jedro)
+Task: Obložen izris (kaj UI SME reči o izrisu) prestavljen iz komponente v jedro + lasten verify skript, da se klasa napak, ki jo je našel šele brskalnik, sedaj ujame statično. Ukaz se glasi naprej; NIČ pusha, NIČ brisanja.
+
+Work Log:
+- Razlog za poseg: najdba 1 in F3 sta bili obe UI-ja — nobena od 391 statičnih preverjanj je ni mogla videti, ker je bila logika zaprta v `foto-replace.tsx`. To je kršilo tudi načelo izolacije: ena sama komponenta je odločala o pogodbi, ki jo jedro pozna drugače.
+- NOVO v `src/lib/assertion.ts`: `type RenderPromise = 'closed' | 'needsWidth' | 'open'`, `renderPromiseOf({geo, widthMeasured, profileOrientation})` in `renderPromiseHint(...)` (besedilo je v jedru, da ga test zapne in prepove »dovoljen« tam, kjer kaj manjka). `canRenderMontage` je nespremenjen — VRATA ostanejo geometrijska, nova funkcija je OBLOŽBA.
+- `foto-replace.tsx`: lokalni memo je zamenjan s klicem `renderPromiseOf` (+ uvoz `renderPromiseHint`, `type RenderPromise`); besedil v komponenti ni več.
+- NOVO `tests/verify/render-promise.ts` **25/25**: izčrpna tabela **30 kombinacij** (5 geo × 2 širini × 3 profili) primerjana proti **zunanjemu oracle-u** (zapisan kot pogoj nad vrati in F3-mejo, ne kot kopija implikacije), razpored 18 zaprtih / 10 odprtih / 2 needsWidth, invariante (nikoli needsWidth ob izmerjeni širini; nikoli needsWidth brez izbranega profila; edina pot do needsWidth = `canRenderMontage && !širina && pokončen`), ločitev vrat od obloženega izpisa (`canRenderMontage('FITTED')` je `true` tudi kadar je obložen izpis `needsWidth`), determinizem, nevtralnost vhoda (objekt ne mutate-a), tri različna besedila in dolžinski profil (≤ 110 znakov, ker gre za 390 px).
+- **Mutacijski preizkus** (ker je 25/25 v prvem poskusu samo po sebi sumljivo): v jedru sem `vertical` zamenjal z `horizontal` → skript je padel na **19 OK / 6 NAPAK**; po vrnitvi datoteke iz backupa spet **25/25** in `git diff` nad `assertion.ts` je pokazal samo prihodke nove funkcije (34 vrstic, nič drugih sprememb). Tabela torej res brani logiko in ni zrcalo impl.
+- Regresija celotnega nabora (izmerjeno, 43 skriptov): **38 z izhodno kodo 0**, istih 5 rdečih zaradi okolja (`canopy-analysis`, `deck-analysis`, `fasada-analysis`, `stair-profile`, `tile-grid`). `assertion` 119/119 (NESPREMENJENO — nova funkcija je aditivna), `photo-replace` 391/391, `measurement-status` 90/90, `scale-split` 56/56, `multiview-split` 50/50, `plank-layout-width` 26/26.
+- `tsc --noEmit`: izhodna koda 1 (tri zaporedni zagoni identičen izpis), 5 napak, **0 na `src/`**. Dokumentirano kot flapper: en zagon takoj za zapisom datoteke je vrnil kodo 2 z BAJT-ENAKIM izpisom — izpis je vir resnice, koda v tem primeru ne.
+- `eslint .`: izhodna koda 0.
+- E2E (mobilni 390×844, `next dev`, refaktorizirana koda): HMR je stanje ponastavil in je s tem mimogrede pokazal TRETJI iskreni izpis — ob nepopolnih ogliščih značka pravi »Višina je izmerjena (110 cm), širina ne, oglišča pa še niso dokončana (manj kot 4/4) — zato ni ne geometrije ne mere« (to je bila druga polovica najdbe 1). Po demo štirikotniku: brez izbranega profila → »Izris: dovoljen (vodoravni profili)«; po izbiri `piketna-18` (pokončen) → »Izris: ZAPRT — izbrani profil je pokončen …«, `fr-render-blocker` navaja isti razlog kot jedro, `fr-render` gumb ne obstaja, `scrollWidth 375 / overflow false`, konzola: 0 napak.
+- Številke v dokumentih usklajene z meritvijo: 42 → **43** skriptov, 37 → **38** zelenih (README ×3, BASELINE §5, FAZA-8 spec §0), agregat assertivnih preverjanj 2275 → **2300** (+25 `render-promise`, vsak blok izmerjen posebej), BASELINE §2.6 ima novo vrstico »Obložen izris (F3)« z mutacijskim preizkusom vred.
+
+Stage Summary:
+- Klasa napak, ki jo je najdba 1 razkrila (UI obljublja več, kot drži), je zdaj pokrita statično: obloženi izpis je čista funkcija v jedru z 25 preverjanji in mutacijskim dokazom, komponenta pa nima več lastne logike.
+- Nič pushano. Lokalni commiti: `4db835d` (FAZA-8), `6aebb83` (verifikacija), `af1bb6b` (F3 UI), ta (F3 v jedro + skript).
+- BLOKIRANO NA ROBERTU nespremenjeno: ročne meritve `05..08` + ≥ 5 parov, potrditev pravila 11, ROKSAL gradiva.
+- 0 AI, 0 novih odvisnosti, 0 mrežnih klicev aplikacije, nič pobrisanega.

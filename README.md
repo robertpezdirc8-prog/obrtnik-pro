@@ -11,7 +11,7 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > **Stanje:** aktiven notranji razvoj. Pristop je *dokazno načelo* — vsaka funkcija
 > ima verifikacijske teste in E2E posnetke; ničesar ni treba »verjeti na besedo«
 > (glej [Načela](#načela) in [Testi in dokazi](#testi-in-dokazi)).
-> Zadnja polna preverba: **regresija 37/42 skript zeleno** (pet rdečih je zaradi
+> Zadnja polna preverba: **regresija 38/43 skript zeleno** (pet rdečih je zaradi
 > okolja, ne logike: štirje pišejo na `/tmp/*.png`, ki ga na Windowsu ni, en bere
 > trdo kodirano tujo pot), **photo-replace 391/391, assertion 119/119**
 > (FAZA-8, oktober 2026). **PONOVLJENO PO FAZA-8 (2026-10-16, `node_modules` nameščeni):**
@@ -242,21 +242,22 @@ bun tests/verify/colmap-model.ts      # SfM/COLMAP
 bun tests/verify/deck-analysis.ts     # analiza dek
 bun tests/verify/assertion.ts         # FAZA-8: dve osi trditev, totalna 25/25 projekcija
 bun tests/verify/plank-layout-width.ts # FAZA-8: neznana širina ravnine (kanon. mera, pravilo 13)
+bun tests/verify/render-promise.ts   # F3: kaj UI SME obložiti o izrisu (30-kombinacijska tabela)
 # … (celoten seznam: tests/verify/)
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (FAZA-8, 2026-10-15): **42 skript, 37 z izhodno kodo 0**;
+Zadnja preverba (2026-10-16, FAZA-8 + F3): **43 skript, 38 z izhodno kodo 0**;
 pet rdečih (`canopy-analysis`, `deck-analysis`, `fasada-analysis`, `stair-profile`,
 `tile-grid`) pade samo zaradi okolja (manjkajo `/tmp/*.png` in ena trdo kodirana
 tuja pot), ne zaradi logike. Izmerjeno posamezno: **photo-replace 391/391**,
 **assertion 119/119**, **measurement-status 90/90** (besedilo testa nespremenjeno),
 **multiview 104**, **multiview-chain 66**, **multiview-sfm 122**, **multiview-split 50**,
 **scale-split 56**, **plank-layout-width 26**, **roksal-tiles 199/199**,
-**photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**. Assertivnih
-preverjanj skupaj: **2275** = 2024 (izmerjeni baseline, `../baseline/BASELINE-2026-10-15.md`)
-+ 251 (štiri NOVE skripte: 119 + 56 + 50 + 26). Oba delova številke sta izmerjena, ne sešteta
-iz spomina.
+**photo-bom 25/25**, **photo-compare 45/45**, **photo-profile-suggest 59/59**, **render-promise
+25/25**. Assertivnih preverjanj skupaj: **2300** = 2024 (izmerjeni baseline,
+`../baseline/BASELINE-2026-10-15.md`) + 251 (štiri NOVE FAZA-8 skripte: 119 + 56 + 50 + 26) + 25
+(render-promise, F3). Vsak del številke je izmerjen posamezno, ne seštevajo se iz spomina.
 
 ### E2E dokazi
 
@@ -309,7 +310,7 @@ src/
   lib/            # jedro: meritve, analize, fotomontaža, poslovanje
 prisma/           # shema (Category, Product, Offer, Invoice, Photo, TimeEntry, DiaryEntry, …)
 public/roksal/    # uradna gradiva roksal.com + dekor tile-i
-tests/            # verify/ (42 skript), e2e-*.png, make-* orodja
+tests/            # verify/ (43 skript), e2e-*.png, make-* orodja
 docs/             # MEASUREMENT-BASELINE.md, FAZA-8-RAZCEP-TRDITEV.md, gitlab-issues/
 worklog.md        # delovni dnevnik razvoja (po Task ID)
 ```

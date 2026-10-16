@@ -22,6 +22,7 @@ Narejeno, z merjenim dokazom (vsako številko je izpisal bun, ne spomin):
   pred/po, UI) — `plank-layout-width` **26/26** na geometriji `fb-hi/04.jpg`, izmerjena meja
   neodvisnosti 2,274e-13 px; `photo-replace` **391/391**.
 - Sweep: **42 skriptov, 37 z izhodno kodo 0**; istih 5 rdečih kot pred posegom in vseh 5
+  (po tem pasu je bil dodan 43. skript `render-promise` 25/25 → 43/38, Task 70).
   zaradi manjkajočih datotek v tem okolju (`/tmp/*.png`, ena tuja absolutna pot).
 - Dokumentacija: BASELINE §2.6/§3/§4/§5/§6 (pravila 10–14), ta spec §8–§9, README, worklog
   Task 67.

@@ -155,6 +155,40 @@ export function canExportOrder(geo: GeometricAssurance, met: MetricAssurance): b
   return geometryAtLeast(geo, MIN_GEOMETRY_FOR_ORDER);
 }
 
+/**
+ * Kaj sme korak 2 OBLOŽITI o izrisu? Par `(geo, met)` pri tem NI dovolj — to je
+ * najdba F3. Pokončen profil šteje elemente čez širino ravnine, zato je njegov
+ * izris brez izmerjene širine nedoločen in jedro to pove z izrecno napako
+ * (`photo-replace-core.ts:545-550`). `canRenderMontage` ostane VRATA (geometrija,
+ * brez cm); ta funkcija je OBLOŽBA, ki upošteva tudi izbrani profil — brez nje bi
+ * UI pisal »Izris: dovoljen«, korak 6 pa »NI mogoč« (ista vrsta neiskrenosti kot
+ * nepoštena CALIBRATED značka, samo po drugi osi).
+ */
+export type RenderPromise = 'closed' | 'needsWidth' | 'open';
+
+export function renderPromiseOf(input: {
+  geo: GeometricAssurance;
+  widthMeasured: boolean;
+  profileOrientation: 'horizontal' | 'vertical' | null;
+}): RenderPromise {
+  if (!canRenderMontage(input.geo)) return 'closed';
+  if (!input.widthMeasured && input.profileOrientation === 'vertical') return 'needsWidth';
+  return 'open';
+}
+
+/**
+ * Besedilo obloženega izpisa — izrecno v jedru, da ga test lahko zapne in
+ * prepove »dovoljen« tam, kjer kaj manjka.
+ */
+export function renderPromiseHint(p: RenderPromise): string {
+  const HINTS: Record<RenderPromise, string> = {
+    closed: 'NI dovoljen',
+    needsWidth: 'ZAPRT — izbrani profil je pokončen, njegovo število elementov pa je odvisno od neizmerjene širine',
+    open: 'dovoljen (vodoravni profili)',
+  };
+  return HINTS[p];
+}
+
 // ─── Besedišče za UI ──────────────────────────────────────────────
 
 export function geometryLabel(g: GeometricAssurance): string {
