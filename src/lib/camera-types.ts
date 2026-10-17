@@ -1,6 +1,7 @@
 // ─── Tipi za pametno kamero (samodejna skriptna analiza) ────
 
 import type { CraftId, CraftInputs } from './types';
+import type { PriceKey } from './cenik';
 // Statusna pogodba meritev (Task 36) — samo tipi, brez cirkularnega uvoza
 // (measurement-status NE uvaža camera-types).
 import type { CalibrationMethod, MeasurementStatus } from './measurement-status';
@@ -106,7 +107,9 @@ export interface SuggestedProduct {
   id: string;
   name: string;
   unit: string;
-  unitPrice: number;
+  /** `sku` je ključ v Ceniku; `null` pomeni, da ta izdelek cene nima od kod.
+   *  Cen (ŠE vedno) ni v tem objektu — aplikacija jih ne pozna (Task 88). */
+  sku: PriceKey | null;
 }
 
 export interface AnalyzeResponse {

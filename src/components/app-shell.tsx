@@ -2,13 +2,14 @@
 
 import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer, NotebookPen } from 'lucide-react';
+import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer, NotebookPen, Wallet } from 'lucide-react';
 import { useDraft, useView, useFieldMode, type AppView } from '@/lib/store';
 import { Dashboard } from './dashboard';
 import { CalculatorsView } from './calculators-view';
 import { OfferEditor } from './offer-editor';
 import { OffersList } from './offers-list';
 import { CatalogView } from './catalog-view';
+import { CenikView } from './cenik-view';
 import { SettingsView } from './settings-view';
 import { TimesheetView } from './timesheet-view';
 import { DiaryView } from './diary-view';
@@ -18,6 +19,7 @@ const NAV: { id: AppView; label: string; icon: React.ElementType }[] = [
   { id: 'domov', label: 'Domov', icon: Home },
   { id: 'kamera', label: 'Pametna kamera', icon: ScanSearch },
   { id: 'kalkulatorji', label: 'Nova ponudba', icon: ClipboardList },
+  { id: 'cenik', label: 'Cenik', icon: Wallet },
   { id: 'ponudbe', label: 'Ponudbe', icon: FileText },
   { id: 'časovnica', label: 'Časovnica', icon: Timer },
   { id: 'dnevnik', label: 'Dnevnik', icon: NotebookPen },
@@ -118,6 +120,7 @@ export function AppShell() {
         {view === 'časovnica' && <TimesheetView />}
         {view === 'dnevnik' && <DiaryView />}
         {view === 'katalog' && <CatalogView />}
+        {view === 'cenik' && <CenikView />}
         {view === 'nastavitve' && <SettingsView />}
       </main>
 

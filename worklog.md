@@ -2435,3 +2435,45 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   **36/36** (vsi ponovljene po ukinitvi DOM meja in po vejčnih izpisih); `settings-input-guard`
   **175/175**; sweep **3754 OK / 0 NAPAK** v 47/54 skriptih; `tsc` 0; `eslint` 0 zapisov.
 - Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
+
+## Task 88 — CENE IMA OBRTNIK, NE APLIKACIJA: Cenik, zavrnjen denar, zavesten izbris (2026-10-18)
+
+- **KAJ JE BILO NAREJENO.** Aplikacija je doslej pisala denar: v `pricing.ts` in `seed.ts` je bilo
+  zapisanih ~50 številk (145 €/m za aluminijasto ograjo, 520 €/kos za okno, 28 €/m² za montažo
+  terase), napisal pa jih je programer, ne človek, ki bo po njih izstavil račun. Zdaj jih ne pozna
+  več nobena koda. `src/lib/cenik.ts` je register 54 vrstic — ime, merska enota, ključ — in edini
+  vir teh treh stvari za katalog, kalkulator, Cenik in dokument. Novo zaslonsko okno **Cenik** ima
+  eno samo polje na registrirano vrstico; kalkulator izmeri KOLIČINO in poleg nje pokaže
+  »količina × cena ni vpisana«, denar pa se na zaslonu pojavi šele, ko ga je obrtnik sam vpisal
+  in shranil.
+- **DOKUMENT JE ZAPRT, DOKLER JE KATERA CENA PRAZNA.** Seštevek je ZAVRNJEN in
+  imenuje število vrstic, gumb »Dodaj v ponudbo« je zaprt (DOM lastnost `disabled`, ne videz), GBB
+  opcije se ne prikažejo, urejevalnik ne shrani in ne natisne. Nobena od teh poti ne izmisli
+  nadomestne številke in nobena ne priredi manjkajoče cene na 0 €.
+- **PRAZNO NI IZBRIS (88g).** Prazno polje je NEODLOČENOST: na strežnik ne gre nič, prejšnja cena
+  ostane. Izbris je zavesten gumb »Izbriši ceno«, ki se pojavi SAMO na vrstici, ki ima na
+  strežniku že shranjeno vrednost; `null` nastane izključno na tem gumbu. Test to dokaže z obeh
+  strani: izprazniti polje in pritisniti Shrani NE more izbrisati cene (na strežniku ostane
+  24 €), gumb pa jo odstrani in takoj zapre dokument, ki jo je potreboval.
+- **SLOVENŠČINA ŠTEJE ENAKO.** `1 cen vpisanih` in `1 vrstic brez cene` sta bili napaki v
+  sporočilih, ki smo jih pisali v tem Tasku — monter ju še ni videl, videl pa bo, če ostaneta.
+  Vsa števila na denarni poti grejo zdaj skozi `plural` (dvojina vključena), varuh pa ima novo
+  poglavje, ki trdo zapisano množino za interpoliranim števcem obravnava kot napako. Prijelo je
+  še dve mesti, ki ju prvotni pregled ni imel: `Projekt zbran: N postavk` v kameri (ta je bila
+  ŽE v izdaji) in `N cenovnih vrstic` v glavi skupine Cenika (to smo pisali v tem Tasku).
+- **KAJ JE UJEL ŠELE BRKALNIK, NE TEST.** Tri stvari. (1) E2E je začel drugič na POLNEM ceniku:
+  prvi zagon je v bazi pustil štiri cene, zato je poglavje A trdilo prazen zaslon, ki ga ni bilo.
+  Test zdaj začne z istim zavestnim izbrisom (null po ključih), kot ga uporabi obrtnik.
+  (2) Obvestila Radix NIMA `role="status"` na vidnem `li` — tam je samo `data-state`; `role` nosi
+  skrita napoved. Stari selektor ni mogel najti nobenega obvestila, zato je devet preverjanj
+  padlo brez dokaza. (3) Ponudba ni šla v bazo, ker DDV ni bil nikoli vpisan: urejevalnik je
+  pravilno zavrgel dokument (»DDV ni izračunan«), test pa je to bral kot svojo napako.
+- IZMERJENO: `tests/verify/cenik-guard.ts` **86 OK / 0 NAPAK** (pred tem 75); nov
+  `tests/e2e-cenik-ui.ts` **113/113** v živem brskalniku po petih površinah (Cenik → kalkulator →
+  urejevalnik → Nastavitve → izbris), z osmimi posnetki preverjenimi po velikosti NA DISKU, z
+  aritmetiko računano IZ ZASLONA (vrstica `6 m × 187,5 € = 1.125,00 €`, vsota pa je enaka
+  seštevku prikazanih zneskov, ne pričakovanju testa) in brez konzolnih napak; sweep
+  **3873 OK / 0 NAPAK** v 48/56 skriptih (8 brez brojača, upravičeno — med njima zdaj tudi
+  `cenik-fixture.ts`, ki sam nima trditev); `tsc` 0; `eslint` 0 zapisov.
+- Posnetka dokazov: `cenik-01-prazen-zacetek.png` (54 praznih polj, nič »0,00 €«) in
+  `cenik-08-izbris-spet-zapre.png` (izbrisana montaža → dokument spet zaprt, količine ostale).

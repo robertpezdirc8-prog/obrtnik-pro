@@ -5,6 +5,7 @@ import { CraftCalculator, NumField, SelField, BoolField } from './shared';
 import { calculateOgraje, calculateStopnice, calculateKeramika, calculateWpcTerasa, calculateOknaVrata, calculateNadstresek, calculateFasada } from '@/lib/pricing';
 import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
 import { inputWindowHint, inputWindowHintWith } from '@/lib/craft-inputs';
+import { BOARD_GRADES, TILE_GRADES } from '@/lib/cenik';
 import { useView } from '@/lib/store';
 import type { CraftId, CraftInputs } from '@/lib/types';
 
@@ -27,7 +28,7 @@ export function OgrajeCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateOgraje(i, r)}
+      compute={(i) => calculateOgraje(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Dolžina ograje" unit="m" value={inputs.length ?? 0} onChange={(v) => setInputs({ length: v })} hint={inputWindowHint('ograje', 'length')} />
@@ -60,7 +61,7 @@ export function StopniceCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateStopnice(i, r)}
+      compute={(i) => calculateStopnice(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Št. stopnic" unit="kos" value={inputs.steps ?? 0} onChange={(v) => setInputs({ steps: v })} hint={inputWindowHintWith('stopnice', 'steps', '0 = samodejno iz višinske razlike')} />
@@ -104,7 +105,7 @@ export function KeramikaCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateKeramika(i, r)}
+      compute={(i) => calculateKeramika(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Dolžina prostora" unit="m" value={inputs.floorLength ?? 0} onChange={(v) => setInputs({ floorLength: v })} hint={inputWindowHint('keramika', 'floorLength')} />
@@ -121,8 +122,16 @@ export function KeramikaCalc() {
           { value: 'ribja-kost', label: 'Ribja kost (18 %)' },
         ]}
       />
+      <SelField
+        label="Kakovostni razred ploščic"
+        value={inputs.tileGrade ?? 'std'}
+        onChange={(v) => setInputs({ tileGrade: v })}
+        options={TILE_GRADES as { value: NonNullable<CraftInputs['tileGrade']>; label: string }[]}
+      />
+      <p className="text-xs text-muted-foreground -mt-2">
+        Razred izbere, KATERA vrstica Cenika nosi ceno. Številko določiš tam — kalkulator je ne pozna.
+      </p>
       <div className="grid grid-cols-2 gap-3">
-        <NumField label="Cena ploščic" unit="€/m²" value={inputs.tilePricePerM2 ?? 24} onChange={(v) => setInputs({ tilePricePerM2: v })} hint={inputWindowHint('keramika', 'tilePricePerM2')} />
         <NumField label="Rezerva za rezanje" unit="%" value={inputs.reservePercent ?? 10} onChange={(v) => setInputs({ reservePercent: v })} hint={inputWindowHint('keramika', 'reservePercent')} />
       </div>
     </CraftCalculator>
@@ -141,7 +150,7 @@ export function WpcTerasaCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateWpcTerasa(i, r)}
+      compute={(i) => calculateWpcTerasa(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Dolžina terase" unit="m" value={inputs.deckLength ?? 0} onChange={(v) => setInputs({ deckLength: v })} />
@@ -149,11 +158,19 @@ export function WpcTerasaCalc() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Razmak nosilcev" unit="m" value={inputs.joistSpacing ?? CRAFT_INPUT_DEFAULTS.joistSpacing ?? 0.33} onChange={(v) => setInputs({ joistSpacing: v })} hint="ROKSAL za teraso objavlja razmak podložnih letev 33–35 cm — privzeto spodnji rob" />
-        <NumField label="Cena deske" unit="€/m" value={inputs.boardPricePerM ?? 12.5} onChange={(v) => setInputs({ boardPricePerM: v })} />
         <NumField label="Nabavna dolžina deske" unit="m" value={inputs.boardLengthM ?? 4} onChange={(v) => setInputs({ boardLengthM: v })} hint="Za rezalni načrt" />
         <NumField label="Čelna dilatacija" unit="mm" value={inputs.endGapMm ?? 4} onChange={(v) => setInputs({ endGapMm: v })} hint="3–5 mm (tržna praksa, ne ROKSAL)" />
         <NumField label="Stranska dilatacija" unit="mm" value={inputs.sideGapMm ?? 5} onChange={(v) => setInputs({ sideGapMm: v })} hint="3–6 mm (tržna praksa, ne ROKSAL)" />
       </div>
+      <SelField
+        label="Kakovostni razred deske"
+        value={inputs.boardGrade ?? 'klasicna'}
+        onChange={(v) => setInputs({ boardGrade: v })}
+        options={BOARD_GRADES as { value: NonNullable<CraftInputs['boardGrade']>; label: string }[]}
+      />
+      <p className="text-xs text-muted-foreground -mt-2">
+        Razred izbere, KATERA vrstica Cenika nosi ceno. Številko določiš tam — kalkulator je ne pozna.
+      </p>
     </CraftCalculator>
   );
 }
@@ -170,7 +187,7 @@ export function OknaVrataCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateOknaVrata(i, r)}
+      compute={(i) => calculateOknaVrata(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Št. oken" unit="kos" value={inputs.windowCount ?? 0} onChange={(v) => setInputs({ windowCount: v })} hint={inputWindowHint('okna-vrata', 'windowCount')} />
@@ -210,7 +227,7 @@ export function NadstresekCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateNadstresek(i, r)}
+      compute={(i) => calculateNadstresek(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Širina (fronta)" unit="m" value={inputs.canopyWidth ?? 0} onChange={(v) => setInputs({ canopyWidth: v })} hint={inputWindowHint('nadstreški', 'canopyWidth')} />
@@ -251,7 +268,7 @@ export function FasadaCalc() {
       inputs={inputs}
       setInputs={setInputs}
       prefilled={isPrefilled}
-      compute={(i, r) => calculateFasada(i, r)}
+      compute={(i) => calculateFasada(i)}
     >
       <div className="grid grid-cols-2 gap-3">
         <NumField label="Obseg / dolžina stene" unit="m" value={inputs.facadePerimeter ?? 0} onChange={(v) => setInputs({ facadePerimeter: v })} hint={inputWindowHint('fasada', 'facadePerimeter')} />

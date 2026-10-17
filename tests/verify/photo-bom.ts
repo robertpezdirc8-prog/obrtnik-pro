@@ -120,7 +120,8 @@ console.log('\nRezalni načrt (uradne nabavne dolžine):');
 console.log('\nIskrenost:');
 {
   const bom = buildBomFromMeta(makeMeta({ profileId: 'romb-67-dekor-1', profileLabel: 'ROMB DESKA-67 (dekor 1)', plankCm: 6.7, gapCm: 2, orientation: 'vertical', planeCm: { wCm: 200, hCm: 95 } }));
-  check('vse postavke: unitPrice = 0 (ROKSAL cen ne prevajamo)', bom.items.every((i) => i.unitPrice === 0));
+  check('vse postavke: unitPrice = null (ničle ni — ceno vpiše obrtnik, Task 88)',
+    bom.items.every((i) => i.unitPrice === null));
   check('opis vsebuje „Cena NI znana" (obrtnik jo vpiše)', bom.items.every((i) => i.description.includes('Cena NI znana')));
   check('stebri/pritrdilni material NIKOLI kot postavke — samo opozorilo',
     !bom.items.some((i) => /stebri|pritrdilni/i.test(i.name)) && bom.warnings.some((w) => w.includes('Stebri in pritrdilni material NISO modelirani')));

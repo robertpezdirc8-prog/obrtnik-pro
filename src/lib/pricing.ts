@@ -2,10 +2,25 @@ import type { CalcResult, CraftInputs, CraftId } from './types';
 import { resolveTerasaInputs, terasaProblemShort } from './terasa-inputs';
 import { craftProblemShort, resolveCraftInputs, type InputProblem } from './craft-inputs';
 import { formatNum } from './format';
+import { BOARD_GRADE_KEY, CENIK_BY_KEY, TILE_GRADE_KEY, cenikLine } from './cenik';
 
 // ─── Izračunski pogon ───────────────────────────────────────
 // Čiste funkcije za odmerek po posameznih dejavnostih.
 // Vsaka vrne vrstice (materijal/delo) za ponudbo + povzetek.
+//
+// TA POGON NE POZNA CENE. Doslej je poznal 35 njih: 145 €/m za aluminijasto
+// ograjo, 520 €/kos za okno, 28 €/m² za montažo terase, 45 €/m² za nadstrešek,
+// 32 €/m² za fasado, 65 in 85 €/kos za okna oziroma vrata, `laborRate * 0,85`
+// za polaganje ploščic. Nobene od njih ni napisal obrtnik — napisal jo je
+// program, ki bo po njej izstavil račun. Od Task 88 naprej kalkulator vrne
+// KOLIČINO in ključ v Cenik (`priceKey`), denar pa se pripne šele tam, kjer ga
+// vpiše človek. Brez vpisane cene vrstica ostane brez zneska.
+//
+// Iz istega razloga `laborRate` ni več parameter tega modula: urna postavka
+// iz nastavitev je bila doslej vir treh denarnih vrstic (montaža ograje po
+// normi 1,0 h/m, montaža stopnic po 0,4 h/kos, polaganje ploščic po 0,85-krat
+// urne postavke). Norma ostaja — a samo kot OCENA TRAJANJA v povzetku in
+// načrtu montaže, nikoli kot znesek.
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const ceil = Math.ceil;
@@ -20,18 +35,12 @@ const refusal = (problems: InputProblem[]): CalcResult => ({
   summary: [{ label: 'Izračun ni opravljen', value: problems.map(craftProblemShort).join(' · ') }],
 });
 
-/** Ograje: povzetek povie »0,5 na meter« z EKIPO DVA MONTERJA, torej 1,0
- *  urne postavke na meter. Montaža je bila dopisana kot `35` — enak znesek,
- *  a samo ob uri 35 €/h, ki je je monter nikoli nastavil. Zdaj sledi
- *  nastavitvi (Task 87). */
-const OGRAJE_MONTAZA_HNA_M = 2 * 0.5;
-
 /** Ograje – balkonske in vrtne ograje ter pragovi.
  *  Stebri na vsakih ~1,5 m + vogali; material na meter; steklo po m².
  *  Vpisana višina se NE sme več usekati: `Math.max(0.9, višina)` je iz 0,5 m
  *  naredilo 0,9 m obračuna, monter pa je na zaslonu videl svojo mero. Zunaj
  *  okna vnosa (`craft-inputs.ts`) izračun vrne razlog in ne zaračuna ničesar. */
-export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateOgraje(input: CraftInputs): CalcResult {
   const inp = resolveCraftInputs('ograje', input);
   if (!inp.ok) return refusal(inp.problems);
   const length = inp.v.length;
@@ -43,57 +52,32 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
     return { lines: [], summary: [{ label: 'Dolžina', value: '0 m' }] };
   }
 
+  const materialKey = material === 'steklo' ? 'ograje.steklo' : material === 'inox' ? 'ograje.inox' : 'ograje.alu';
+  const postKey = material === 'inox' ? 'ograje.steber-inox' : 'ograje.steber';
+
   // Stebri: na vsakih 1,5 m + začetni + končni
   const posts = ceil(length / 1.5) + 1;
   const lines = [
-    {
-      name: material === 'steklo' ? 'Steklena ograja (kaljeno 10 mm)' : material === 'inox' ? 'Inox ograja (cev 42,4 mm)' : 'Aluminijasta ograja',
-      description: `Višina ${nf(height)} m, dolžina ${nf(length)} m`,
-      quantity: r2(length),
-      unit: 'm',
-      unitPrice: material === 'steklo' ? 240 : material === 'inox' ? 165 : 145,
-    },
-    {
-      name: 'Stebri',
-      description: 'Razmak cca. 1,5 m (predpostavka izračuna, ne ROKSALova meja — ta je odvisna od profila), s pritrdilnim kompletom',
-      quantity: posts,
-      unit: 'kos',
-      unitPrice: material === 'inox' ? 52 : 38,
-    },
-    {
-      name: 'Vijačevje in pritrdilni material',
-      description: 'Nerez vijaki, tipli, kemijska sidra',
-      quantity: r2(length),
-      unit: 'kompl/m',
-      unitPrice: 12,
-    },
-    {
-      name: 'Montaža ograje',
-      description: 'Dva monterja, vključno z izravnavo',
-      quantity: r2(length),
-      unit: 'm',
-      unitPrice: r2(OGRAJE_MONTAZA_HNA_M * laborRate),
-    },
+    cenikLine(materialKey, r2(length), `Višina ${nf(height)} m, dolžina ${nf(length)} m`),
+    cenikLine(postKey, posts, 'Razmak cca. 1,5 m (predpostavka izračuna, ne ROKSALova meja — ta je odvisna od profila), s pritrdilnim kompletom'),
+    cenikLine('ograje.vijaki', r2(length), 'Nerez vijaki, tipli, kemijska sidra'),
+    cenikLine('montaza.ograje', r2(length), 'Dva monterja, vključno z izravnavo'),
   ];
 
   if (material === 'steklo') {
-    lines.splice(1, 0, {
-      name: 'Steklene plošče',
-      description: `Kaljeno steklo 10 mm, ${nf(length)} m × ${nf(height)} m`,
-      quantity: r2(length * height),
-      unit: 'm²',
-      unitPrice: 130,
-    });
+    lines.splice(1, 0, cenikLine(
+      'ograje.steklo-plosca',
+      r2(length * height),
+      `Kaljeno steklo 10 mm, ${nf(length)} m × ${nf(height)} m`,
+    ));
   }
 
   for (let i = 0; i < gates; i++) {
-    lines.push({
-      name: 'Oključljivi prehod (vrata)',
-      description: 'Širina 0,9 m, s tečaji in zapiralom',
-      quantity: 1,
-      unit: 'kos',
-      unitPrice: 220,
-    });
+    lines.push(cenikLine(
+      'ograje.vrata',
+      1,
+      'Širina 0,9 m, s tečaji in zapiralom',
+    ));
   }
 
   return {
@@ -102,7 +86,7 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
       { label: 'Dolžina ograje', value: `${nf(length)} m` },
       { label: 'Višina', value: `${nf(height)} m` },
       { label: 'Št. stebrov', value: `${posts} + ${gates} prehodov` },
-      { label: 'Montaža (ocena)', value: `${nf(length * 0.5)} h` },
+      { label: 'Montaža (ocena trajanja)', value: `${nf(length * 0.5)} h — ni cena` },
     ],
   };
 }
@@ -111,7 +95,7 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
  *  Privzeta globina stopnice 0,28 m za dolžino ograje.
  *  Vpisana širina se NE sme več usekati: `Math.max(0.6, širina)` je pri 0,4 m
  *  zaračunala 0,6 m, načrt montaže pa je istemu vnosu napisal 0,4 m. */
-export function calculateStopnice(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateStopnice(input: CraftInputs): CalcResult {
   const inp = resolveCraftInputs('stopnice', input);
   if (!inp.ok) return refusal(inp.problems);
   let steps = inp.v.steps;
@@ -145,50 +129,16 @@ export function calculateStopnice(input: CraftInputs, laborRate: number): CalcRe
   }
 
   const lines = [
-    {
-      name: material === 'hrast' ? 'Stopnica hrast masiv 40 mm' : 'Stopnica WPC 25×160 mm',
-      description: `Širina ${nf(width)} m`,
-      quantity: steps,
-      unit: 'kos',
-      unitPrice: material === 'hrast' ? 95 : 48,
-    },
-    {
-      name: 'Nosilna konstrukcija stopnic',
-      description: 'Jekleni nosilci, vključno s pritrditvijo',
-      quantity: ceil(steps / 3),
-      unit: 'kos',
-      unitPrice: 120,
-    },
-    {
-      name: 'Antidrseči profili',
-      quantity: r2(steps * width),
-      unit: 'm',
-      unitPrice: 6,
-    },
-    {
-      name: 'Montaža stopnic',
-      quantity: r2(steps * 0.4),
-      unit: 'ura',
-      unitPrice: laborRate,
-    },
+    cenikLine(material === 'hrast' ? 'stopnice.hrast' : 'stopnice.wpc', steps, `Širina ${nf(width)} m`),
+    cenikLine('stopnice.konstrukcija', ceil(steps / 3), 'Jekleni nosilci, vključno s pritrditvijo'),
+    cenikLine('stopnice.antidrsece', r2(steps * width)),
+    cenikLine('montaza.stopnice', r2(steps * 0.4), 'Ocena 0,4 h na stopnico — delovna ura, ne cena'),
   ];
 
   if (railingNeeded && railingLength > 0) {
     lines.push(
-      {
-        name: 'Ograja na stopnicah (aluminij)',
-        description: `Dolžina cca. ${nf(railingLength)} m`,
-        quantity: railingLength,
-        unit: 'm',
-        unitPrice: 145,
-      },
-      {
-        name: 'Stebri za stopniščno ograjo',
-        description: 'Razmak do 1,5 m po naklonu',
-        quantity: ceil(railingLength / 1.5) + 1,
-        unit: 'kos',
-        unitPrice: 38,
-      },
+      cenikLine('stopnice.ograda', railingLength, `Dolžina cca. ${nf(railingLength)} m`),
+      cenikLine('stopnice.steber', ceil(railingLength / 1.5) + 1, 'Razmak do 1,5 m po naklonu'),
     );
   }
 
@@ -216,13 +166,13 @@ export function calculateStopnice(input: CraftInputs, laborRate: number): CalcRe
  *  Vpisanega cena in rezerva se NE smeta več usekati (`Math.max(1, cena)` in
  *  `Math.min(30, rezerva)`): ponudba je zaračunavala drugačno rezervo kot
  *  načrt montaže, ki je isto število bral dobesedno. */
-export function calculateKeramika(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateKeramika(input: CraftInputs): CalcResult {
   const inp = resolveCraftInputs('keramika', input);
   if (!inp.ok) return refusal(inp.problems);
   const floorLength = inp.v.floorLength;
   const floorWidth = inp.v.floorWidth;
   const wallHeight = inp.v.wallHeight;
-  const tilePrice = inp.v.tilePricePerM2;
+  const tileGrade = input.tileGrade ?? 'std';
   const pattern = input.tilePattern ?? 'ravno';
   const patternLabel = pattern === 'diagonalno' ? 'diagonalno' : pattern === 'ribja-kost' ? 'ribja kost' : 'ravno';
   const patternReserve = pattern === 'diagonalno' ? 15 : pattern === 'ribja-kost' ? 18 : 10;
@@ -245,60 +195,18 @@ export function calculateKeramika(input: CraftInputs, laborRate: number): CalcRe
   const spacers = ceil(totalArea / 20);
 
   const lines = [
-    {
-      name: 'Keramične ploščice',
-      description: `Tla ${nf(floorArea)} m²${wallArea > 0 ? ` + stene ${nf(wallArea)} m²` : ''}, ${patternLabel}, rezerva ${nf(reservePercent)} %`,
-      quantity: tilesWithReserve,
-      unit: 'm²',
-      unitPrice: tilePrice,
-    },
-    {
-      name: 'Premaz / grunt za podlogo',
-      description: '1 kos (5 l) ≈ 30 m² — najpogosteje preskočen korak, brez njega ploščice odpadejo',
-      quantity: Math.ceil(totalArea / 30),
-      unit: 'kos',
-      unitPrice: 22,
-    },
-    {
-      name: 'Lepilo (flex C2TE S1, 25 kg)',
-      description: 'Ocena 4 kg/m²',
-      quantity: glueBags,
-      unit: 'vrečka',
-      unitPrice: 14,
-    },
-    {
-      name: 'Fuga',
-      description: 'Ocena 0,4 kg/m²',
-      quantity: groutKg,
-      unit: 'kg',
-      unitPrice: 2.2,
-    },
-    {
-      name: 'Križci / prižice',
-      quantity: spacers,
-      unit: 'paket',
-      unitPrice: 4,
-    },
-    {
-      name: 'Silikon za dilatacije',
-      description: 'Robovi in prehodi',
-      quantity: ceil(perimeter / 10),
-      unit: 'kos',
-      unitPrice: 9,
-    },
-    {
-      name: 'Hidroizolacija',
-      description: 'Dvakratni nanos z trakovi (mokri prostori)',
-      quantity: totalArea,
-      unit: 'm²',
-      unitPrice: 12,
-    },
-    {
-      name: 'Polaganje ploščic',
-      quantity: totalArea,
-      unit: 'm²',
-      unitPrice: laborRate * 0.85,
-    },
+    cenikLine(
+      TILE_GRADE_KEY[tileGrade],
+      tilesWithReserve,
+      `Tla ${nf(floorArea)} m²${wallArea > 0 ? ` + stene ${nf(wallArea)} m²` : ''}, ${patternLabel}, rezerva ${nf(reservePercent)} %`,
+    ),
+    cenikLine('keramika.grunt', Math.ceil(totalArea / 30), '1 kos (5 l) ≈ 30 m² — najpogosteje preskočen korak, brez njega ploščice odpadejo'),
+    cenikLine('keramika.lepilo', glueBags, 'Ocena 4 kg/m²'),
+    cenikLine('keramika.fuga', groutKg, 'Ocena 0,4 kg/m²'),
+    cenikLine('keramika.prizice', spacers),
+    cenikLine('keramika.silikon', ceil(perimeter / 10), 'Robovi in prehodi'),
+    cenikLine('keramika.hidroizolacija', totalArea, 'Dvakratni nanos z trakovi (mokri prostori)'),
+    cenikLine('montaza.keramika', totalArea),
   ];
 
   return {
@@ -325,7 +233,7 @@ export function calculateKeramika(input: CraftInputs, laborRate: number): CalcRe
  *  Vpisan razmak se NE sme več usekati (glej `terasa-inputs.ts`): zunaj okna
  *  vnosa izračun vrne razlog in ne zaračuna ničesar, znotraj okna pa računa
  *  točno tako, kot je vpisano. */
-export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateWpcTerasa(input: CraftInputs): CalcResult {
   if ((input.deckLength ?? 0) <= 0 || (input.deckWidth ?? 0) <= 0) {
     return { lines: [], summary: [{ label: 'Površina', value: '0 m²' }] };
   }
@@ -341,7 +249,7 @@ export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcR
   const L = inp.v.deckLength;
   const W = inp.v.deckWidth;
   const spacing = inp.v.joistSpacing;
-  const boardPrice = inp.v.boardPricePerM;
+  const boardGrade = input.boardGrade ?? 'klasicna';
   const sideGapMm = inp.v.sideGapMm;
   const endGapMm = inp.v.endGapMm;
   const boardStock = inp.v.boardLengthM;
@@ -389,46 +297,16 @@ export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcR
   const cutsLabel = `${fullBoards} deska · ${cuts} rezov · odpadek ${wastePct} %`;
 
   const lines = [
-    {
-      name: 'Terasna deska WPC (polna 25×140)',
-      description: `${boardRows} vrst, izkoriščeno ${boardUsedLM} lm · nabava ${purchasedLM} lm (${fullBoards} deska po ${boardStock} m)`,
-      quantity: purchasedLM,
-      unit: 'm',
-      unitPrice: boardPrice,
-    },
-    {
-      name: 'Nosilci WPC/ALU',
-      description: `Razmak ${nf(spacing * 100)} cm`,
-      quantity: joistLM,
-      unit: 'm',
-      unitPrice: 5.5,
-    },
-    {
-      name: 'Skrite spojne kljukice',
-      description: 'Enakomerni razmak — slabo privite sponke so najpogostejša napaka',
-      quantity: clips,
-      unit: 'kos',
-      unitPrice: 0.8,
-    },
-    {
-      name: 'Zaključni profil (obod)',
-      description: `Obod ${perimeter} m · od stene puščamo 15–20 mm režo`,
-      quantity: perimeter,
-      unit: 'm',
-      unitPrice: 6,
-    },
-    {
-      name: 'Vijačevje za podlago',
-      quantity: ceil(joistLM * 1.5),
-      unit: 'kos',
-      unitPrice: 1.2,
-    },
-    {
-      name: 'Montaža terase',
-      quantity: area,
-      unit: 'm²',
-      unitPrice: 28,
-    },
+    cenikLine(
+      BOARD_GRADE_KEY[boardGrade],
+      purchasedLM,
+      `${boardRows} vrst, izkoriščeno ${boardUsedLM} lm · nabava ${purchasedLM} lm (${fullBoards} deska po ${boardStock} m)`,
+    ),
+    cenikLine('terasa.nosilci', joistLM, `Razmak ${nf(spacing * 100)} cm`),
+    cenikLine('terasa.kljukice', clips, 'Enakomerni razmak — slabo privite sponke so najpogostejša napaka'),
+    cenikLine('terasa.profil', perimeter, `Obod ${perimeter} m · od stene puščamo 15–20 mm režo`),
+    cenikLine('terasa.vijaki', ceil(joistLM * 1.5)),
+    cenikLine('montaza.terasa', area),
   ];
 
   return {
@@ -449,7 +327,7 @@ export function calculateWpcTerasa(input: CraftInputs, laborRate: number): CalcR
 
 /** Okna in vrata – števec kosov z montažo in odstranitvijo.
  *  Vpisana velikost okna se NE sme več usekati na 0,5 m². */
-export function calculateOknaVrata(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateOknaVrata(input: CraftInputs): CalcResult {
   const inp = resolveCraftInputs('okna-vrata', input);
   if (!inp.ok) return refusal(inp.problems);
   const windows = inp.v.windowCount;
@@ -462,55 +340,28 @@ export function calculateOknaVrata(input: CraftInputs, laborRate: number): CalcR
     return { lines: [], summary: [{ label: 'Količina', value: '0 kosov' }] };
   }
 
-  const windowPrice = material === 'alu' ? 520 : windows > 0 ? 210 : 0;
   const lines: CalcResult['lines'] = [];
 
   if (windows > 0) {
-    lines.push({
-      name: material === 'alu' ? 'Okno aluminij (na mero)' : 'Okno PVC (na mero)',
-      description: `3-slojno steklo, povprečna velikost ${nf(windowSize)} m²`,
-      quantity: windows,
-      unit: 'kos',
-      unitPrice: material === 'alu' ? 520 : 210,
-    });
-    lines.push({
-      name: 'Montaža oken',
-      quantity: windows,
-      unit: 'kos',
-      unitPrice: 65,
-    });
+    lines.push(
+      cenikLine(
+        material === 'alu' ? 'okna.alu' : 'okna.pvc',
+        windows,
+        `3-slojno steklo, povprečna velikost ${nf(windowSize)} m²`,
+      ),
+      cenikLine('montaza.okna', windows),
+    );
   }
   if (doors > 0) {
     lines.push(
-      {
-        name: 'Zunanja vrata PVC',
-        quantity: doors,
-        unit: 'kos',
-        unitPrice: 580,
-      },
-      {
-        name: 'Montaža vrat',
-        quantity: doors,
-        unit: 'kos',
-        unitPrice: 85,
-      },
+      cenikLine('vrata.zunanja', doors),
+      cenikLine('montaza.vrata', doors),
     );
   }
   if (removeOld && windows + doors > 0) {
-    lines.push({
-      name: 'Odstranitev in odvoz starih odprtij',
-      quantity: windows + doors,
-      unit: 'kos',
-      unitPrice: 25,
-    });
+    lines.push(cenikLine('okna.demontaza', windows + doors));
   }
-  lines.push({
-    name: 'Zatesnitev in obdelava odprtij',
-    description: 'PS pena, parna zapora, okrasne letve',
-    quantity: windows + doors,
-    unit: 'kos',
-    unitPrice: 18,
-  });
+  lines.push(cenikLine('okna.zatesnitev', windows + doors, 'PS pena, parna zapora, okrasne letve'));
 
   return {
     lines,
@@ -525,7 +376,7 @@ export function calculateOknaVrata(input: CraftInputs, laborRate: number): CalcR
 /** Nadstrešek – kritina z 10 % preklopom, konstrukcija, stebri, odvod.
  *  Vpisanega števila stebrov se NE sme več usekati na 2: 0 stebrov je
  *  veljavna izvedba (konstrukcija sidrana na zid). */
-export function calculateNadstresek(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateNadstresek(input: CraftInputs): CalcResult {
   const inp = resolveCraftInputs('nadstreški', input);
   if (!inp.ok) return refusal(inp.problems);
   const W = inp.v.canopyWidth;
@@ -539,49 +390,21 @@ export function calculateNadstresek(input: CraftInputs, laborRate: number): Calc
   }
 
   const area = r2(W * D);
-  const coverPrice = cover === 'steklo' ? 68 : cover === 'polikar' ? 22 : 14;
-  const coverName = cover === 'steklo' ? 'Varnostno steklo 8 mm' : cover === 'polikar' ? 'Polikarbonat 10 mm' : 'Trapezna pločevina';
+  const coverKey = cover === 'steklo' ? 'nadstresek.kritina-steklo'
+    : cover === 'polikar' ? 'nadstresek.kritina-polikar'
+      : 'nadstresek.kritina-ploc';
+  const coverName = CENIK_BY_KEY[coverKey].name.replace(/^Kritina: /, '');
 
   const lines = [
-    {
-      name: 'Nosilna konstrukcija nadstreška',
-      description: 'Pocinkano jeklo, razpon ' + nf(W) + ' m',
-      quantity: area,
-      unit: 'm²',
-      unitPrice: 95,
-    },
-    {
-      name: `Kritina: ${coverName}`,
-      description: '10 % za preklope in odpad',
-      quantity: r2(area * 1.1),
-      unit: 'm²',
-      unitPrice: coverPrice,
-    },
-    {
-      name: 'Stebri (jeklo 80×80)',
-      description: 'Z bazo za betoniranje',
-      quantity: posts,
-      unit: 'kos',
-      unitPrice: 85,
-    },
+    cenikLine('nadstresek.konstrukcija', area, 'Pocinkano jeklo, razpon ' + nf(W) + ' m'),
+    cenikLine(coverKey, r2(area * 1.1), '10 % za preklope in odpad'),
+    cenikLine('nadstresek.steber', posts, 'Z bazo za betoniranje'),
   ];
 
   if (drain) {
-    lines.push({
-      name: 'Odvod padavinske vode',
-      description: 'Odvodni žleb + cev po sprednji strani',
-      quantity: r2(W),
-      unit: 'm',
-      unitPrice: 18,
-    });
+    lines.push(cenikLine('nadstresek.odvod', r2(W), 'Odvodni žleb + cev po sprednji strani'));
   }
-  lines.push({
-    name: 'Montaža nadstreška',
-    description: 'Vključno z betoniranjem stebrov',
-    quantity: area,
-    unit: 'm²',
-    unitPrice: 45,
-  });
+  lines.push(cenikLine('montaza.nadstresek', area, 'Vključno z betoniranjem stebrov'));
 
   return {
     lines,
@@ -597,7 +420,7 @@ export function calculateNadstresek(input: CraftInputs, laborRate: number): Calc
  *  Stari `Math.max(0, bruto − odprtine)` je iz napačne izmere naredil nič neto
  *  površine in PRAZNO ponudbo brez razloga; zdaj resolver pove, da odprtine
  *  presegajo celeno steno, in ničesar ne zaračuna. */
-export function calculateFasada(input: CraftInputs, laborRate: number): CalcResult {
+export function calculateFasada(input: CraftInputs): CalcResult {
   const inp = resolveCraftInputs('fasada', input);
   if (!inp.ok) return refusal(inp.problems);
   const perimeter = inp.v.facadePerimeter;
@@ -612,37 +435,16 @@ export function calculateFasada(input: CraftInputs, laborRate: number): CalcResu
     return { lines: [], summary: [{ label: 'Površina fasade', value: '0 m²' }] };
   }
 
-  const claddingPrice = cladding === 'les' ? 44 : cladding === 'ploc' ? 26 : 52;
-  const claddingName = cladding === 'les' ? 'Fasadna obloga les (termo smreka)' : cladding === 'ploc' ? 'Trapezna fasadna pločevina' : 'Fasadna obloga WPC';
+  const claddingKey = cladding === 'les' ? 'fasada.obloga-les'
+    : cladding === 'ploc' ? 'fasada.obloga-ploc'
+      : 'fasada.obloga-wpc';
   const battensLM = r2(net * 2.5);
 
   const lines = [
-    {
-      name: claddingName,
-      description: `Neto površina ${nf(net)} m² (odprtine −${nf(openings)} m²), 5 % odpad`,
-      quantity: r2(net * 1.05),
-      unit: 'm²',
-      unitPrice: claddingPrice,
-    },
-    {
-      name: 'Podkonstrukcija (letve)',
-      description: 'Razmak 40 cm, vključno z vijačevjem',
-      quantity: battensLM,
-      unit: 'm',
-      unitPrice: 8,
-    },
-    {
-      name: 'Zaključni profili (začetni, končni, vogalni)',
-      quantity: ceil(perimeter / 2),
-      unit: 'kos',
-      unitPrice: 9,
-    },
-    {
-      name: 'Montaža ventilirane fasade',
-      quantity: net,
-      unit: 'm²',
-      unitPrice: 32,
-    },
+    cenikLine(claddingKey, r2(net * 1.05), `Neto površina ${nf(net)} m² (odprtine −${nf(openings)} m²), 5 % odpad`),
+    cenikLine('fasada.letve', battensLM, 'Razmak 40 cm, vključno z vijačevjem'),
+    cenikLine('fasada.profili', ceil(perimeter / 2)),
+    cenikLine('montaza.fasada', net),
   ];
 
   return {
@@ -656,7 +458,7 @@ export function calculateFasada(input: CraftInputs, laborRate: number): CalcResu
   };
 }
 
-const CALCULATORS: Record<CraftId, (i: CraftInputs, labor: number) => CalcResult> = {
+const CALCULATORS: Record<CraftId, (i: CraftInputs) => CalcResult> = {
   'ograje': calculateOgraje,
   'stopnice': calculateStopnice,
   'keramika': calculateKeramika,
@@ -666,13 +468,21 @@ const CALCULATORS: Record<CraftId, (i: CraftInputs, labor: number) => CalcResult
   'fasada': calculateFasada,
 };
 
-export function runCalculator(craft: CraftId, input: CraftInputs, laborRate: number): CalcResult {
-  return CALCULATORS[craft](input, laborRate);
+/** Kalkulator vrne SAMO količine. Denar se pripne z `applyCenik`. */
+export function runCalculator(craft: CraftId, input: CraftInputs): CalcResult {
+  return CALCULATORS[craft](input);
 }
 
-export function calcTotals(items: { quantity: number; unitPrice: number }[], vatRate: number) {
-  const subtotal = r2(items.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
+/** Vsota po VPISANIH cenah. Vrstica brez cene v vsoto ne sme priti kot 0 —
+ *  to je bil doslej `unitPrice ?? 0`. Namesto tega vrne število vrstic brez
+ *  cene, da zaslon in dokument lahko rečeta, kaj manjka. */
+export function calcTotals(
+  items: readonly { quantity: number; unitPrice: number | null }[],
+  vatRate: number,
+): { subtotal: number; vatAmount: number; total: number; unpriced: number } {
+  const priced = items.filter((i) => i.unitPrice !== null && Number.isFinite(i.unitPrice));
+  const subtotal = r2(priced.reduce((s, i) => s + i.quantity * (i.unitPrice as number), 0));
   const vatAmount = r2(subtotal * (vatRate / 100));
   const total = r2(subtotal + vatAmount);
-  return { subtotal, vatAmount, total };
+  return { subtotal, vatAmount, total, unpriced: items.length - priced.length };
 }

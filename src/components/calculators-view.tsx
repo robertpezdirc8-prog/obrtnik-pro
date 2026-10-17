@@ -6,6 +6,7 @@ import { ArrowLeft, ClipboardList, Calculator } from 'lucide-react';
 import { CRAFTS, craftBySlug } from '@/lib/crafts-meta';
 import { useDraft, useView } from '@/lib/store';
 import { calcTotals } from '@/lib/pricing';
+import { plural } from '@/lib/install-plan';
 import { formatEUR } from '@/lib/format';
 import { OgrajeCalc, StopniceCalc, KeramikaCalc, WpcTerasaCalc, OknaVrataCalc, NadstresekCalc, FasadaCalc } from './calculators/crafts';
 import { CraftImage } from './craft-image';
@@ -21,7 +22,11 @@ export function CalculatorsView() {
     setView('kalkulatorji');
   };
 
-  const draftTotals = calcTotals(items, 22);
+  // Stopnja DDV živi v Nastavitvah, ne tukaj — zato je ne uganjujemo (prej 22).
+  // Izpiše se samo vrednost brez DDV, in še ta samo, kadar ima ceno prav vsaka
+  // vrstica: delna vsota bi pokazala znesek, ki ga obrtnik ni izračunal (Task 88).
+  const draftTotals = calcTotals(items, Number.NaN);
+  const draftPriced = items.length > 0 && draftTotals.unpriced === 0;
   // 'izberi' = poseben slug: pokaži mrežo kalkulatorjev (tudi ko osnutek ni prazen)
   const craft = activeCraft && activeCraft !== 'izberi' ? craftBySlug(activeCraft) : undefined;
 
@@ -33,10 +38,12 @@ export function CalculatorsView() {
             <ClipboardList className="h-5 w-5 text-primary shrink-0" />
             <div>
               <p className="text-sm font-semibold">
-                Osnutek ponudbe: {items.length} postavk
+                Osnutek ponudbe: {items.length} {plural(items.length, ['postavka', 'postavki', 'postavke', 'postavk'])}
               </p>
-              <p className="text-xs text-muted-foreground">
-                Vrednost brez DDV: {formatEUR(draftTotals.subtotal)}
+              <p className="text-xs text-muted-foreground" data-testid="draft-total-row">
+                {draftPriced
+                  ? <>Vrednost brez DDV: {formatEUR(draftTotals.subtotal)}</>
+                  : <>Vrednost ni izračunana — cena manjka pri {draftTotals.unpriced} {plural(draftTotals.unpriced, ['vrstici', 'vrsticah', 'vrsticah', 'vrsticah'])}.</>}
               </p>
             </div>
           </div>

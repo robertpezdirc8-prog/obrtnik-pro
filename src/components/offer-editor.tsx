@@ -14,6 +14,7 @@ import { Trash2, Save, ShoppingCart, Loader2, Copy, Boxes, ChartPie } from 'luci
 import { useToast } from '@/hooks/use-toast';
 import { useDraft } from '@/lib/store';
 import { calcTotals } from '@/lib/pricing';
+import { plural } from '@/lib/install-plan';
 import { formatEUR, formatNum } from '@/lib/format';
 import { numberProblemSentence, readSettings, settingsProblemText, parseNumberInput } from '@/lib/settings-inputs';
 import type { SettingsDTO } from '@/lib/types';
@@ -100,6 +101,11 @@ export function OfferEditor() {
   const capara = read.depositPercent;
   const delo = read.laborRate;
   const totals = calcTotals(items, ddv.value);
+  /** Postavke, kjer cena še ni vpisana. Iz njih se NE sme narediti noben
+   *  delni seštevek: že ena prazna cena skriva celoten znesek ponudbe. */
+  const unpriced = items.filter((i) => i.unitPrice === null || !Number.isFinite(i.unitPrice));
+  /** DDV je izračunljiv šele, ko ima vsaka vrstica svojo ceno. */
+  const totalsShown = items.length > 0 && unpriced.length === 0;
   const ddvVrednost = vatText === null
     ? (Number.isFinite(settingsVat) ? formatNum(settingsVat, 2) : '')
     : vatText;
@@ -143,20 +149,26 @@ export function OfferEditor() {
 
   // Struktura cene: material vs delo (deterministično po imenih)
   const split = useMemo(() => {
+    // Razdelitev sme obstati samo, če ima ceno vsaka vrstica. Delni
+    // seštevek bi pokazal odstotke, ki temeljijo na manjkajoči osnovi.
+    const incomplete = items.some((i) => i.unitPrice === null || !Number.isFinite(i.unitPrice));
     let material = 0;
     let labor = 0;
-    for (const i of items) {
-      const value = i.quantity * i.unitPrice;
-      if (isLaborItem(i.name)) labor += value;
-      else material += value;
+    if (!incomplete) {
+      for (const i of items) {
+        const value = i.quantity * (i.unitPrice as number);
+        if (isLaborItem(i.name)) labor += value;
+        else material += value;
+      }
     }
     const sum = material + labor;
     return {
+      incomplete,
       material,
       labor,
       materialPct: sum > 0 ? Math.round((material / sum) * 100) : 0,
       laborPct: sum > 0 ? Math.round((labor / sum) * 100) : 0,
-      has: sum > 0,
+      has: !incomplete && sum > 0,
     };
   }, [items]);
 
@@ -172,6 +184,17 @@ export function OfferEditor() {
     }
     if (items.length === 0) {
       toast({ title: 'Ponudba je prazna', description: 'Dodaj vsaj eno postavko iz kalkulatorja.', variant: 'destructive' });
+      return;
+    }
+    // Pod vrstico, ki nima vpisane cene, ponudba NE gre v bazo: stolpec
+    // `unitPrice` je NOT NULL, strežnik bi prazno polje moral napolniti s
+    // številko, ki je obrtnik ni vpisal (Task 88).
+    if (unpriced.length > 0) {
+      toast({
+        title: 'Cena ni vpisana',
+        description: `${unpriced.map((i) => i.name).join(', ')} — ceno vpiši v stolpec »Cena/en. (€)« ali v Ceniku. Ponudbe nismo shranili.`,
+        variant: 'destructive',
+      });
       return;
     }
     // Vrstica z neveljavnim vpisom pomeni, da na dokument NE sme iti številka,
@@ -241,7 +264,7 @@ export function OfferEditor() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nova ponudba</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Postavke iz kalkulatorjev so že tukaj — preveri cene in dodaj stranko.
+            Postavke iz kalkulatorjev so že tukaj — količine izračuna kalkulator, cene vedno vpišeš sam.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -349,26 +372,36 @@ export function OfferEditor() {
                               inputMode="decimal"
                               className="h-8 text-sm"
                               aria-label={`Cena na enoto — ${item.name}`}
-                              aria-invalid={itemProblem(item.key, 'unitPrice') !== null || undefined}
-                              value={itemRaw[rawId(item.key, 'unitPrice')] ?? formatNum(item.unitPrice, 2)}
+                              aria-invalid={itemProblem(item.key, 'unitPrice') !== null || item.unitPrice === null || undefined}
+                              placeholder="Vpiši ceno"
+                              value={itemRaw[rawId(item.key, 'unitPrice')] ?? (item.unitPrice === null ? '' : formatNum(item.unitPrice, 2))}
                               onChange={(e) => setItemNumber(item.key, 'unitPrice', e.target.value)}
                             />
-                            {itemProblem(item.key, 'unitPrice') !== null && (
+                            {itemProblem(item.key, 'unitPrice') !== null ? (
                               <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400" data-testid="item-field-problem">
                                 {itemProblemSentence({ label: FIELD_LABEL.unitPrice, typed: itemProblem(item.key, 'unitPrice') })}
                               </p>
-                            )}
+                            ) : item.unitPrice === null ? (
+                              <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400" data-testid="item-price-missing">
+                                Cena ni vpisana.
+                              </p>
+                            ) : null}
                           </div>
                           <div>
                             <Label className="text-[10px] uppercase text-muted-foreground">Vrednost</Label>
                             <p className="text-sm font-semibold h-8 flex items-center" data-testid="item-line-value">
-                              {itemHasProblem(item.key)
+                              {itemHasProblem(item.key) || item.unitPrice === null
                                 ? '—'
                                 : formatEUR(item.quantity * item.unitPrice)}
                             </p>
                             {itemHasProblem(item.key) && (
                               <p className="text-[11px] leading-tight text-muted-foreground">
                                 Vrednost ni izračunana — popravi vpisano številko.
+                              </p>
+                            )}
+                            {!itemHasProblem(item.key) && item.unitPrice === null && (
+                              <p className="text-[11px] leading-tight text-muted-foreground">
+                                Vrednost ni izračunana — cena manjka.
                               </p>
                             )}
                           </div>
@@ -388,7 +421,7 @@ export function OfferEditor() {
             </CardHeader>
             <CardContent>
               <Textarea
-                placeholder="npr. Rok izvedbe: 3 tedni od sprejema ponudbe. Garancija 5 let na material in montáže."
+                placeholder="npr. Rok izvedbe: 3 tedni od sprejema ponudbe. Garancija 5 let na material in montažo."
                 value={note}
                 onChange={(e) => setCustomer({ note: e.target.value })}
                 rows={3}
@@ -434,8 +467,24 @@ export function OfferEditor() {
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Brez DDV</span>
-                <span className="font-semibold">{formatEUR(totals.subtotal)}</span>
+                <span className="font-semibold">{totalsShown ? formatEUR(totals.subtotal) : '—'}</span>
               </div>
+              {items.length > 0 && unpriced.length > 0 && (
+                <div
+                  className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                  data-testid="offer-price-refusal"
+                >
+                  <p className="font-semibold">
+                    Vsote niso izračunane — vpisana cena manjka pri {unpriced.length}{' '}
+                    {plural(unpriced.length, ['vrstici', 'vrsticah', 'vrsticah', 'vrsticah'])}.
+                  </p>
+                  {unpriced.slice(0, 6).map((i) => (
+                    <p key={i.key}>{i.name}</p>
+                  ))}
+                  {unpriced.length > 6 && <p>… in še {unpriced.length - 6} {unpriced.length - 6 === 1 ? 'vrstica' : 'vrstic'}.</p>}
+                  <p>Ceno vpiši v stolpec »Cena/en. (€)« ali v Ceniku. Dokler cena manjka, ponudbe ni mogoče shraniti.</p>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">DDV</span>
@@ -453,7 +502,7 @@ export function OfferEditor() {
                   />
                   <span className="text-muted-foreground">%</span>
                 </div>
-                <span className="font-semibold">{ddv.problem ? '—' : formatEUR(totals.vatAmount)}</span>
+                <span className="font-semibold">{ddv.problem || !totalsShown ? '—' : formatEUR(totals.vatAmount)}</span>
               </div>
               {ddv.problem && (
                 <p
@@ -489,10 +538,19 @@ export function OfferEditor() {
               <Separator />
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Skupaj z DDV</span>
-                <span className="text-xl font-bold text-primary">{ddv.problem ? '—' : formatEUR(totals.total)}</span>
+                <span className="text-xl font-bold text-primary">{ddv.problem || !totalsShown ? '—' : formatEUR(totals.total)}</span>
               </div>
               {/* Struktura cene — material vs delo (raziskava: konsistentna
                   marža zahteva vidno razdelitev pred oddajo). */}
+              {split.incomplete && (
+                <p
+                  className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300"
+                  data-testid="price-split-refusal"
+                >
+                  Struktura cene ni izračunana — del materiala in dela se ne da razmeriti,
+                  dokler ima vrstica brez vpisane cene.
+                </p>
+              )}
               {split.has && (
                 <div className="rounded-lg bg-secondary/60 px-3 py-2" data-testid="price-split">
                   <div className="flex items-center justify-between text-xs font-medium">
@@ -542,7 +600,16 @@ export function OfferEditor() {
                   stopnja DDV ni veljavna (razlog je izpisan zgoraj).
                 </div>
               )}
-              {settingsReady && !capara.problem && !ddv.problem && capara.value > 0 && totals.total > 0 && (
+              {settingsReady && !capara.problem && !ddv.problem && capara.value > 0 && unpriced.length > 0 && (
+                <div
+                  className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                  data-testid="deposit-row"
+                >
+                  Akontacija {formatNum(capara.value, 2)} % ni izračunana — skupni znesek ni izračunan,
+                  ker vrsticam manjka vpisana cena (razlog je izpisan zgoraj).
+                </div>
+              )}
+              {settingsReady && !capara.problem && !ddv.problem && capara.value > 0 && totalsShown && totals.total > 0 && (
                 <div className="rounded-lg bg-secondary/60 px-3 py-2 text-sm" data-testid="deposit-row">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Akontacija {formatNum(capara.value, 2)} % ob naročilu</span>
@@ -554,9 +621,15 @@ export function OfferEditor() {
                   </div>
                 </div>
               )}
-              <Button className="w-full min-h-11" size="lg" onClick={handleSave} disabled={saving}>
+              <Button
+                className="w-full min-h-11"
+                size="lg"
+                onClick={handleSave}
+                disabled={saving || unpriced.length > 0}
+                data-testid="save-offer"
+              >
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Shrani ponudbo
+                {unpriced.length > 0 ? 'Najprej vpiši ceno' : 'Shrani ponudbo'}
               </Button>
               {settingsReady && delo.problem ? (
                 <p className="text-xs text-amber-700 dark:text-amber-400 text-center" data-testid="labor-rate-row">
@@ -564,7 +637,8 @@ export function OfferEditor() {
                 </p>
               ) : settingsReady ? (
                 <p className="text-xs text-muted-foreground text-center" data-testid="labor-rate-row">
-                  {formatNum(delo.value, 2)} €/h je nastavljena urna postavka dela
+                  {formatNum(delo.value, 2)} €/h je tvoja urna postavka — uporablja se samo za evidenco
+                  opravljenih ur, ne za to ponudbo. Cena v ponudbi je vedno tista, ki jo vpišeš sam.
                 </p>
               ) : null}
             </CardContent>

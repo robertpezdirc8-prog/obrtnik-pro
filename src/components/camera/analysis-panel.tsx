@@ -10,9 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Sparkles, CheckCircle2, AlertTriangle, Ruler, Calculator, PlusCircle, Info, Lightbulb, Layers3, Package, ShieldAlert, ClipboardList, Circle, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useCenik } from '@/hooks/use-cenik';
 import { useDraft } from '@/lib/store';
 import { formatEUR } from '@/lib/format';
-import { CRAFT_LABELS, type AnalyzeResponse, type PhotoAnalysis } from '@/lib/camera-types';
+import { CRAFT_LABELS, type AnalyzeResponse, type PhotoAnalysis, type SuggestedProduct } from '@/lib/camera-types';
 import type { CraftId } from '@/lib/types';
 import { craftBySlug } from '@/lib/crafts-meta';
 
@@ -29,6 +30,7 @@ export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPan
   const { analysis, suggestedProducts } = result;
   const { toast } = useToast();
   const addItems = useDraft((s) => s.addItems);
+  const cenik = useCenik();
 
   // ── Merilni načrt: done-stanja po fotki (localStorage) ──
   // Lazy init + remount prek key propa (camera-view) namesto set-state v efektu.
@@ -59,9 +61,27 @@ export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPan
   const hasPrefill = Object.keys(analysis.prefill).length > 0;
   const planDoneCount = analysis.measurementsNeeded.reduce((n, _m, i) => n + (planDone[i] ? 1 : 0), 0);
 
-  const addProduct = (p: { id: string; name: string; unit: string; unitPrice: number }) => {
-    addItems([{ key: `pred-${p.id}`, name: p.name, quantity: 1, unit: p.unit, unitPrice: p.unitPrice, productId: p.id }]);
-    toast({ title: 'Dodano v osnutek ✓', description: `${p.name} · ${formatEUR(p.unitPrice)} / ${p.unit}` });
+  const addProduct = (p: SuggestedProduct) => {
+    // Kamera predlaga IZDELEK, ne ceno. Cena je lahko vpisana v Ceniku (po
+    // `sku`), sicer postavka gre v osnutek brez nje in jo mora obrtnik
+    // dopisati sam — aplikacija je ne ugiblje (Task 88).
+    const price = p.sku ? cenik.priceOf(p.sku) : null;
+    addItems([{
+      key: `pred-${p.id}`,
+      name: p.name,
+      quantity: 1,
+      unit: p.unit,
+      unitPrice: price,
+      productId: p.id,
+      ...(p.sku ? { priceKey: p.sku } : {}),
+    }]);
+    toast({
+      title: price === null ? 'Dodano brez cene — ceno vpiši' : 'Dodano v osnutek ✓',
+      description: price === null
+        ? `${p.name} · 1 ${p.unit}. Vpiši ceno v ponudbi ali v Ceniku; brez cene ponudbe ni mogoče shraniti.`
+        : `${p.name} · ${formatEUR(price)} / ${p.unit}`,
+      variant: price === null ? 'destructive' : 'default',
+    });
   };
 
   // Združevanje predpolnitev (analiza + izmerjene vrednosti) opravi camera-view.
@@ -295,18 +315,23 @@ export function AnalysisPanel({ result, onOpenCalculator, planKey }: AnalysisPan
         <section aria-label="Predlagani izdelki">
           <h3 className="mb-2 text-sm font-bold">Iz kataloga — dodaj v ponudbo</h3>
           <div className="max-h-64 space-y-2 overflow-y-auto scroll-area pr-1">
-            {suggestedProducts.map((p) => (
+            {suggestedProducts.map((p) => {
+              const price = p.sku ? cenik.priceOf(p.sku) : null;
+              return (
               <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border p-2.5">
                 <div className="min-w-0">
                   <p className="line-clamp-1 text-sm font-medium">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatEUR(p.unitPrice)} / {p.unit}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {price === null ? <span className="text-amber-700 dark:text-amber-400">cena ni vpisana</span> : `${formatEUR(price)} / ${p.unit}`}
+                  </p>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => addProduct(p)} className="shrink-0 h-8">
                   <PlusCircle className="mr-1 h-3.5 w-3.5" />
                   Dodaj
                 </Button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

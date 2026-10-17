@@ -1,5 +1,7 @@
 // ─── Skupni tipi za Obrtnik Pro ─────────────────────────────
 
+import type { BoardGrade, PriceKey, TileGrade } from './cenik';
+
 export type CraftId =
   | 'ograje'
   | 'stopnice'
@@ -24,7 +26,12 @@ export interface ProductDTO {
   name: string;
   description: string | null;
   unit: string;
-  unitPrice: number;
+  /**
+   * Cenovni ključ iz registra `lib/cenik.ts` ali null (izdelek, ki ga noben
+   * kalkulator ne pozna). KATALOG NIMA CENE: cena se bere iz Cenika po `sku`,
+   * vrstica brez cene pa gre v ponudbo prazna in jo mora obrtnik vpisati.
+   */
+  sku: PriceKey | null;
 }
 
 export interface DraftItem {
@@ -33,8 +40,10 @@ export interface DraftItem {
   description?: string;
   quantity: number;
   unit: string;
-  unitPrice: number;
+  /** `null` = obrtnik cene še ni vpisal. Takšne vrstice ni mogoče shraniti. */
+  unitPrice: number | null;
   productId?: string;
+  priceKey?: PriceKey;
 }
 
 export interface OfferDTO {
@@ -116,10 +125,15 @@ export interface SettingsDTO {
 
 export interface CalcLine {
   name: string;
+  /** Ključ v Ceniku. Kalkulator sme izračunati samo KOLIČINO; cena je vedno
+   *  obrtnikov vnos. Prosto napisana vrstica v ponudbi ključa nima. */
+  priceKey?: PriceKey;
   description?: string;
   quantity: number;
   unit: string;
-  unitPrice: number;
+  /** `null` = cena ni vpisana. Vrsta ostane na dokumentu brez zneska in
+   *  ponudbe ni mogoče shraniti, dokler obrtnik ne dopolni. */
+  unitPrice: number | null;
   productId?: string;
 }
 
@@ -146,14 +160,14 @@ export interface CraftInputs {
   floorLength?: number;       // m
   floorWidth?: number;        // m
   wallHeight?: number;        // m (0 = samo tla)
-  tilePricePerM2?: number;
+  tileGrade?: TileGrade;
   reservePercent?: number;
   tilePattern?: 'ravno' | 'diagonalno' | 'ribja-kost'; // vzorec polaganja → priporočen odpadek
   // WPC terasa
   deckLength?: number;        // m
   deckWidth?: number;         // m
-  joistSpacing?: number;      // m (privzeto 0,4)
-  boardPricePerM?: number;
+  joistSpacing?: number;      // m (privzeto 0,33 = spodnji rob ROKSALovega objavljenega pasu 33–35 cm)
+  boardGrade?: BoardGrade;
   boardLengthM?: number;      // nabavna dolžina deske (m, privzeto 4) — rezalni načrt
   sideGapMm?: number;         // stranska dilatacija (mm, privzeto 5)
   endGapMm?: number;          // čelna dilatacija (mm, privzeto 4)

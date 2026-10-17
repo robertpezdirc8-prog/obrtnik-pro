@@ -4,6 +4,7 @@
 // kontejnerja je veljala samo na stroji, kjer je repozitorij nastal.
 import { fileURLToPath } from 'node:url';
 import { db } from '../src/lib/db';
+import type { PriceKey } from '../src/lib/cenik';
 import { readFileSync } from 'fs';
 
 const b64 = readFileSync(fileURLToPath(new URL('./test-photo.jpg', import.meta.url))).toString('base64');
@@ -11,7 +12,8 @@ const dataUrl = `data:image/jpeg;base64,${b64}`;
 
 const products = await db.category.findUnique({
   where: { slug: 'ograje' },
-  include: { products: { take: 4, orderBy: { unitPrice: 'asc' } } },
+  // Katalog nima več cen (Task 88), razvrstitve torej ne more iti po ceni.
+  include: { products: { take: 4, orderBy: { name: 'asc' } } },
 });
 
 const analysis = {
@@ -79,7 +81,8 @@ const analysis = {
     id: p.id,
     name: p.name,
     unit: p.unit,
-    unitPrice: p.unitPrice,
+    // `sku` je ključ do Cenika; cena v tem objektu NE obstaja (Task 88).
+    sku: (p.sku ?? null) as PriceKey | null,
   })),
 };
 

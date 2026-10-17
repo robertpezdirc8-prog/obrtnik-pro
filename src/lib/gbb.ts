@@ -1,5 +1,11 @@
-import type { CalcResult, CraftId, CraftInputs } from './types';
+import type { CalcLine, CalcResult, CraftId, CraftInputs } from './types';
 import { runCalculator } from './pricing';
+import {
+  applyCenik,
+  readCenik,
+  unpricedLines,
+  type CenikValues,
+} from './cenik';
 
 // ─── Opcije »Dobro · Boljše · Najboljše« ────────────────────
 // Deterministične materialne lestvice po dejavnosti: ista
@@ -8,6 +14,11 @@ import { runCalculator } from './pricing';
 // sprejmejo, če ima »tri načine za da« namesto ene številke.
 // Pravilo cenovnega pasu (Leap): »dobro« naj ne bo > 25 % pod
 // »boljše«, »najboljše« naj ne preseže »boljše« za > 50 %.
+//
+// Task 88: lestvica NE izbere cene, ampak IZVEDBE (material /
+// kakovostni razred). Vsaka izvedba povleče svojo ceno iz Cenika.
+// Zato je `total` lahko `null` — dokler obrtnik cene ni vpisal,
+// opcija nima denarja in se mu ne prikaže nobena številka.
 
 export interface GbbVariant {
   /** Ključ lestvice (npr. 'inox'). */
@@ -20,7 +31,10 @@ export interface GbbVariant {
   /** Popravek vnosov, ki definira izvedbo. */
   patch: Partial<CraftInputs>;
   result: CalcResult;
-  total: number;
+  /** Null pomeni: vsaj ena vrstica nima vpisane cene, zato opcija ni obračunana. */
+  total: number | null;
+  /** Postavke, ki čakajo na ceno (imenuje jih zaslon). */
+  unpriced: CalcLine[];
   /** Ali je to izvedba, ki jo je uporabnik izbral v kalkulatorju. */
   isCurrent: boolean;
 }
@@ -48,14 +62,14 @@ const LADDERS: Record<CraftId, LadderStep[]> = {
     { key: 'hrast', tierName: 'Hrastove deske', description: 'Klasičen, toplen videz za notranje stopnice', patch: { stepMaterial: 'hrast' } },
   ],
   'keramika': [
-    { key: 'std', tierName: 'Standardna ploščica', description: 'Soliden material za kopalnice in hodnike', patch: { tilePricePerM2: 22 } },
-    { key: 'format', tierName: 'Veliki format 60×60', description: 'Manj fug, sodoben izgled — zahteva bolj raven pod', patch: { tilePricePerM2: 38 } },
-    { key: 'premium', tierName: 'Rektificirani premium', description: 'Vrhunska estetika, minimalne fuge (1,5 mm)', patch: { tilePricePerM2: 60 } },
+    { key: 'std', tierName: 'Standardna ploščica', description: 'Soliden material za kopalnice in hodnike', patch: { tileGrade: 'std' } },
+    { key: 'format', tierName: 'Veliki format 60×60', description: 'Manj fug, sodoben izgled — zahteva bolj raven pod', patch: { tileGrade: 'format' } },
+    { key: 'premium', tierName: 'Rektificirani premium', description: 'Vrhunska estetika, minimalne fuge (1,5 mm)', patch: { tileGrade: 'premium' } },
   ],
   'wpc-terasa': [
-    { key: 'klasicna', tierName: 'Klasična WPC deska', description: 'Preverjena osnova z grbovito površino', patch: { boardPricePerM: 12.5 } },
-    { key: 'relief', tierName: '3D relief WPC', description: 'Izrazita lesna struktura, boljše protizdrsné lastnosti', patch: { boardPricePerM: 19 } },
-    { key: 'jedro', tierName: 'WPC s polnim jedrom', description: 'Mehkejši zvok pod nogami, najvišja obstojnost', patch: { boardPricePerM: 26 } },
+    { key: 'klasicna', tierName: 'Klasična WPC deska', description: 'Preverjena osnova z grbovito površino', patch: { boardGrade: 'klasicna' } },
+    { key: 'relief', tierName: '3D relief WPC', description: 'Izrazita lesna struktura, boljše protizdrsné lastnosti', patch: { boardGrade: 'relief' } },
+    { key: 'jedro', tierName: 'WPC s polnim jedrom', description: 'Mehkejši zvok pod nogami, najvišja obstojnost', patch: { boardGrade: 'jedro' } },
   ],
   'okna-vrata': [
     { key: 'pvc', tierName: 'PVC okna', description: 'Najboljši razmerje cena/izolativnost', patch: { windowMaterial: 'pvc' } },
@@ -77,20 +91,26 @@ const LABELS_3: string[] = ['Dobro', 'Boljše', 'Najboljše'];
 const LABELS_2: string[] = ['Osnovno', 'Vrhunsko'];
 
 /** Zgradi opcije za stranko iz vnesenih mer. Vrne 2–3 izvedbe,
- *  sortirane po ceni naraščajoče. Če izračun za izvedbo vrne
- *  nič postavk, izvedbo spusti. */
-export function buildGBB(craft: CraftId, inputs: CraftInputs, laborRate: number): GbbVariant[] {
+ *  sortirane po ceni naraščajoče (brez cene zadnje). Če izračun za
+ *  izvedbo vrne nič postavk, izvedbo spusti. */
+export function buildGBB(craft: CraftId, inputs: CraftInputs, cenikValues: CenikValues): GbbVariant[] {
   const ladder = LADDERS[craft];
   if (!ladder || ladder.length < 2) return [];
 
   const labels = ladder.length >= 3 ? LABELS_3 : LABELS_2;
+  const cenik = readCenik(cenikValues);
 
   const variants: GbbVariant[] = [];
   ladder.forEach((step, i) => {
     const merged: CraftInputs = { ...inputs, ...step.patch };
-    const result = runCalculator(craft, merged, laborRate);
-    if (result.lines.length === 0) return;
-    const total = result.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+    const raw = runCalculator(craft, merged);
+    if (raw.lines.length === 0) return;
+    const lines = applyCenik(raw.lines, cenik);
+    const result: CalcResult = { ...raw, lines };
+    const missing = unpricedLines(lines);
+    const total = missing.length === 0
+      ? lines.reduce((s, l) => s + l.quantity * (l.unitPrice as number), 0)
+      : null;
     const tk = tierKeyOf(step.patch);
     const currentVal = (inputs as Record<string, unknown>)[tk];
     variants.push({
@@ -101,12 +121,20 @@ export function buildGBB(craft: CraftId, inputs: CraftInputs, laborRate: number)
       patch: step.patch,
       result,
       total,
+      unpriced: missing,
       isCurrent: currentVal === (step.patch as Record<string, unknown>)[tk],
     });
   });
 
-  // Sortiraj po ceni (lestvice so definirane naraščajoče, a za varnost še enkrat)
-  return variants.sort((a, b) => a.total - b.total);
+  // Sortiraj po ceni (lestvice so definirane naraščajoče, a za varnost še
+  // enkrat). Izvedbe brez cene so vedno na koncu — brez cene ni primerjave.
+  return variants.sort((a, b) => {
+    if (a.total === null || b.total === null) {
+      if (a.total === b.total) return 0;
+      return a.total === null ? 1 : -1;
+    }
+    return a.total - b.total;
+  });
 }
 
 export interface GbbBand {
@@ -116,16 +144,19 @@ export interface GbbBand {
 
 /** Cenovni pas po Leap smernici: najnižja ≥ 75 % srednje,
  *  najvišja ≤ 150 % srednje. Za 2 opciji kontroliramo samo
- *  razmerje višje/nize (≤ 1,5). Vrni null, če ni smiselno. */
-export function gbbBandCheck(totals: number[]): GbbBand | null {
-  if (totals.length < 2 || totals.some((t) => t <= 0)) return null;
-  if (totals.length === 2) {
-    const ratio = totals[1] / totals[0];
+ *  razmerje višje/nize (≤ 1,5). Vrni null, če ni smiselno —
+ *  vključno s primerom, ko katera opcija sploh nima cene. */
+export function gbbBandCheck(totals: (number | null)[]): GbbBand | null {
+  if (totals.length < 2) return null;
+  if (totals.some((t) => t === null || !Number.isFinite(t) || t <= 0)) return null;
+  const t = totals as number[];
+  if (t.length === 2) {
+    const ratio = t[1] / t[0];
     return ratio <= 1.5
       ? { status: 'ok', note: `razmerje višje/nize ${Math.round(ratio * 100)} % — v priporočenem pasu (do 150 %)` }
       : { status: 'warn', note: `razmerje višje/nize ${Math.round(ratio * 100)} % — nad priporočenih 150 %; stranke premnogokrat zavrnejo skok v ceni` };
   }
-  const [lo, mid, hi] = [totals[0], totals[1], totals[2]];
+  const [lo, mid, hi] = [t[0], t[1], t[2]];
   const lowOk = lo >= 0.75 * mid;
   const highOk = hi <= 1.5 * mid;
   if (lowOk && highOk) {
@@ -138,7 +169,7 @@ export function gbbBandCheck(totals: number[]): GbbBand | null {
 }
 
 /** Odstopanje opcije od srednje (ali nize, če sta samo 2) v %. */
-export function gbbDiffPct(total: number, base: number): number {
-  if (base <= 0) return 0;
+export function gbbDiffPct(total: number | null, base: number | null): number | null {
+  if (total === null || base === null || base <= 0) return null;
   return Math.round(((total - base) / base) * 100);
 }

@@ -22,12 +22,14 @@ import { formatNum } from './format';
 // izračunati. Inženirske meje (ROKSALovi razmiki, pasovi) ostajajo v
 // `roksal-span-rules.ts` in znotraj okna samo OCENIJO vpisano vrednost.
 
-/** Katera koli številčna vnosna polja kalkulatorjev in nastavitev. */
+/** Katera koli številčna vnosna polja kalkulatorjev in nastavitev.
+ *  Cen TU NI: cena ni meritev in ne sme biti vnosno polje kalkulatorja —
+ *  živi v Ceniku (`cenik.ts`), kalkulator izbere samo kakovostni razred. */
 export type NumericField =
   | 'length' | 'height' | 'gates'
   | 'steps' | 'stepWidth' | 'railingLength' | 'totalRiseCm'
-  | 'floorLength' | 'floorWidth' | 'wallHeight' | 'tilePricePerM2' | 'reservePercent'
-  | 'deckLength' | 'deckWidth' | 'joistSpacing' | 'boardPricePerM' | 'boardLengthM'
+  | 'floorLength' | 'floorWidth' | 'wallHeight' | 'reservePercent'
+  | 'deckLength' | 'deckWidth' | 'joistSpacing' | 'boardLengthM'
   | 'sideGapMm' | 'endGapMm'
   | 'windowCount' | 'windowSize' | 'doorCount'
   | 'canopyWidth' | 'canopyDepth' | 'canopyPosts'
@@ -120,10 +122,6 @@ export const KERAMIKA_INPUT_BOUNDS: readonly InputBound[] = [
     why: 'nad 4 m sten ta kalkulator ne predlaga odra in varnostne opreme',
   },
   {
-    field: 'tilePricePerM2', label: 'Cena ploščic', unit: '€/m²', min: 0, max: 200,
-    why: '0 €/m² je veljavno (material je že plačan drugje), nad 200 €/m² pa mora ponudba nositi konkretno cenino dobavitelja',
-  },
-  {
     field: 'reservePercent', label: 'Rezerva za rezanje', unit: '%', min: 0, max: 100,
     why: 'rezerva nad 100 % pomeni dvakrat toliko materiala kot je površina, česar ročni izračun ne razloži',
   },
@@ -189,7 +187,6 @@ const KERAMIKA_DEFAULTS: Record<string, number> = {
   floorLength: CRAFT_INPUT_DEFAULTS.floorLength ?? 4,
   floorWidth: CRAFT_INPUT_DEFAULTS.floorWidth ?? 3,
   wallHeight: CRAFT_INPUT_DEFAULTS.wallHeight ?? 0,
-  tilePricePerM2: CRAFT_INPUT_DEFAULTS.tilePricePerM2 ?? 24,
   reservePercent: CRAFT_INPUT_DEFAULTS.reservePercent ?? 10,
 };
 

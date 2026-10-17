@@ -60,6 +60,7 @@ const NO_COUNTER: Record<string, string> = {
   'scores-debug.ts': 'dijagnostična razpredelnica, ne preverb',
   'quality-calibrate.ts': 'kalibracijska razpredelnica, ne preverb',
   'scene-classify.ts': 'klasifikacijski izpis, ne preverb',
+  'cenik-fixture.ts': 'skupni podatki za cenikove skripte, ne preverb (sama nima trditev)',
 };
 
 const BUN = process.execPath; // zagnan z `bun`, torej je to bunov binar

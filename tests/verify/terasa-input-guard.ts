@@ -6,9 +6,14 @@
 // samodejno popravi njegova meritve; opazi šele predrago ali premalo debelo
 // podkonstrukcijo.
 //
+// ZAKAJ (Task 88): ista bolezen je bila v denarju. Kalkulator je imenoval ceno
+// deske (`boardPricePerM: 12.5`), montažo pa je računal iz urne postavke. Zdaj
+// kalkulator NE pozna nobene cene: vrstica je KOLIČINA + ključ do Cenika, denar
+// pa pripne `applyCenik` iz tistega, kar je monter sam vpisal.
+//
 // KAJPRIKAŽE:
 //  1. useka v koderju ni več (vir se preveri neposredno, ne samo obnašanja);
-//  2. znotraj okna vnosa se VPISANA vrednost uporabi točno — št. nosilcev se
+//  2. znotraj okna se VPISANA vrednost uporabi točno — št. nosilcev se
 //     mora menjati z 0,5 m, 1,2 m in 2,5 m, kot se ne bi mogel, če usek drži;
 //  3. zunaj okna izračun NE zaračuna ničesar in v razlogu našteje VPISANO
 //     vrednost (ne popravljene);
@@ -18,7 +23,10 @@
 //     spreminja — 1,2 m je izračunan in označen kot preširok;
 //  6. okno vnosa ima utemeljitev za vsak rob in ima čiste slovenske oznake,
 //     kot jih monter vidi na zaslonu;
-//  7. predlog razmaka iz fotke izhaja iz ROKSALovega pravila, ne iz kode.
+//  7. predlog razmaka iz fotke izhaja iz ROKSALovega pravila, ne iz kode;
+//  8. DENAR: kalkulator da same količine, ceno pripne Cenik DOBESEDNO; 0 € je
+//     veljavna cena, manjkajoča ali negativna pa ostane brez cene in ukine
+//     CELOTNO vsoto (delnega seštevka ni).
 //
 // Zagon: bun tests/verify/terasa-input-guard.ts
 
@@ -33,6 +41,12 @@ import {
 import { CRAFT_INPUT_DEFAULTS } from '../../src/lib/defaults';
 import { maxAllowedSpan } from '../../src/lib/roksal-span-rules';
 import { JOIST_SUGGEST_M } from '../../src/lib/deck-analysis';
+import {
+  CENIK_KEYS, applyCenik, readCenik, unpricedLines, priceLabel, priceWindowHint,
+  type CenikValues, type PriceKey,
+} from '../../src/lib/cenik';
+import { fixtureCenik, zCenikom, cenaVrslice, vsota as cenikVsota } from './cenik-fixture';
+import type { CalcLine } from '../../src/lib/types';
 import type { CraftInputs } from '../../src/lib/types';
 
 let pass = 0, fail = 0;
@@ -44,9 +58,10 @@ const check = (name: string, cond: boolean, info?: string) => {
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const SRC = (p: string) => readFileSync(join(HERE, '..', '..', p), 'utf8');
 
-const BASE: CraftInputs = { deckLength: 5, deckWidth: 4, joistSpacing: 0.33, boardLengthM: 4, sideGapMm: 5, endGapMm: 4, boardPricePerM: 12.5 };
+const BASE: CraftInputs = { deckLength: 5, deckWidth: 4, joistSpacing: 0.33, boardLengthM: 4, sideGapMm: 5, endGapMm: 4 };
 const withSpacing = (s: number): CraftInputs => ({ ...BASE, joistSpacing: s });
-const nosilci = (i: CraftInputs) => calculateWpcTerasa(i, 35).lines.find((l) => l.name.startsWith('Nosilci'));
+const goli = (i: CraftInputs = BASE): CalcLine[] => calculateWpcTerasa(i).lines;
+const nosilci = (i: CraftInputs) => goli(i).find((l) => l.priceKey === 'terasa.nosilci');
 const battenCheck = (i: CraftInputs) =>
   craftInstallPlan('wpc-terasa', i).checks.find((c) => c.label === 'Razmak nosilcev');
 const stopChecks = (i: CraftInputs) =>
@@ -61,6 +76,10 @@ const stopChecks = (i: CraftInputs) =>
   check('v načrtu montaže ni več `Math.min(0.6,` za razmak', !/Math\.min\(0\.6, Math\.max\(0\.3/.test(plan));
   check('cena deske se ne useka navzgor (Math.max(1, …) mrtev)', !/Math\.max\(1, input\.boardPricePerM/.test(pricing));
   check('noben izračun terase ne uporablja pogojnega predloga 0,3 / 0,4', !/\? 0\.3 : 0\.4/.test(pricing + plan + SRC('src/lib/deck-analysis.ts')));
+  // Task 88: kalkulator cene sploh nima več od kod dobiti.
+  check('v pricing.ts ne obstaja več boardPricePerM', !pricing.includes('boardPricePerM'));
+  check('v types.ts obrtnik ne vpisuje cene v kalkulator', !SRC('src/lib/types.ts').includes('boardPricePerM'));
+  check('urna postavka ni več parameter cenjenja terase', !/laborRate/.test(pricing.slice(pricing.indexOf('calculateWpcTerasa'))));
 }
 
 // ── 2. Znotraj okna se vpisano vzame dobesedno ──────────────
@@ -77,27 +96,22 @@ const stopChecks = (i: CraftInputs) =>
     nosilci(withSpacing(1.2))?.description === 'Razmak 120 cm', String(nosilci(withSpacing(1.2))?.description));
   // dilatacija in nabavna dolžina sta bili usekani enako
   check('stranska reža 12 mm se uporabi, ne useka na 10 mm',
-    calculateWpcTerasa({ ...BASE, sideGapMm: 12 }, 35).summary.some((s) => s.value.includes('str. 12 mm')));
-  const deska8 = calculateWpcTerasa({ ...BASE, boardLengthM: 8 }, 35).lines[0]?.description ?? '';
+    calculateWpcTerasa({ ...BASE, sideGapMm: 12 }).summary.some((s) => s.value.includes('str. 12 mm')));
+  const deska8 = goli({ ...BASE, boardLengthM: 8 })[0]?.description ?? '';
   check('nabavna deska 8 m se uporabi, ne useka na 6 m', deska8.includes('po 8 m'), deska8);
-  check('cena 0 €/m ostane 0 (dvig na 1 € mrtev)',
-    calculateWpcTerasa({ ...BASE, boardPricePerM: 0 }, 35).lines[0]?.unitPrice === 0);
 }
 
 // ── 3. Zunaj okna se ne zaračuna ničesar ────────────────────
 {
   console.log('zunaj okna: nič ni obračunano, razlog nosi VPISANO vrednost:');
-  const r = calculateWpcTerasa(withSpacing(8), 35);
+  const r = calculateWpcTerasa(withSpacing(8));
   check('8 m → nobena postavka (lines prazen)', r.lines.length === 0, `lines=${r.lines.length}`);
   check('8 m → povzetek pravi »Izračun ni opravljen«', r.summary[0]?.label === 'Izračun ni opravljen', JSON.stringify(r.summary));
   check('razlog našteje vpisanih 8 m, ne popravljenih 0,6 m', r.summary[0]?.value.includes('8 m') === true, r.summary[0]?.value);
   check('8 m → načrt montaže prav tako brez nakupa',
     stopChecks(withSpacing(8)).length > 0 && craftInstallPlan('wpc-terasa', withSpacing(8)).buys.length === 0);
-  const neg = calculateWpcTerasa({ ...BASE, boardPricePerM: -3 }, 35);
-  check('negativna cena je zavrnjena in imenovana',
-    neg.lines.length === 0 && neg.summary[0]?.value.includes('Cena deske') === true, JSON.stringify(neg.summary));
   check('prazna meritev (0 m) ni napaka, ampak še-ne-vneseno stanje',
-    calculateWpcTerasa({ ...BASE, deckLength: 0 }, 35).summary[0]?.value === '0 m²');
+    calculateWpcTerasa({ ...BASE, deckLength: 0 }).summary[0]?.value === '0 m²');
   check('znotraj okna meja ni preslikana: 3 m je veljaven vnos', resolveTerasaInputs(withSpacing(3)).ok === true);
   check('3,01 m pa ni več', resolveTerasaInputs(withSpacing(3.01)).ok === false);
 }
@@ -108,10 +122,10 @@ const stopChecks = (i: CraftInputs) =>
   const cases: CraftInputs[] = [
     BASE, withSpacing(0.35), withSpacing(0.4), withSpacing(1.2), withSpacing(8), withSpacing(0.01),
     { ...BASE, sideGapMm: 80 }, { ...BASE, endGapMm: 0 }, { ...BASE, boardLengthM: 0.2 },
-    { ...BASE, boardPricePerM: -1 }, { ...BASE, deckWidth: 400 },
+    { ...BASE, deckWidth: 400 },
   ];
   for (const c of cases) {
-    const price = calculateWpcTerasa(c, 35);
+    const price = calculateWpcTerasa(c);
     const plan = craftInstallPlan('wpc-terasa', c);
     const rejected = price.lines.length === 0 && price.summary[0]?.label === 'Izračun ni opravljen';
     const stopped = plan.checks.some((k) => k.label === 'Izračun ni opravljen' && k.status === 'bad');
@@ -135,7 +149,7 @@ const stopChecks = (i: CraftInputs) =>
   check('35 cm → warn (znotraj pasu, čez varno mejo)', battenCheck(withSpacing(0.35))?.status === 'warn', battenCheck(withSpacing(0.35))?.status);
   check('40 cm → bad', battenCheck(withSpacing(0.4))?.status === 'bad', battenCheck(withSpacing(0.4))?.status);
   check('120 cm → bad IN vendar izračunan',
-    battenCheck(withSpacing(1.2))?.status === 'bad' && calculateWpcTerasa(withSpacing(1.2), 35).lines.length > 0);
+    battenCheck(withSpacing(1.2))?.status === 'bad' && calculateWpcTerasa(withSpacing(1.2)).lines.length > 0);
   check('ocena našteje vir in citat', /roksal\.com/.test(battenCheck(withSpacing(1.2))?.detail ?? '')
     && battenCheck(withSpacing(1.2))?.detail.includes('33') === true);
   check('dilatacija 0 mm je označena kot preozka (brez tihega dviga na 2 mm)',
@@ -147,7 +161,10 @@ const stopChecks = (i: CraftInputs) =>
 {
   console.log('vsak rob okna ima razlog, vsako polje ima ime zaslona:');
   const crafts = SRC('src/components/calculators/crafts.tsx');
-  check('okno pokriva vseh sedem vnosov terase', TERASA_INPUT_BOUNDS.length === 7, String(TERASA_INPUT_BOUNDS.length));
+  // Task 88: cena deske iz okna je izpadla — ostane šest meritev. Cene ne
+  // uporablja več kalkulator, zato je tudi ni več treba varovati z oknom.
+  check('okno pokriva vseh šest meritev terase', TERASA_INPUT_BOUNDS.length === 6, String(TERASA_INPUT_BOUNDS.length));
+  check('okno ne vsebuje več cenovnega polja', !TERASA_INPUT_BOUNDS.some((b) => /cena/i.test(b.label)));
   for (const b of TERASA_INPUT_BOUNDS) {
     check(`${b.field}: razlog za rob (${b.why.slice(0, 32)}…)`, b.why.length >= 20 && (b.min !== null || b.max !== null));
     check(`${b.field}: ime polja je točno tako, kot ga vidi monter`, crafts.includes(`label="${b.label}"`));
@@ -186,13 +203,9 @@ const stopChecks = (i: CraftInputs) =>
   check('uporabi decimalno vejico (0,05–3 m)', text.includes('0,05–3'), text);
   check('pove, da izračun ni opravljen', text.includes('Izračun ni opravljen'));
   check('obseže utemeljitev roba', text.includes('ne zna več pretvoriti v število nosilcev'));
-  check('cena nima zgornje meje, zato je omenjen samo spodnji rob',
-    terasaProblemText(resolveTerasaInputs({ ...BASE, boardPricePerM: -3 }).problems[0]!)
-      .includes('Cena deske −3 €/m je premalo za izračun (−3 < 0); sprejemamo najmanj 0 €/m') === true,
-    terasaProblemText(resolveTerasaInputs({ ...BASE, boardPricePerM: -3 }).problems[0]!));
   // Razlog `why` je v registru zapisan z malo, ker je stavek sredi besedila. Ko
   // pride ZA PIKO, mora začeti z veliko — v pridobljenem posnetku je monter
-  // bral »… sprejemamo najmanj 0 €/m. cena je tvoja pogodba z dobaviteljem.«
+  // bral »… razmak zunaj 5 cm–3 m aplikacija ne zna …«.
   for (const b of TERASA_INPUT_BOUNDS) {
     const out = b.min !== null ? (b.min ?? 0) - 1 : (b.max ?? 0) + 1;
     const t = terasaProblemText(resolveTerasaInputs({ ...BASE, [b.field]: out }).problems.find((x) => x.bound.field === b.field)!);
@@ -209,6 +222,85 @@ const stopChecks = (i: CraftInputs) =>
   check('kartica materiala USENI sklanja števec opozoril',
     SRC('src/components/calculators/material-panel.tsx')
       .includes("{plural(warns, ['opozorilo', 'opozorili', 'opozorila', 'opozoril'])}"));
+}
+
+// ── 9. DENAR: kalkulator da količino, ceno vpiše monter ─────
+//       (Task 88 — »ne cene ne piši, uporabnik mora sam«)
+{
+  console.log('\n── denar: koda pozna količino, ceno pozna monter ──');
+  const L = goli();
+  check('kalkulator vrne KOLIČINE brez cene (vsaka vrstica unitPrice null)',
+    L.length > 0 && L.every((l) => l.unitPrice === null));
+  check('vsaka vrstica nosi registriran ključ',
+    L.every((l) => typeof l.priceKey === 'string' && CENIK_KEYS.includes(l.priceKey as PriceKey)));
+  const KLJUCI: PriceKey[] = [
+    'terasa.deska-klasicna', 'terasa.nosilci', 'terasa.kljukice',
+    'terasa.profil', 'terasa.vijaki', 'montaza.terasa',
+  ];
+  check('nabor ključev terase je točno teh šest',
+    L.length === KLJUCI.length && KLJUCI.every((k) => L.some((l) => l.priceKey === k)),
+    L.map((l) => l.priceKey).join(', '));
+  check('cenik pripne ceno po LASTNEM ključu (tuje cene ni)',
+    zCenikom(L).every((l) => l.unitPrice === CENIK_KEYS.indexOf(l.priceKey as PriceKey) + 1));
+  check('brez cenika denarja ni — vsota je NaN, ne 0',
+    Number.isNaN(cenikVsota(L)) && applyCenik(L, {}).every((l) => l.unitPrice === null));
+  check('fixture cenik je res pestri (nobena cena se ne ponovi)',
+    new Set(Object.values(fixtureCenik())).size === CENIK_KEYS.length);
+
+  console.log('vpisana cena = cena na dokumentu:');
+  const rocno: CenikValues = {
+    'terasa.deska-klasicna': 18.75, 'terasa.nosilci': 9.4, 'terasa.kljukice': 0.32,
+    'terasa.profil': 4.1, 'terasa.vijaki': 0.18, 'montaza.terasa': 30,
+  };
+  const za = zCenikom(L, rocno);
+  check('deska 18,75 €/m ostane 18,75 (brez zaokroževanja in brez dviga)',
+    cenaVrslice(za, 'terasa.deska-klasicna') === 18.75, String(cenaVrslice(za, 'terasa.deska-klasicna')));
+  check('montaža 30 €/m² ostane 30', cenaVrslice(za, 'montaza.terasa') === 30);
+  check('nobena vrstica ni brez cene', unpricedLines(za).length === 0);
+
+  console.log('0 € je podatek, ne prazno polje:');
+  const zNicjo = zCenikom(L, { ...rocno, 'terasa.deska-klasicna': 0 });
+  check('vpisanih 0 € koda ne vzame za manjkajočo ceno',
+    cenaVrslice(zNicjo, 'terasa.deska-klasicna') === 0 && unpricedLines(zNicjo).length === 0);
+  check('0 € zniža vsoto in je ne uniči',
+    Number.isFinite(cenikVsota(zNicjo)) && cenikVsota(zNicjo) < cenikVsota(za),
+    String(cenikVsota(zNicjo)));
+  const reading = readCenik({ 'terasa.deska-klasicna': 0 })['terasa.deska-klasicna'];
+  check('readCenik za 0 € ne vrne problema', reading?.problem === null, JSON.stringify(reading));
+
+  console.log('manjkajoča ali negativna cena ukine CELOTNO vsoto:');
+  const brez = Object.fromEntries(
+    Object.entries(rocno).filter(([k]) => k !== 'montaza.terasa'),
+  ) as CenikValues;
+  const del = zCenikom(L, brez);
+  check('brez cene montaže vrstica ostane brez cene (ničle ni)',
+    cenaVrslice(del, 'montaza.terasa') === null);
+  check('manjkajoča vrstica je IMENOVANA, ne spregledana',
+    unpricedLines(del).some((l) => l.name === 'Montaža terase'),
+    unpricedLines(del).map((l) => l.name).join(', '));
+  check('ena sama manjkajoča cena ukine CELATEN seštevek (delnega ni)',
+    Number.isNaN(cenikVsota(del)));
+  const neg = zCenikom(L, { ...rocno, 'terasa.deska-klasicna': -3 });
+  check('negativna cena ne dobi ničle, ampak ostane brez cene',
+    cenaVrslice(neg, 'terasa.deska-klasicna') === null && Number.isNaN(cenikVsota(neg)));
+  const negReading = readCenik({ 'terasa.deska-klasicna': -3 })['terasa.deska-klasicna'];
+  check('razlog našteje VPISANO vrednost (−3)', /-3|−3/.test(negReading?.problem ?? ''), negReading?.problem ?? '');
+  check('okno cen govori o spodnjem robu 0 €', priceWindowHint().includes('0 €') && priceWindowHint().includes('ni obračunana'));
+  check('oznaka vrstice pride iz registra, ne iz kalkulatorja',
+    priceLabel('terasa.deska-klasicna') === 'Terasna deska WPC — klasična (polna 25×140) (€/m)',
+    priceLabel('terasa.deska-klasicna'));
+
+  console.log('odtenek deske menja KLJUČ, ne cene:');
+  const relief = goli({ ...BASE, boardGrade: 'relief' })[0];
+  const jedro = goli({ ...BASE, boardGrade: 'jedro' })[0];
+  check('3D relief piše na svoj ključ', relief?.priceKey === 'terasa.deska-relief', String(relief?.priceKey));
+  check('polno jedro piše na svoj ključ', jedro?.priceKey === 'terasa.deska-jedro', String(jedro?.priceKey));
+  check('izbor odtenka ne spremeni količine (cena ne vpliva na račun)',
+    relief?.quantity === L[0]?.quantity && jedro?.quantity === L[0]?.quantity,
+    `${String(relief?.quantity)} / ${String(jedro?.quantity)} / ${String(L[0]?.quantity)}`);
+  check('cena reliefa je vpisana LOČENO od klasične',
+    cenaVrslice(zCenikom(goli({ ...BASE, boardGrade: 'relief' }), { 'terasa.deska-relief': 21 }), 'terasa.deska-relief') === 21
+    && cenaVrslice(zCenikom(goli({ ...BASE, boardGrade: 'relief' }), { 'terasa.deska-klasicna': 18.75 }), 'terasa.deska-relief') === null);
 }
 
 console.log(`\nREZULTAT: ${pass} OK, ${fail} NAPAK`);

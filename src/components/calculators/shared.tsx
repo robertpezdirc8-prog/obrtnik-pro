@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,13 +8,15 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { PlusCircle, Sparkles, Clock } from 'lucide-react';
+import { PlusCircle, Sparkles, Clock, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useCenik } from '@/hooks/use-cenik';
 import { useDraft, useView } from '@/lib/store';
 import { formatEUR, formatNum } from '@/lib/format';
-import { craftInstallPlan } from '@/lib/install-plan';
+import { craftInstallPlan, plural } from '@/lib/install-plan';
 import { estimateDuration } from '@/lib/labor';
-import { numberProblemSentence, parseNumberInput, readSettings, settingsProblemText } from '@/lib/settings-inputs';
+import { numberProblemSentence, parseNumberInput } from '@/lib/settings-inputs';
+import { applyCenik, unpricedLines, type PriceKey } from '@/lib/cenik';
 import { MaterialPanel } from './material-panel';
 import { GbbPanel } from './gbb-panel';
 import type { CalcLine, CraftId, CraftInputs } from '@/lib/types';
@@ -143,17 +145,19 @@ export function BoolField({
 
 // ─── Okvir kalkulatorja ─────────────────────────────────────
 
+const VRSTICE: [string, string, string, string] = ['vrstica', 'vrstici', 'vrstice', 'vrstic'];
+const POSTAVKE: [string, string, string, string] = ['postavka', 'postavki', 'postavke', 'postavk'];
+
 export interface CraftCalcProps {
   craft: CraftId;
   title: string;
   description: string;
   inputs: CraftInputs;
   setInputs: (patch: Partial<CraftInputs>) => void;
-  /** `laborRate` je OBVEZEN: urna postavka dela je edini vir cene dela in sme
-   *  priti SAMO iz nastavitev. Prejšnji podpis je imel privzetek `= 35`, torej
-   *  je vsak kalkulator bez nastavitve natisnil delovno ure po izmišljeni
-   *  številki (Task 86). */
-  compute: (inputs: CraftInputs, laborRate: number) => { lines: CalcLine[]; summary: { label: string; value: string }[] };
+  /** `compute` izračuna SAMO KOLIČINE (metre, m², kose, ure). Cene tu ni od
+   *  kod: pogon jih ne pozna in jih ne sme prejeti kot parametra. Denar pride
+   *  izključno iz Cenika (`applyCenik`), kjer ga vpiše obrtnik (Task 88). */
+  compute: (inputs: CraftInputs) => { lines: CalcLine[]; summary: { label: string; value: string }[] };
   prefilled?: boolean;
   children: React.ReactNode;
 }
@@ -162,55 +166,26 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
   const { toast } = useToast();
   const addItem = useDraft((s) => s.addItems);
   const setView = useView((s) => s.setView);
+  const openCenik = useView((s) => s.openCenik);
+  const cenik = useCenik();
 
-  /** Urna postavka dela pride IZ NASTAVITEV. Prejšnja začetna vrednost `35` je
-   *  bila izmišljena številka: kalkulator je po njej računal montažo, GBB panel
-   *  pa tri opcije za stranko, še preden so nastavitve sploh prišle na zaslon
-   *  (Task 86). Zato je `compute(inputs, laborRate)` zdaj obvezen. */
-  const [laborRate, setLaborRate] = useState(Number.NaN);
-  const [laborLoaded, setLaborLoaded] = useState(false);
-  useEffect(() => {
-    fetch('/api/settings')
-      .then((r) => r.json())
-      .then((d) => {
-        setLaborLoaded(true);
-        setLaborRate(d.settings?.laborRate ?? Number.NaN);
-      })
-      .catch(() => undefined);
-  }, []);
-  /** ISTI bralec kot PDF, račun, SMS in urejevalnik ponudbe — nič se ne useka
-   *  in nič se ne nadomesti z ugodnejšo številko. Brez veljavne postavke denar
-   *  NI izračunan (`priced = false`), zato na dokument ne more iti ura, ki je
-   *  monter ni nastavil. */
-  const delo = readSettings({ laborRate }).laborRate;
-  const priced = laborLoaded && !delo.problem;
-
-  const result = useMemo(() => compute(inputs, delo.value), [compute, inputs, delo.value]);
+  const result = useMemo(() => compute(inputs), [compute, inputs]);
   const plan = useMemo(() => craftInstallPlan(craft, inputs), [craft, inputs]);
   const duration = useMemo(() => estimateDuration(craft, inputs), [craft, inputs]);
-  const [priceOverrides, setPriceOverrides] = useState<Record<number, number>>({});
-  /** Ročna cena na enoto je DENAR. Stari vnos je bil `type="number"` z
-   *  `Number(e.target.value)`: vejico je brskalnik vrnil kot prazen string,
-   *  `Number('')` pa je 0 — monter je tipkal 12,5, vrstica je tekla pri 0 €.
-   *  Vpisano živi kot BESEDILO, neveljavno pa ustavi dodajanje. */
-  const [priceText, setPriceText] = useState<Record<number, string>>({});
-  const priceProblem = (i: number): string | null => {
-    const t = priceText[i];
-    if (t === undefined) return null;
-    return Number.isFinite(parseNumberInput(t)) ? null : t;
-  };
-  const anyPriceProblem = result.lines.reduce<boolean>((bad, _l, i) => bad || priceProblem(i) !== null, false);
-  const firstPriceProblem = (() => {
-    for (let i = 0; i < result.lines.length; i++) {
-      const t = priceProblem(i);
-      if (t !== null) return { name: result.lines[i].name, typed: t };
-    }
-    return null;
-  })();
 
-  const subtotal = result.lines.reduce(
-    (s, l, i) => s + l.quantity * (priceOverrides[i] ?? l.unitPrice),
-    0,
+  /** Količine se izračunajo vedno. Cena se pripne ŠELE tu, in samo če jo je
+   *  obrtnik vpisal: vrstica brez cene ostane `null` — ne 0 €, ne prejšnja
+   *  številka. */
+  const lines = useMemo(() => applyCenik(result.lines, cenik.readings), [result.lines, cenik.readings]);
+  const missing = useMemo(() => unpricedLines(lines), [lines]);
+  const priced = missing.length === 0 && lines.length > 0;
+
+  const subtotal = priced ? lines.reduce((s, l) => s + l.quantity * (l.unitPrice as number), 0) : 0;
+
+  /** Katerih ključov manjka — gumb odpre Cenik na prvi manjkajoči vrstici. */
+  const missingKeys = useMemo(
+    () => Array.from(new Set(missing.map((l) => l.priceKey))).filter((k): k is PriceKey => !!k),
+    [missing],
   );
 
   const handleAdd = () => {
@@ -218,31 +193,31 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
       toast({ title: 'Ni postavk', description: 'Najprej vnesi veljavne dimenzije.', variant: 'destructive' });
       return;
     }
-    // Neveljavno vpisane cene NE pretvorimo v 0 in NE spustimo ven prejšnje:
-    // v ponudbi bi bila številka, ki je monter ni napisal.
-    if (firstPriceProblem) {
+    // Brez vpisane cene vrstica NE gre v ponudbo: na dokumentu bi bila
+    // številka, ki je obrtnik ni napisal — ali prazna vrsta, ki bi jo moral
+    // sam uganiti ob tiskanju.
+    if (missing.length > 0) {
       toast({
-        title: 'Cena na enoto ni prebrana',
-        description: `${firstPriceProblem.name} — ${numberProblemSentence('Cena', firstPriceProblem.typed)}. Vpisani vrednosti nismo popravili in postavk nismo dodali.`,
+        title: 'Cena ni vpisana',
+        description: `${missing.map((l) => l.name).join(', ')} — ceno vpiši v Ceniku. Postavk nismo dodali.`,
         variant: 'destructive',
       });
       return;
     }
     const stamp = Date.now();
-    const items = result.lines.map((l, i) => ({
+    const items = lines.map((l, i) => ({
       key: `${craft}-${stamp}-${i}`,
       name: l.name,
       description: l.description,
       quantity: l.quantity,
       unit: l.unit,
-      unitPrice: priceOverrides[i] ?? l.unitPrice,
+      unitPrice: l.unitPrice,
+      ...(l.priceKey ? { priceKey: l.priceKey } : {}),
     }));
     addItem(items);
-    setPriceOverrides({});
-    setPriceText({});
     toast({
       title: 'Dodano v ponudbo ✓',
-      description: `${items.length} postavk · ${formatEUR(subtotal)} brez DDV`,
+      description: `${items.length} ${plural(items.length, POSTAVKE)} · ${formatEUR(subtotal)} brez DDV`,
     });
     setView('kalkulatorji');
   };
@@ -285,7 +260,8 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
           )}
 
           {/* Ocena trajanja — deterministični normativi (lib/labor.ts),
-              orientacijska pomoč za terminiranje ekipe. */}
+              orientacijska pomoč za terminiranje ekipe. NI CENA: ure se
+              cenijo šele, ko obrtnik vpiše svojo postavko. */}
           {duration && (
             <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2" data-testid="duration-row">
               <Clock className="h-4 w-4 shrink-0 text-primary" />
@@ -296,55 +272,41 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
             </div>
           )}
 
-          {!priced && result.lines.length > 0 && (
-            <div
-              className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
-              data-testid="calc-price-refusal"
-            >
-              {delo.problem
-                ? `Cene niso izračunane — ${settingsProblemText(delo.problem)}`
-                : 'Cene niso izračunane — nastavitve še niso na zaslonu.'}
-            </div>
-          )}
-
-          {priced && result.lines.length > 0 && (
+          {lines.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Predlagane postavke</CardTitle>
-                <CardDescription>Cene lahko pred dodajanjem prilagodiš.</CardDescription>
+                <CardTitle className="text-base">Izračunane količine</CardTitle>
+                <CardDescription>
+                  Količine izmeri aplikacija, cene pa določiš ti — v Ceniku, ki je edini vir
+                  denarja.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="max-h-72 overflow-y-auto scroll-area -mx-1 px-1">
                   <div className="space-y-2">
-                    {result.lines.map((l, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded-lg border p-2.5">
+                    {lines.map((l, i) => (
+                      <div key={i} className="flex items-center gap-2 rounded-lg border p-2.5" data-testid="price-line">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{l.name}</p>
                           {l.description && <p className="text-xs text-muted-foreground truncate">{l.description}</p>}
-                          <p className="text-xs text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5" data-testid="line-detail">
                             {formatNum(l.quantity)} {l.unit} ×{' '}
-                            {priceProblem(i) !== null ? '—' : formatEUR(priceOverrides[i] ?? l.unitPrice)}
+                            {l.unitPrice === null ? 'cena ni vpisana' : formatEUR(l.unitPrice)}
                           </p>
                         </div>
-                        <div className="shrink-0">
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            className="w-24 h-8 text-sm"
-                            aria-invalid={priceProblem(i) !== null || undefined}
-                            aria-label={`Cena za ${l.name}`}
-                            value={priceText[i] ?? formatNum(priceOverrides[i] ?? l.unitPrice, 3)}
-                            onChange={(e) => {
-                              const t = e.target.value;
-                              const n = parseNumberInput(t);
-                              setPriceText((p) => ({ ...p, [i]: t }));
-                              if (Number.isFinite(n)) setPriceOverrides((p) => ({ ...p, [i]: n }));
-                            }}
-                          />
-                          {priceProblem(i) !== null && (
-                            <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400 w-24" data-testid="price-refusal">
-                              {numberProblemSentence('Cena', priceText[i] ?? '')}
-                            </p>
+                        <div className="shrink-0 text-right">
+                          {l.unitPrice === null ? (
+                            <button
+                              type="button"
+                              onClick={() => openCenik(l.priceKey ?? null)}
+                              className="inline-flex items-center gap-1 rounded-md border border-amber-600/40 bg-amber-500/10 px-2 py-1.5 text-xs font-medium text-amber-800 dark:text-amber-300 min-h-[36px]"
+                              data-testid={`cenik-open-${l.priceKey ?? i}`}
+                            >
+                              <Wallet className="h-3.5 w-3.5" />
+                              Vpiši ceno
+                            </button>
+                          ) : (
+                            <p className="text-sm font-semibold" data-testid="line-amount">{formatEUR(l.quantity * l.unitPrice)}</p>
                           )}
                         </div>
                       </div>
@@ -355,37 +317,62 @@ export function CraftCalculator({ craft, title, description, inputs, setInputs, 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
                     <p className="text-sm text-muted-foreground">Vsota (brez DDV)</p>
-                    {anyPriceProblem ? (
+                    {!priced ? (
                       <p className="text-sm font-semibold text-amber-700 dark:text-amber-400" data-testid="subtotal-refusal">
-                        Vsota ni izračunana — {firstPriceProblem?.name}: cena ni prebrana.
+                        Vsota ni izračunana — {missing.length} {plural(missing.length, VRSTICE)} brez vpisane cene.
                       </p>
                     ) : (
                       <p className="text-lg font-bold">{formatEUR(subtotal)}</p>
                     )}
                   </div>
-                  <Button onClick={handleAdd} size="lg" className="min-h-11">
+                  <Button
+                    onClick={handleAdd}
+                    size="lg"
+                    className="min-h-11"
+                    disabled={!priced}
+                    data-testid="add-to-offer"
+                  >
                     <PlusCircle className="mr-2 h-4 w-4" />
                     Dodaj v ponudbo
                   </Button>
                 </div>
+                {!priced && (
+                  <div
+                    className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+                    data-testid="calc-price-refusal"
+                  >
+                    <p className="font-medium">
+                      {cenik.loaded
+                        ? `${missing.length} ${plural(missing.length, VRSTICE)} brez cene — postavk ni mogoče dodati:`
+                        : 'Cene še niso na zaslonu — postavk ni mogoče dodati.'}
+                    </p>
+                    {!cenik.loaded ? (
+                      <p className="text-xs mt-1">Cenik se ne more naložiti, zato aplikacija ne izmisli nobene številke.</p>
+                    ) : (
+                      <>
+                        <p className="text-xs mt-1">{missing.map((l) => l.name).join(', ')}</p>
+                        <button
+                          type="button"
+                          onClick={() => openCenik(missingKeys[0] ?? null)}
+                          className="mt-2 rounded-md border px-2.5 py-1.5 text-xs font-medium min-h-[36px] hover:bg-accent"
+                          data-testid="cenik-open-from-calc"
+                        >
+                          Odpri Cenik
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
 
           <MaterialPanel plan={plan} craft={craft} />
-          {/* Opcije za stranko so DENAR, izračunan po urni postavki dela. Brez
-              prebrane nastavitve jih NE prikazujemo — tri cene po izmišljenih
-              35 €/h bi bile ponudba, ki je noben vir ni podprl. */}
+          {/* Opcije za stranko so DENAR. Dokler katerakoli vrstica nima
+              vpisane cene, se ne prikažejo — tri cene, ki jih ni noben vir
+              podprl, bi bile ponudba, ki je obrtnik ni napisal. */}
           {priced && result.lines.length > 0 && (
-            <GbbPanel craft={craft} inputs={inputs} laborRate={delo.value} />
-          )}
-          {!priced && delo.problem && result.lines.length > 0 && (
-            <div
-              className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
-              data-testid="gbb-blocked"
-            >
-              Opcije za stranko niso izračunane — {settingsProblemText(delo.problem)}
-            </div>
+            <GbbPanel craft={craft} inputs={inputs} values={cenik.values} />
           )}
         </div>
       </div>

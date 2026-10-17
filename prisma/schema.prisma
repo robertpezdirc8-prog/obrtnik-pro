@@ -26,11 +26,26 @@ model Product {
   name        String
   description String?
   unit        String      @default("kos")
-  unitPrice   Float
+  /// Cena v katalogu NI: katalog pove, KAJ je (naziv, mera, enota), ceno pa
+  /// vedno vpiše obrtnik v Ceniku (Task 88 — `CenikPrice`). Prejšnja različica
+  /// je imela tu 50 izmišljenih številk, ki so tekle po ponudbah.
   sku         String?
   active      Boolean     @default(true)
   createdAt   DateTime    @default(now())
   offerItems  OfferItem[]
+}
+
+// ─── Cenik (edini vir denarja) ──────────────────────────────
+//
+// Ključ je `PriceKey` iz `src/lib/cenik.ts` — register, ki ve, KAJ je mogoče
+// oceniti. `unitPrice` je null, dokler obrtnik cene ni vpisal: prazno polje ni
+// ničla in ni prejšnja vrednost. Iz teh vrstic pride denar v ponudbo samo
+// prek `applyCenik` (`src/lib/cenik.ts`), nikoli iz kode.
+
+model CenikPrice {
+  key       String   @id
+  unitPrice Float?
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Ponudbe ────────────────────────────────────────────────
@@ -52,7 +67,10 @@ model Offer {
   /// Wiedervorlage — datum, ko obrtnik sam sebi zastavi opomnik za follow-up.
   followUpAt      DateTime?
   subtotal        Float
-  vatRate         Float       @default(22)
+  /// DDV je PODATK NA dokumentu, ne privzetek aplikacije: ob ustvarjanju
+  /// ponudbe ga piše pot, ki je prebrala Nastavitve. `@default(22)` je bil
+  /// izmišljena davčna odločitev.
+  vatRate         Float
   vatAmount       Float
   total           Float
   createdAt       DateTime    @default(now())
@@ -143,11 +161,15 @@ model Settings {
   email           String  @default("")
   taxNumber       String  @default("")
   iban            String  @default("")
-  vatRate         Float   @default(22)
-  laborRate       Float   @default(35)
-  quoteValidDays  Int     @default(15)
-  depositPercent  Float   @default(30)
-  paymentDays     Int     @default(15)
+  /// DENAR IN ROKI BREZ PRIVZETKOV. `@default(22)`, `@default(35)` in
+  /// `@default(30)` so aplikacijo zagnala s številkami, ki jih obrtnik ni
+  /// vpisal — prazna vrednost je zato null, `readSettings` jo javi kot
+  /// »številka ni vpisana« in dokument vrsto izpusti z razlogom (Task 86, 88).
+  vatRate         Float?
+  laborRate       Float?
+  quoteValidDays  Int?
+  depositPercent  Float?
+  paymentDays     Int?
   logoUrl         String?
 }
 

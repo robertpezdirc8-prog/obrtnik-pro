@@ -30,6 +30,10 @@ import { craftInstallPlan } from '../../src/lib/install-plan';
 import { estimateDuration } from '../../src/lib/labor';
 import { formatNum } from '../../src/lib/format';
 import {
+  applyCenik, readCenik, unpricedLines, CENIK_KEYS, type PriceKey, type TileGrade,
+} from '../../src/lib/cenik';
+import { zCenikom, vsota as cenikVsota } from './cenik-fixture';
+import {
   FASADA_INPUT_BOUNDS, KERAMIKA_INPUT_BOUNDS, NADSTRESEK_INPUT_BOUNDS, OKNA_INPUT_BOUNDS,
   STOPNICE_INPUT_BOUNDS, CRAFT_INPUT_BOUNDS, craftProblemText, fasadaOpeningProblem,
   inputWindowHint, resolveCraftInputs, type InputBound,
@@ -57,29 +61,30 @@ interface Craft {
 
 const CRAFTS: Craft[] = [
   {
-    id: 'stopnice', bounds: STOPNICE_INPUT_BOUNDS, price: (i) => calculateStopnice(i, 35),
+    id: 'stopnice', bounds: STOPNICE_INPUT_BOUNDS, price: (i) => calculateStopnice(i),
     base: { steps: 12, stepWidth: 1.1, totalRiseCm: 0, stepMaterial: 'wpc', railingNeeded: true },
   },
   {
-    id: 'keramika', bounds: KERAMIKA_INPUT_BOUNDS, price: (i) => calculateKeramika(i, 35),
-    base: { floorLength: 4, floorWidth: 3, wallHeight: 0, tilePricePerM2: 24, reservePercent: 10, tilePattern: 'ravno' },
+    id: 'keramika', bounds: KERAMIKA_INPUT_BOUNDS, price: (i) => calculateKeramika(i),
+    base: { floorLength: 4, floorWidth: 3, wallHeight: 0, tileGrade: 'std', reservePercent: 10, tilePattern: 'ravno' },
   },
   {
-    id: 'okna-vrata', bounds: OKNA_INPUT_BOUNDS, price: (i) => calculateOknaVrata(i, 35),
+    id: 'okna-vrata', bounds: OKNA_INPUT_BOUNDS, price: (i) => calculateOknaVrata(i),
     base: { windowCount: 3, windowSize: 2, doorCount: 1, windowMaterial: 'pvc', removeOld: true },
   },
   {
-    id: 'nadstreški', bounds: NADSTRESEK_INPUT_BOUNDS, price: (i) => calculateNadstresek(i, 35),
+    id: 'nadstreški', bounds: NADSTRESEK_INPUT_BOUNDS, price: (i) => calculateNadstresek(i),
     base: { canopyWidth: 5, canopyDepth: 3, canopyPosts: 2, canopyCover: 'ploc', waterDrain: true },
   },
   {
-    id: 'fasada', bounds: FASADA_INPUT_BOUNDS, price: (i) => calculateFasada(i, 35),
+    id: 'fasada', bounds: FASADA_INPUT_BOUNDS, price: (i) => calculateFasada(i),
     base: { facadePerimeter: 36, facadeHeight: 2.8, openingsM2: 12, cladding: 'wpc' },
   },
 ];
 
 const sPoljem = (base: CraftInputs, field: string, v: number): CraftInputs =>
   ({ ...base, [field]: v }) as CraftInputs;
+const sPoljemGrade = (base: CraftInputs, g: TileGrade): CraftInputs => ({ ...base, tileGrade: g });
 const cena = (c: Craft, i: CraftInputs) => c.price(i);
 const cenaBesedilo = (c: Craft, i: CraftInputs) => {
   const r = cena(c, i);
@@ -96,7 +101,10 @@ const nacrtBesedilo = (c: Craft, i: CraftInputs) => {
 };
 const nacrtZavrne = (c: Craft, i: CraftInputs) => nacin(c, i).checks.some((k) => k.label === 'Izračun ni opravljen');
 const norma = (c: Craft, i: CraftInputs) => estimateDuration(c.id, i);
-const vsota = (c: Craft, i: CraftInputs) => cena(c, i).lines.reduce((a, l) => a + l.quantity * l.unitPrice, 0);
+/** Task 88: kalkulator denarja ne sešteva — njegove vrstice so brez cene.
+ *  Če zavrnitev vseeno kaj »zaračuna«, je to bodisi postavka bodisi cena. */
+const zacaruna = (c: Craft, i: CraftInputs) =>
+  cena(c, i).lines.filter((l) => l.unitPrice !== null || !Number.isFinite(l.quantity)).length;
 const preverba = (c: Craft, i: CraftInputs, label: string) => nacin(c, i).checks.find((k) => k.label === label);
 
 // ── 1. Vir: tihi usek je iz treh bralcev izginil ────────────
@@ -189,11 +197,23 @@ for (const c of CRAFTS) {
   const keramika = CRAFTS[1];
   const velikaRezerva = sPoljem(keramika.base, 'reservePercent', 50);
   check('50 % rezerve: cena NE useka na 30 %', cenaBesedilo(keramika, velikaRezerva).includes('rezerva 50 %'), cenaBesedilo(keramika, velikaRezerva).slice(0, 140));
-  const kolicinaPloscic = keramika.price(velikaRezerva).lines.find((l) => l.name === 'Keramične ploščice')?.quantity ?? -1;
+  const kolicinaPloscic = keramika.price(velikaRezerva).lines.find((l) => l.priceKey === 'keramika.ploscice-std')?.quantity ?? -1;
   check('50 % rezerve: 12 m² prostora → 18 m² ploščic', kolicinaPloscic === 18, String(kolicinaPloscic));
   check('50 % rezerve: načrt računa PO ISTEM',
     nacrtBesedilo(keramika, velikaRezerva).includes('z rezervo 50 %'), nacrtBesedilo(keramika, velikaRezerva).slice(0, 140));
-  check('0 €/m² je VELJAVEN vnos (material je plačan drugje)', keramika.price(sPoljem(keramika.base, 'tilePricePerM2', 0)).lines.length > 0);
+  // Task 88: cena ploščic več NI vnos kalkulatorja. Kalkulator izbere samo
+  // RAZRED (ključ do Cenika), ceno pa vedno piše obrtnik — zato je 0 € tu
+  // veljavna vpisana cena, ne izmišljen predlog.
+  check('kalkulator keramike ne pozna vnosa tilePricePerM2', !SRC('src/lib/types.ts').includes('tilePricePerM2'));
+  check('0 € je veljavna cena v Ceniku in ne manjkajoč podatek',
+    applyCenik(keramika.price(keramika.base).lines, readCenik({ 'keramika.ploscice-std': 0 }))
+      .find((l) => l.priceKey === 'keramika.ploscice-std')?.unitPrice === 0);
+  const premiumKolicina = keramika.price(sPoljemGrade(keramika.base, 'premium')).lines
+    .find((l) => l.priceKey === 'keramika.ploscice-premium')?.quantity ?? -1;
+  const stdKolicina = keramika.price(keramika.base).lines
+    .find((l) => l.priceKey === 'keramika.ploscice-std')?.quantity ?? -2;
+  check('kakovost ploščice MENI KLJUČ, ne količine',
+    premiumKolicina === stdKolicina, `${premiumKolicina} ≠ ${stdKolicina}`);
   check('101 % rezerve je zunaj okna', cenaZavrne(keramika, sPoljem(keramika.base, 'reservePercent', 101)));
 
   const okna = CRAFTS[2];
@@ -336,7 +356,8 @@ for (const c of CRAFTS) {
   check('povzetek našteje VPISANO širino 0,2', kratek.includes('0,2'), kratek);
   check('povzetek našteje VPISANO višinsko razliko 700', kratek.includes('700'), kratek);
   check('načrt našteje OBE zavrnitvi', nacin(c, dvojno).checks.filter((k) => k.label === 'Izračun ni opravljen').length === 2);
-  check('pri dvojno napačnem vnosu se ne zaračuna nič (0 €)', vsota(c, dvojno) === 0, String(vsota(c, dvojno)));
+  check('pri dvojno napačnem vnosu koda ne zaračuna ničesar (brez postavk in brez cene)',
+    zacaruna(c, dvojno) === 0 && cena(c, dvojno).lines.length === 0, String(zacaruna(c, dvojno)));
 }
 
 // ── 8. Vse, kar monter prebere, ima decimalno vejico ────────
@@ -353,6 +374,36 @@ for (const c of CRAFTS) {
     const besedilo = `${cenaBesedilo(c, i)} /// ${nacrtBesedilo(c, i)} /// ${norma(c, i)?.summary ?? ''}`;
     check(`${ime}: v besedilu cene, načrta in norme ni decimalnih pik`, !/\d\.\d/.test(besedilo), besedilo.slice(0, 200));
     check(`${ime}: izračunana vrednost ${vpisano} je izpisana z vejico`, besedilo.includes(vpisano), besedilo.slice(0, 160));
+  }
+}
+
+// ── 9. DENAR: noben od petih kalkulatorjev ne pozna cene ────
+//       (Task 88 — aplikacija računa KOLIČINO, človek napiše ceno)
+{
+  console.log('\ndenar: vseh pet kalkulatorjev da same količine:');
+  for (const c of CRAFTS) {
+    const L = c.price(c.base).lines;
+    check(`${c.id}: vsaka vrstica je KOLIČINA brez cene`, L.length > 0 && L.every((l) => l.unitPrice === null));
+    check(`${c.id}: vsaka vrstica nosi registriran ključ`,
+      L.every((l) => typeof l.priceKey === 'string' && CENIK_KEYS.includes(l.priceKey as PriceKey)),
+      L.map((l) => String(l.priceKey)).join(', '));
+    check(`${c.id}: cenik pripne ceno po lastnem ključu`,
+      zCenikom(L).every((l) => l.unitPrice === CENIK_KEYS.indexOf(l.priceKey as PriceKey) + 1));
+    check(`${c.id}: brez cenika ni vsote (NaN, ne delni seštevek)`, Number.isNaN(cenikVsota(L)));
+  }
+  const stopniceL = CRAFTS[0].price(CRAFTS[0].base).lines;
+  const enaManjka = applyCenik(stopniceL, readCenik({ 'stopnice.wpc': 20 }));
+  check('stopnice: ena sama vpisana cena ne naredi delne vsote',
+    Number.isNaN(cenikVsota(enaManjka)) && unpricedLines(enaManjka).length === stopniceL.length - 1,
+    String(unpricedLines(enaManjka).length));
+  const urnaKoda = SRC('src/lib/pricing.ts').split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  check('v KODI cenitve ni več urne postavke (komentar o njej je dovoljen)',
+    !urnaKoda.includes('laborRate'), (urnaKoda.match(/laborRate.*/) ?? [''])[0]);
+  for (const ime of ['calculateStopnice', 'calculateKeramika', 'calculateOknaVrata', 'calculateNadstresek', 'calculateFasada']) {
+    const sig = new RegExp(`export function ${ime}\\(([^)]*)\\)`).exec(urnaKoda);
+    check(`${ime}: sprejema SAMO vnos, ne več urne postavke`,
+      sig !== null && !sig[1].includes('laborRate') && !sig[1].includes('rate'), sig?.[1] ?? '__MANJKA__');
   }
 }
 

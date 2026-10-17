@@ -7,7 +7,9 @@ interface IncomingItem {
   description?: string | null;
   quantity: number;
   unit: string;
-  unitPrice: number;
+  /** Lahko pride `null` — zanj je značilno, da ga `Number()` spremeni v 0.
+   *  Prav zato ima vrstica svojo preverbo, preden karkoli gre v bazo. */
+  unitPrice: number | null;
   productId?: string | null;
 }
 
@@ -58,20 +60,30 @@ export async function POST(req: NextRequest) {
     }
     const vatRate = ddv.value;
 
-    const neStevilka = items.findIndex((i) => !Number.isFinite(Number(i.quantity)) || !Number.isFinite(Number(i.unitPrice)));
-    if (neStevilka >= 0) {
-      const i = items[neStevilka];
+    // Number(null) je 0, zato vrstica brez cene ne sme v bazo.
+    // Količina in cena morata biti vpisani — aplikacija ničesar ne doda sama.
+    const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    const slaba = items.findIndex((i) => !isNum(i.quantity) || !isNum(i.unitPrice));
+    if (slaba >= 0) {
+      const i = items[slaba];
+      const razlog = !isNum(i.quantity)
+        ? 'količina ni veljavno število'
+        : i.unitPrice === null
+          ? 'cena na enoto ni vpisana'
+          : 'cena na enoto ni veljavno število';
       return NextResponse.json(
         {
           error:
-            `Ponudba ni shranjena — postavka ${neStevilka + 1} (${i.name || 'brez imena'}) ` +
-            `nima veljavne količine ali cene na enoto. Vpisani vrednosti nismo popravili.`,
+            `Ponudba ni shranjena — postavka ${slaba + 1} (${i.name || 'brez imena'}): ${razlog}. ` +
+            'Vpisanih vrednosti nismo popravili.',
         },
         { status: 400 },
       );
     }
 
-    const subtotal = r2(items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitPrice), 0));
+    // `postavke` je samo tisti seznam, ki je šel skozi preverbo zgoraj.
+    const postavke = items.map((i) => ({ ...i, unitPrice: i.unitPrice as number }));
+    const subtotal = r2(postavke.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
     const vatAmount = r2(subtotal * (vatRate / 100));
     const total = r2(subtotal + vatAmount);
     const number = await nextOfferNumber();
@@ -91,13 +103,13 @@ export async function POST(req: NextRequest) {
         vatAmount,
         total,
         items: {
-          create: items.map((i, idx) => ({
+          create: postavke.map((i, idx) => ({
             name: i.name,
             description: i.description || null,
-            quantity: Number(i.quantity),
+            quantity: i.quantity,
             unit: i.unit || 'kos',
-            unitPrice: Number(i.unitPrice),
-            total: r2(Number(i.quantity) * Number(i.unitPrice)),
+            unitPrice: i.unitPrice,
+            total: r2(i.quantity * i.unitPrice),
             sortOrder: idx,
             productId: i.productId || null,
           })),

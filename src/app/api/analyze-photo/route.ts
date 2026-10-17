@@ -9,6 +9,7 @@ import sharp from 'sharp';
 import { db } from '@/lib/db';
 import type { PhotoAnalysis } from '@/lib/camera-types';
 import { analyzePhotoImage, type RgbaImage } from '@/lib/cv-engine';
+import type { PriceKey } from '@/lib/cenik';
 
 export const maxDuration = 60;
 
@@ -18,9 +19,11 @@ async function suggestProducts(craft: PhotoAnalysis['craft']) {
   if (craft === 'drugo') return [];
   const cat = await db.category.findUnique({
     where: { slug: craft },
-    include: { products: { where: { active: true }, orderBy: { unitPrice: 'asc' }, take: 5 } },
+    // Po IMENU, ne po ceni: katalog cen nima več (Task 88). `take: 5` je
+    // omejitev zaslona, ne poslovno pravilo.
+    include: { products: { where: { active: true }, orderBy: { name: 'asc' }, take: 5 } },
   });
-  return (cat?.products ?? []).map((p) => ({ id: p.id, name: p.name, unit: p.unit, unitPrice: p.unitPrice }));
+  return (cat?.products ?? []).map((p) => ({ id: p.id, name: p.name, unit: p.unit, sku: p.sku as PriceKey | null }));
 }
 
 /** Dekodira dataURL v surove RGBA piksle (upošteva EXIF orientacijo). */

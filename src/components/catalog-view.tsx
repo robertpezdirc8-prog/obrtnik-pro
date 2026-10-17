@@ -5,16 +5,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { PlusCircle, PackageSearch } from 'lucide-react';
+import { PlusCircle, PackageSearch, Wallet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useCenik } from '@/hooks/use-cenik';
 import { useDraft, useView } from '@/lib/store';
 import { formatEUR } from '@/lib/format';
-import type { CategoryDTO } from '@/lib/types';
+import type { CategoryDTO, ProductDTO } from '@/lib/types';
 
 export function CatalogView() {
   const { toast } = useToast();
   const addItem = useDraft((s) => s.addItem);
   const setView = useView((s) => s.setView);
+  const cenik = useCenik();
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,18 +28,31 @@ export function CatalogView() {
       .finally(() => setLoading(false));
   }, [toast]);
 
-  const addProduct = (catName: string, p: { name: string; unit: string; unitPrice: number }) => {
+  // ─── Katalog nima cene ─────────────────────────────────────
+  // Prejšnja različica je tu izpisala `p.unitPrice` — številko, ki jo je
+  // zapisal program in je bila napisana DRUGIČ kot v kalkulatorju. Katalog
+  // zdaj pove samo, KAJ izdelek je; ceno poišče po `sku` v Ceniku, kjer jo je
+  // vpisal obrtnik. Če je ni, piše »cena ni vpisana« in ne 0 €.
+  const priceOf = (p: ProductDTO): number | null =>
+    p.sku ? cenik.priceOf(p.sku) : null;
+
+  const addProduct = (catName: string, p: ProductDTO) => {
+    const price = priceOf(p);
     addItem({
       key: `katalog-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: p.name,
       description: `Iz kataloga: ${catName}`,
       quantity: 1,
       unit: p.unit,
-      unitPrice: p.unitPrice,
+      unitPrice: price,
+      ...(p.sku ? { priceKey: p.sku } : {}),
     });
     toast({
-      title: 'Dodano v ponudbo ✓',
-      description: `${p.name} — 1 ${p.unit}. Količino prilagodi v ponudbi.`,
+      title: price === null ? 'Dodano brez cene — ceno vpiši' : 'Dodano v ponudbo ✓',
+      description: price === null
+        ? `${p.name} — 1 ${p.unit}. Vpiši ceno v ponudbi ali v Ceniku; brez cene ponudbe ni mogoče shraniti.`
+        : `${p.name} — 1 ${p.unit} · ${formatEUR(price)}. Količino prilagodi v ponudbi.`,
+      variant: price === null ? 'destructive' : 'default',
     });
   };
 
@@ -46,7 +61,8 @@ export function CatalogView() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Katalog materialov</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Orientacijske cene po dejavnostih. Klikni + in postavka gre v osnutek ponudbe.
+          Kaj se vgradi: naziv, mera in enota. Cen NI v katalogu — tiste so v Ceniku, kjer jih
+          vpišeš sam. Klikni + in postavka gre v osnutek ponudbe.
         </p>
       </div>
 
@@ -90,8 +106,12 @@ export function CatalogView() {
                           <p className="text-xs text-muted-foreground line-clamp-2">{p.description}</p>
                         )}
                         <p className="text-sm font-semibold text-primary mt-1">
-                          {formatEUR(p.unitPrice)}{' '}
-                          <span className="text-xs font-normal text-muted-foreground">/ {p.unit}</span>
+                          {(() => {
+                            const price = priceOf(p);
+                            return price === null
+                              ? <span className="text-xs font-normal text-amber-700 dark:text-amber-400">cena ni vpisana</span>
+                              : <>{formatEUR(price)} <span className="text-xs font-normal text-muted-foreground">/ {p.unit}</span></>;
+                          })()}
                         </p>
                       </div>
                       <button
@@ -112,13 +132,25 @@ export function CatalogView() {
 
       <Card className="border-dashed">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Nasvet</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-primary" />
+            Cene
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <CardDescription>
-            Cene v katalogu so orientacijske in jih na ponudbi lahko vedno prilagodiš.
-            Kalkulatorji odmerka uporabljajo te iste cene kot izhodišče.
+            Tu so izdelki in mere. Cene se vpišejo v Ceniku — aplikacija jih ne pozna in jih
+            ne ugiblje. Izdelek, ki nima cenovnega ključa, cene nima nikoli: zanje jo vpišeš
+            kar v ponudbi.
           </CardDescription>
+          <button
+            type="button"
+            onClick={() => setView('cenik')}
+            className="mt-3 rounded-md border px-3 py-2 text-sm font-medium min-h-[40px] hover:bg-accent"
+            data-testid="cenik-open-from-catalog"
+          >
+            Odpri Cenik
+          </button>
         </CardContent>
       </Card>
     </div>

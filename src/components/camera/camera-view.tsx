@@ -23,13 +23,13 @@ import {
   Ruler, Wrench, Copy, Download, Box, Boxes, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus, Printer,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useLaborRate } from '@/hooks/use-labor-rate';
-import { settingsProblemShort } from '@/lib/settings-inputs';
+import { useCenik } from '@/hooks/use-cenik';
 import { useDraft, useView } from '@/lib/store';
 import { buildProjectFromPhotos, type ProjectSummary } from '@/lib/photo-project';
 import { buildVizProjectProposal, printProjectProposalCanvas, type ProjectPairSpec } from '@/lib/viz-project-proposal';
 import { drawLayersOnQuad, quadDimsFromWidthCm, VIZ_STYLES, VIZ_COLORS, craftInputsFromQuad, type VizLayer } from '@/lib/viz';
 import { runCalculator } from '@/lib/pricing';
+import { applyCenik, unpricedLines } from '@/lib/cenik';
 import { CRAFT_INPUT_DEFAULTS } from '@/lib/defaults';
 import { formatEUR } from '@/lib/format';
 import { CRAFT_LABELS, normalizePhotoAnalysis, type AnalyzeResponse, type PhotoMeasure, type MeasureKind, type CraftCategory } from '@/lib/camera-types';
@@ -67,6 +67,10 @@ import { AccuracyTest } from './accuracy-test';
 import { BarCounter } from './bar-counter';
 import { ShotPicker } from './shot-picker';
 import type { VizBarSuggest } from '@/lib/bar-count';
+import { plural } from '@/lib/install-plan';
+
+const VRSTICE: [string, string, string, string] = ['vrstica', 'vrstici', 'vrstice', 'vrstic'];
+const POSTAVKE: [string, string, string, string] = ['postavka', 'postavki', 'postavke', 'postavk'];
 
 interface PhotoRecord {
   id: string;
@@ -114,11 +118,11 @@ export function CameraView() {
 
   const [gallery, setGallery] = useState<PhotoRecord[] | null>(null);
 
-  /** Cena dela v projektu in v predlogih sme priti samo iz Nastavitev.
-   *  Dokler veljavna ni, denar nigče ne zasveti — ne v seštku projekta,
-   *  ne v zbiranju osnutka, ne na dokumentu za stranko (Task 87). */
-  const delo = useLaborRate();
-  const priced = delo.loaded && !delo.problem;
+  /** Denar v projektu in v predlogih sme priti SAMO iz Cenika, kjer ga vpiše
+   *  obrtnik. Dokler katerekoli vrstice ni mogoče obračunati, številka nikjer
+   *  ne zasveti — ne v seštku projekta, ne v zbiranju osnutka, ne na dokumentu
+   *  za stranko (Task 88). */
+  const cenik = useCenik();
 
   // Podatki obrtnika (Nastavitve) → merilni list + predlog za stranko nosita NJEGOVO znamko
   const [company, setCompany] = useState<ProposalCompany | null>(null);
@@ -556,19 +560,26 @@ export function CameraView() {
         analysis: g.analysis,
         measurements: g.measurements,
       })),
-      delo.value,
+      cenik.values,
     );
     return summary.groups.length > 0 ? summary : null;
-  }, [gallery, delo.value]);
+  }, [gallery, cenik.values]);
+
+  /** Vrstice, ki čakajo na ceno — zaslon jih imenuje, ne številke. */
+  const projectUnpriced = useMemo(
+    () => (project ? project.groups.flatMap((g) => unpricedLines(g.lines)) : []),
+    [project],
+  );
+  const projectPriced = project !== null && project.total !== null;
 
   const collectProject = () => {
     if (!project) return;
-    if (!priced) {
+    if (!projectPriced) {
       toast({
         title: 'Cen ni izračunanih',
-        description: delo.problem
-          ? `Urne postavke dela nismo prebrali: ${delo.problem.bound.label} — nastavite jo v Nastavitvah, preden projekt zberete v ponudbo.`
-          : 'Nastavitve še niso na zaslonu — počakajte ali osvežite, preden zberete projekt.',
+        description: cenik.loaded
+          ? `${projectUnpriced.map((l) => l.name).join(', ')} — ceno vpiši v Ceniku, preden projekt zbereš v ponudbo.`
+          : 'Cenik se še ni naložil — aplikacija ne izmisli nobene številke, zato projekt ni zbran.',
         variant: 'destructive',
       });
       return;
@@ -582,6 +593,7 @@ export function CameraView() {
         quantity: l.quantity,
         unit: l.unit,
         unitPrice: l.unitPrice,
+        ...(l.priceKey ? { priceKey: l.priceKey } : {}),
       })),
     );
     if (items.length === 0) {
@@ -590,8 +602,8 @@ export function CameraView() {
     }
     addDraftItems(items);
     toast({
-      title: `Projekt zbran: ${items.length} postavk ✓`,
-      description: `${formatEUR(project.total)} brez DDV — pregledaj in ustvari ponudbo.`,
+      title: `Projekt zbran: ${items.length} ${plural(items.length, POSTAVKE)} ✓`,
+      description: `${formatEUR(project.total ?? 0)} brez DDV — pregledaj in ustvari ponudbo.`,
     });
     setView('ponudbe');
   };
@@ -634,12 +646,16 @@ export function CameraView() {
         const colorLabel = l0.customHex ?? VIZ_COLORS.find((c) => c.id === l0.colorId)?.label ?? l0.colorId;
         const patternLabel = VIZ_STYLES.find((s) => s.id === l0.pattern)?.label ?? l0.pattern;
         let estimateTotal: number | null = null;
-        if (st.craft !== 'drugo' && d && priced) {
+        if (st.craft !== 'drugo' && d && cenik.loaded) {
           try {
             const inp = { ...CRAFT_INPUT_DEFAULTS, ...craftInputsFromQuad(st.craft as CraftId, d) } as CraftInputs;
-            const res = runCalculator(st.craft as CraftId, inp, delo.value);
-            const total = res.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-            if (res.lines.length > 0 && total > 0) estimateTotal = total;
+            const res = runCalculator(st.craft as CraftId, inp);
+            const lines = applyCenik(res.lines, cenik.readings);
+            // Ocena je lahko tudi 0 € — to je veljavna vpisana cena, ne
+            // manjkajoča. Karkoli z manjkajočo ceno ostane brez zneska.
+            if (lines.length > 0 && unpricedLines(lines).length === 0) {
+              estimateTotal = lines.reduce((s, l) => s + l.quantity * (l.unitPrice as number), 0);
+            }
           } catch { /* ocena ne sme ustaviti dokumenta */ }
         }
         pairs.push({
@@ -1379,18 +1395,18 @@ export function CameraView() {
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {project.usedPhotos} {photoWord(project.usedPhotos)} ·{' '}
                   {project.groups.length} {project.groups.length === 1 ? 'dejavnost' : 'dejavnosti'} ·{' '}
-                  {priced ? (
-                    <>skupaj <strong className="text-foreground">{formatEUR(project.total)}</strong> brez DDV</>
+                  {projectPriced ? (
+                    <>skupaj <strong className="text-foreground">{formatEUR(project.total ?? 0)}</strong> brez DDV</>
                   ) : (
                     <>skupaj <strong className="text-foreground">ni izračunano</strong></>
                   )}
                   {project.skippedPhotos > 0 && <> · {project.skippedPhotos} preskočenih</>}
                 </p>
-                {!priced && (
+                {!projectPriced && (
                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="project-price-refusal">
-                    {delo.problem
-                      ? `Cen ni izračunanih — urna postavka dela v Nastavitvah ni veljavna (${settingsProblemShort(delo.problem)}); nastavite jo, preden projekt zberete.`
-                      : 'Cen ni izračunanih — nastavitve še niso na zaslonu.'}
+                    {cenik.loaded
+                      ? `Cen ni izračunanih — ${projectUnpriced.length} ${plural(projectUnpriced.length, VRSTICE)} brez vpisane cene (${projectUnpriced.map((l) => l.name).join(', ')}). Vpiši cene v Ceniku, preden projekt zbereš.`
+                      : 'Cenik se ni mogel naložiti — aplikacija ne izmisli nobene številke.'}
                   </p>
                 )}
               </div>
@@ -1399,7 +1415,7 @@ export function CameraView() {
                   size="sm"
                   className="min-h-10"
                   onClick={collectProject}
-                  disabled={!priced}
+                  disabled={!projectPriced}
                   data-testid="collect-project"
                 >
                   <PackagePlus className="mr-2 h-4 w-4" />
@@ -1439,7 +1455,7 @@ export function CameraView() {
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{g.lines.length} postavk</p>
-                  <p className="text-sm font-bold text-primary">{priced ? formatEUR(g.subtotal) : '—'}</p>
+                  <p className="text-sm font-bold text-primary">{g.subtotal === null ? 'cena ni vpisana' : formatEUR(g.subtotal)}</p>
                 </div>
               ))}
             </div>

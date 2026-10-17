@@ -29,7 +29,7 @@ import {
 
 export type TerasaField =
   | 'deckLength' | 'deckWidth' | 'joistSpacing'
-  | 'boardLengthM' | 'sideGapMm' | 'endGapMm' | 'boardPricePerM';
+  | 'boardLengthM' | 'sideGapMm' | 'endGapMm';
 
 export type TerasaInputBound = InputBound;
 
@@ -58,10 +58,6 @@ export const TERASA_INPUT_BOUNDS: readonly TerasaInputBound[] = [
     field: 'endGapMm', label: 'Čelna dilatacija', unit: 'mm', min: 0, max: 50,
     why: 'širša od 50 mm ni dilatacijska reža, ampak vmesni material',
   },
-  {
-    field: 'boardPricePerM', label: 'Cena deske', unit: '€/m', min: 0, max: null,
-    why: 'cena je tvoja pogodba z dobaviteljem — aplikacija zavrne samo negativno',
-  },
 ];
 
 /** Vrednosti, ki jih kalkulator uporabi, kadar polja sploh ni. */
@@ -72,7 +68,6 @@ const TERASA_DEFAULTS: Record<TerasaField, number> = {
   boardLengthM: CRAFT_INPUT_DEFAULTS.boardLengthM ?? 4,
   sideGapMm: CRAFT_INPUT_DEFAULTS.sideGapMm ?? 5,
   endGapMm: CRAFT_INPUT_DEFAULTS.endGapMm ?? 4,
-  boardPricePerM: CRAFT_INPUT_DEFAULTS.boardPricePerM ?? 12.5,
 };
 
 export type TerasaProblem = InputProblem;
@@ -88,7 +83,6 @@ export interface TerasaResolved {
   boardLengthM: number;
   sideGapMm: number;
   endGapMm: number;
-  boardPricePerM: number;
 }
 
 export type TerasaInput =

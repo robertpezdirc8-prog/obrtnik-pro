@@ -20,7 +20,7 @@
 //
 // Zagon: bun tests/verify/settings-input-guard.ts
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -350,9 +350,9 @@ const plusDays = (iso: string, n: number) => new Date(new Date(iso).getTime() + 
   check('urejevalnik ne začne z izmišljenim useState(22)', !/useState\(22\)/.test(editor));
   check('urejevalnik ne shrani brez veljavne stopnje DDV', editor.includes('!settingsReady || ddv.problem'));
   check('izračun ne začne z izmišljenim useState(35)', !/useState\(35\)/.test(calcShell));
-  check('izračun začne z NaN in počaka na nastavitve', /useState\(Number\.NaN\)/.test(calcShell) && calcShell.includes('laborLoaded'));
-  check('GBB panel dobi postavko samo iz nastavitve', calcShell.includes('laborRate={delo.value}'));
-  check('GBB panel je ob napačni nastavitvi zavrnjen z razlogom', calcShell.includes('gbb-blocked'));
+  check('izračun količine ne čaka na denar (cene pripne Cenik)', calcShell.includes('applyCenik(result.lines, cenik.readings)'));
+  check('GBB panel dobi CENE iz Cenika, ne urne postavke', calcShell.includes('values={cenik.values}') && !calcShell.includes('laborRate={delo.value}'));
+  check('GBB panel ne pozna več cene dela (brez laborRate v kodi)', !/laborRate/.test(calcShell + CODE(SRC('src/components/calculators/gbb-panel.tsx'))));
   check('evidenca ur ne začne z izmišljenim useState(35)', !/useState\(35\)/.test(timesheet));
   check('evidenca ur ne nadomesti vpisa z nastavljeno postavko', !/\|\|\s*35/.test(timesheet) && timesheet.includes('if (delo.problem)'));
   check('evidenca ur shrani VPISANO postavko', timesheet.includes('hourlyRate: delo.value'));
@@ -418,19 +418,22 @@ const plusDays = (iso: string, n: number) => new Date(new Date(iso).getTime() + 
   }
   const calc = vnosi['kalkulator (NumField)'];
   check('ročna cena nima več LASTNEGA stavka o napaki (isti stavek povsod)', !calc.includes('ni cena'));
-  check('kalkulator začne z NaN in počaka na nastavitve', calc.includes('const priced = laborLoaded && !delo.problem'));
-  check('izračun cene prikaže šele, ko je urna postavka veljavna', calc.includes('priced && result.lines.length > 0'));
+  check('kalkulator prikaže denar šele, ko ima vsaka vrstica vpisano ceno',
+    calc.includes('const priced = missing.length === 0 && lines.length > 0'));
+  check('izračun cene prikaže šele, ko je vsaka cena vpisana', calc.includes('priced && result.lines.length > 0'));
   check('izračun ima ime zavrnitve cene', calc.includes('data-testid="calc-price-refusal"'));
   check('GBB opcije so pod istim pogojem kot cene', /priced && result\.lines\.length > 0 && \(\s*<GbbPanel/.test(calc));
   const camera = CODE(SRC('src/components/camera/camera-view.tsx'));
   const vizPanel = CODE(SRC('src/components/camera/viz-panel.tsx'));
   const fotoProjekt = CODE(SRC('src/lib/photo-project.ts'));
   check('kamera nima izmišljene ure v klicu', !/runCalculator\([^)]*,\s*35\)/.test(camera) && !/,\s*35\)/.test(camera));
-  check('kamera bere uro iz Nastavitev', camera.includes('useLaborRate()'));
-  check('kamera brez veljavne ure ne zbere projekta v ponudbo', camera.includes('if (!priced)'));
-  check('kamera brez ure ne natisne denarja', camera.includes('data-testid="project-price-refusal"'));
-  check('predlog iz vizualizerja nima izmišljene ure', !/,\s*35\)/.test(vizPanel) && vizPanel.includes('delo.value'));
-  check('seštevek fotografij nima privzete ure', !/laborRate\s*=\s*35/.test(fotoProjekt) && /laborRate: number/.test(fotoProjekt));
+  check('kamera bere cene iz Cenika, ne iz kode', camera.includes('useCenik()') && camera.includes('applyCenik('));
+  check('hook za uro je IZBRISAN — cena dela ne teče več po ponudbi',
+    !existsSync(join(HERE, '..', '..', 'src', 'hooks', 'use-labor-rate.ts')));
+  check('kamera brez vpisane cene ne zbere projekta v ponudbo', camera.includes('if (!projectPriced)'));
+  check('kamera brez cene ne natisne denarja', camera.includes('data-testid="project-price-refusal"'));
+  check('predlog iz vizualizerja nima izmišljene ure', !/,\s*35\)/.test(vizPanel) && vizPanel.includes('cenik.readings'));
+  check('seštevek fotografij ne pozna več urne postavke', !/laborRate/.test(fotoProjekt) && fotoProjekt.includes('cenikValues: CenikValues'));
   check('pogon cen nima več izmišljene ure 35', !/\bunitPrice: 35\b/.test(CODE(SRC('src/lib/pricing.ts'))));
 }
 

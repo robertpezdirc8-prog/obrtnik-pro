@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DraftItem } from './types';
+import type { CenikValues, PriceKey } from './cenik';
 import type { CameraPrefill } from './camera-types';
 
 // ─── Osnutek ponudbe (traja tudi po osvežitvi) ──────────────
@@ -64,27 +65,95 @@ export const useDraft = create<DraftState>()(
   ),
 );
 
+// ─── Cenik (edini vir denarja) ──────────────────────────────
+//
+// Namenoma v pomnilniku in NE v `persist`: cene so poslovni podatek in
+// shranjujejo se v bazi (`CenikPrice`). localStorage ne sme biti skrita
+// kopija, ki po osvežitvi pokaže drugo številko kot dokument.
+// Skupen seznam v seji pomeni tudi, da cena, vpisana v Ceniku, takoj
+// nastavi kalkulator, ki je odprt v isti seji.
+
+export interface CenikSaveResult {
+  ok: boolean;
+  error?: string;
+}
+
+interface CenikState {
+  values: CenikValues;
+  loaded: boolean;
+  loading: boolean;
+  load: () => Promise<void>;
+  /** Delna posodobitev: `{ 'ograje.alu': <vpisana cena> }`. `null` ceno izbriše. */
+  save: (patch: Partial<Record<PriceKey, number | null>>) => Promise<CenikSaveResult>;
+}
+
+export const useCenikStore = create<CenikState>()((set, get) => ({
+  values: {},
+  loaded: false,
+  loading: false,
+  load: async () => {
+    if (get().loading) return;
+    set({ loading: true });
+    try {
+      const r = await fetch('/api/cenik');
+      const d = await r.json();
+      set({ values: (d.values ?? {}) as CenikValues, loaded: true });
+    } catch {
+      // Brez odgovora NI cen — ne pa ničelnih cen. `loaded` ostane false,
+      // zato kalkulatorji in Cenik pokažejo, da cene še niso na zaslonu.
+      set({ loaded: false });
+    } finally {
+      set({ loading: false });
+    }
+  },
+  save: async (patch) => {
+    try {
+      const r = await fetch('/api/cenik', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const d = await r.json();
+      if (!r.ok) return { ok: false, error: d.error ?? 'Cene ni bilo mogoče shraniti.' };
+      set({ values: (d.values ?? {}) as CenikValues, loaded: true });
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Povezave do cenika ni bilo mogoče vzpostaviti.' };
+    }
+  },
+}));
+
 // ─── Aktivni zavihek aplikacije ─────────────────────────────
 
-export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'ponudbe' | 'časovnica' | 'dnevnik' | 'katalog' | 'nastavitve';
+export type AppView = 'domov' | 'kamera' | 'kalkulatorji' | 'cenik' | 'ponudbe' | 'časovnica' | 'dnevnik' | 'katalog' | 'nastavitve';
 
 interface ViewState {
   view: AppView;
   activeCraft: string | null; // slug dejavnosti v kalkulatorjih
   /** Predpolnitve iz pametne kamere za kalkulator. */
   cameraPrefill: CameraPrefill | null;
+  /** Vrstica Cenika, na katero naj se zaslon osredotoči (`null` = brez cilja).
+   *  Nastavi jo kalkulator, ki ve KATERA cena manjka. */
+  cenikFocus: PriceKey | null;
   setView: (v: AppView) => void;
   setActiveCraft: (c: string | null) => void;
   setCameraPrefill: (p: CameraPrefill | null) => void;
+  /** Odpri Cenik — in če je ključ podan, skoči na točno to vrstico. */
+  openCenik: (key?: PriceKey | null) => void;
+  /** Cenik je enkraten cilj: ko ga zaslon prevzame, se fokus pobriše. */
+  clearCenikFocus: () => void;
 }
 
 export const useView = create<ViewState>()((set) => ({
   view: 'domov',
   activeCraft: null,
   cameraPrefill: null,
+  cenikFocus: null,
   setView: (view) => set({ view }),
   setActiveCraft: (activeCraft) => set({ activeCraft }),
   setCameraPrefill: (cameraPrefill) => set({ cameraPrefill }),
+  openCenik: (key = null) => set({ view: 'cenik', cenikFocus: key ?? null }),
+  clearCenikFocus: () => set({ cenikFocus: null }),
 }));
 
 // ─── Terenski način (rokavice + sonce) ──────────────────────

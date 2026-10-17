@@ -10,8 +10,8 @@
 // zato kosovnica ustreza tistemu, kar je uporabnik VIDEL v upodobitvi — ne oceni.
 //
 // ISKRENOST (načela):
-//  - cena: ROKSAL cen ne prevajamo (niso del uradnega gradiva) → unitPrice = 0,
-//    opis jasno pove, da jo obrtnik vpiše;
+//  - cena: Kosovnica da KOLIČINO, ne denarja. Ceno vpiše obrtnik; v kodi ni
+//    ničle, ki bi bila videti kot podatek (Task 88);
 //  - stebri in pritrdilni material NISO modelirani v upodobitvi (postEveryCm je
 //    null — iskreno v opombah registra) → se NE dodajajo kot postavke, samo
 //    opozorilo, da ju obrtnik dopolni iz kataloga;
@@ -37,8 +37,8 @@ export interface BomDraftItem {
   description: string;
   quantity: number;
   unit: string;
-  /** Vedno 0 — cene ROKSAL niso del uradnega gradiva; obrtnik jo vpiše v ponudbi. */
-  unitPrice: number;
+  /** `null` — cen ROKSAL ne prevajamo. Ceno vpiše obrtnik sam. */
+  unitPrice: number | null;
 }
 
 // slovnične oblike (1 kos, 2–4 kosa, 5+ kosov)
@@ -132,7 +132,7 @@ export function buildBomFromMeta(meta: ReplaceMetadata): BomResult {
         `Cena NI znana (ROKSAL cen ne prevajamo) — vpiši nabavno ceno.`,
       quantity: boards,
       unit: 'kos',
-      unitPrice: 0,
+      unitPrice: null,
     });
     if (stocks) {
       items.push({
@@ -144,7 +144,7 @@ export function buildBomFromMeta(meta: ReplaceMetadata): BomResult {
           `Cena NI znana — vpiši nabavno ceno.`,
         quantity: stocks.count,
         unit: 'kos',
-        unitPrice: 0,
+        unitPrice: null,
       });
     }
   }

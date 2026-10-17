@@ -17,7 +17,10 @@
 //  6. trditev o zahtevani višini ograje ni več zapisana kot citiran predpis;
 //  7. tretji bralec istega vnosa — norma za trajanje montaže — se ustavi
 //     skupaj s ponudbo, sicer bi termine načrtoval po meritvi, ki je že
-//     zavrnjena; man-ure so zapisane z vejico, kot jih bere monter.
+//     zavrnjena; man-ure so zapisane z vejico, kot jih bere monter;
+//  8. DENAR: izračun nosi samo KOLIČINE in ključe. Cena pride iz Cenika,
+//     vrstica brez cene ostane prazna, ena sama luknja pa porazi celo vsoto
+//     (Task 88 — kalkulator cene ne pozna in je ne sme izmisliti).
 //
 // Zagon: bun tests/verify/ograje-input-guard.ts
 
@@ -29,9 +32,11 @@ import { craftInstallPlan } from '../../src/lib/install-plan';
 import {
   CRAFT_INPUT_BOUNDS, OGRAJE_INPUT_BOUNDS, craftProblemText, inputWindowHint, resolveCraftInputs,
 } from '../../src/lib/craft-inputs';
+import { CENIK_KEYS, readCenik, applyCenik, unpricedLines, type CenikValues, type PriceKey } from '../../src/lib/cenik';
 import { formatNum } from '../../src/lib/format';
 import { estimateDuration } from '../../src/lib/labor';
 import type { CraftInputs } from '../../src/lib/types';
+import { fixtureCenik, zCenikom, vsota as cenikVsota, cenaVrslice } from './cenik-fixture';
 
 let pass = 0, fail = 0;
 const check = (name: string, cond: boolean, info?: string) => {
@@ -44,12 +49,12 @@ const SRC = (p: string) => readFileSync(join(HERE, '..', '..', p), 'utf8');
 
 const BASE: CraftInputs = { length: 12, height: 1.1, material: 'alu', gates: 0 };
 const zVisino = (h: number): CraftInputs => ({ ...BASE, height: h });
-const vsota = (i: CraftInputs) => calculateOgraje(i, 35).lines.reduce((a, l) => a + l.quantity * l.unitPrice, 0);
-const povzetek = (i: CraftInputs) => calculateOgraje(i, 35).summary.map((s) => `${s.label}: ${s.value}`).join(' | ');
+const vsota = (i: CraftInputs) => cenikVsota(zCenikom(calculateOgraje(i).lines));
+const povzetek = (i: CraftInputs) => calculateOgraje(i).summary.map((s) => `${s.label}: ${s.value}`).join(' | ');
 const plan = (i: CraftInputs) => craftInstallPlan('ograje', i);
 const višinaCheck = (i: CraftInputs) => plan(i).checks.find((c) => c.label === 'Višina ograje');
 const zavrnitve = (i: CraftInputs) => plan(i).checks.filter((c) => c.label === 'Izračun ni opravljen');
-const opisCene = (i: CraftInputs) => calculateOgraje(i, 35).lines.map((l) => `${l.name} ${l.description ?? ''}`).join(' · ');
+const opisCene = (i: CraftInputs) => calculateOgraje(i).lines.map((l) => `${l.name} ${l.description ?? ''}`).join(' · ');
 
 // ── 1. Tihi usek je odstranjen iz vira ──────────────────────
 {
@@ -78,18 +83,18 @@ const opisCene = (i: CraftInputs) => calculateOgraje(i, 35).lines.map((l) => `${
     const detail = višinaCheck(zVisino(h))?.detail ?? '__MISSING__';
     check(`${h} m: načrt našteje ISTO vpisano višino`, detail.includes(comma), detail);
   }
-  const prazno = calculateOgraje({ ...BASE, length: 0 }, 35);
+  const prazno = calculateOgraje({ ...BASE, length: 0 });
   check('0 m ostane PRAZEN izračun, ne zavrnitev', prazno.lines.length === 0 && povzetek({ ...BASE, length: 0 }).includes('Dolžina: 0 m'), povzetek({ ...BASE, length: 0 }));
-  const stebri = calculateOgraje(BASE, 35).lines.find((l) => l.name === 'Stebri');
+  const stebri = calculateOgraje(BASE).lines.find((l) => l.priceKey === 'ograje.steber');
   check('12 m ograje = 9 stebrov (pravilo 1,5 m se ni spremenilo)', stebri?.quantity === 9, String(stebri?.quantity));
   check('razmak 1,5 m je še vedno označen kot PREDPOSTAVKA', (stebri?.description ?? '').includes('predpostavka'), stebri?.description);
-  check('montaža se računa iz VPISANE dolžine', povzetek(BASE).includes('Montaža (ocena): 6 h'), povzetek(BASE));
+  check('montaža se računa iz VPISANE dolžine', povzetek(BASE).includes('Montaža (ocena trajanja): 6 h'), povzetek(BASE));
 }
 
 // ── 3. Zunaj okna: nič se ne zaračuna, razlog našteje vpisano ─
 {
   console.log('zunaj okna:');
-  const nizko = calculateOgraje(zVisino(0.1), 35);
+  const nizko = calculateOgraje(zVisino(0.1));
   check('0,1 m: nobena postavka ni obračunana', nizko.lines.length === 0, JSON.stringify(nizko.summary));
   check('0,1 m: povzetek našteje VPISANO višino', povzetek(zVisino(0.1)).includes('Višina ograje 0,1 m'), povzetek(zVisino(0.1)));
   check('0,1 m: načrt isto zavrne in ne kupuje materiala', zavrnitve(zVisino(0.1)).length === 1 && plan(zVisino(0.1)).buys.length === 0);
@@ -99,10 +104,10 @@ const opisCene = (i: CraftInputs) => calculateOgraje(i, 35).lines.map((l) => `${
   check('0,1 m: razlog pravi, da izračuna ni', text.includes('Izračun ni opravljen — nobena postavka ni obračunana.'), text);
   check('0,1 m: razlog pojasni, kaj okno pomeni (ne izmišlja predpisa)', text.includes('Pod 20 cm vpisano ni ograja'), text);
 
-  check('5 m: zavrnjeno, ne usečeno na 4 m', calculateOgraje(zVisino(5), 35).lines.length === 0 && povzetek(zVisino(5)).includes('Višina ograje 5 m'), povzetek(zVisino(5)));
+  check('5 m: zavrnjeno, ne usečeno na 4 m', calculateOgraje(zVisino(5)).lines.length === 0 && povzetek(zVisino(5)).includes('Višina ograje 5 m'), povzetek(zVisino(5)));
   check('5 m: dolgi razlog reče PREVEČ in navede rob 4 m', craftProblemText(resolveCraftInputs('ograje', zVisino(5)).problems[0]!).includes('preveč za izračun (5 > 4)'), craftProblemText(resolveCraftInputs('ograje', zVisino(5)).problems[0]!));
-  check('−1 m: zavrnjeno (prej bi iz tega postalo 0,9 m)', calculateOgraje(zVisino(-1), 35).lines.length === 0, povzetek(zVisino(-1)));
-  check('3000 m: zgornji rob dolžine deluje', calculateOgraje({ ...BASE, length: 3000 }, 35).lines.length === 0, povzetek({ ...BASE, length: 3000 }));
+  check('−1 m: zavrnjeno (prej bi iz tega postalo 0,9 m)', calculateOgraje(zVisino(-1)).lines.length === 0, povzetek(zVisino(-1)));
+  check('3000 m: zgornji rob dolžine deluje', calculateOgraje({ ...BASE, length: 3000 }).lines.length === 0, povzetek({ ...BASE, length: 3000 }));
   check('300 prehodov: zavrnjeno z imenom polja', povzetek({ ...BASE, gates: 300 }).includes('Št. oključljivih prehodov'), povzetek({ ...BASE, gates: 300 }));
   check('NaN: zavrnjen kot »vnos ni število«, ne kot 0', povzetek({ ...BASE, height: Number.NaN }).includes('vnos ni število'), povzetek({ ...BASE, height: Number.NaN }));
 }
@@ -111,7 +116,7 @@ const opisCene = (i: CraftInputs) => calculateOgraje(i, 35).lines.map((l) => `${
 {
   console.log('oba izpista istega vnosa:');
   for (const h of [0.1, 0.5, 1.1, 4, 5]) {
-    const cena = calculateOgraje(zVisino(h), 35);
+    const cena = calculateOgraje(zVisino(h));
     const nacrt = plan(zVisino(h));
     const cenaZavrne = cena.lines.length === 0 && cena.summary[0]?.label === 'Izračun ni opravljen';
     const nacrtZavrne = nacrt.checks.some((c) => c.label === 'Izračun ni opravljen');
@@ -185,21 +190,40 @@ const opisCene = (i: CraftInputs) => calculateOgraje(i, 35).lines.map((l) => `${
   check('prazno polje (0 m) norme ne pokaže', estimateDuration('ograje', { ...BASE, length: 0 }) === null);
 }
 
-// ── 9) Montaža ograje sledi NASTAVLJENI uri, ne izmišljenih 35 €/h ──
-//     Vrstica »Montaža ograje« je bila 35 €/m, ki jih je napisal kalkulator,
-//     ne obrtnik. Povzetek istega izračuna pravi 0,5 h/m z dvema monterjema,
-//     torej 1,0 urne postavke na meter.
+// ── 9) Denar pride SAMO iz Cenika — ne iz kode in ne iz ure ──
+//     Prejšnja različica je imela »Montaža ograje 35 €/m«, ki jo je napisal
+//     kalkulator. Urna postavka iz Nastavitev ostane samo za evidence ur.
 {
-  console.log('\n── cena dela ograje iz nastavitve ──');
-  const montaza = (rate: number) =>
-    calculateOgraje(BASE, rate).lines.find((l) => l.name === 'Montaža ograje')?.unitPrice ?? Number.NaN;
-  check('pri nastavljeni 35 €/h je montaža 35 €/m (ponudbe se ne spremenijo)', montaza(35) === 35, String(montaza(35)));
-  check('pri 70 €/h je montaža 70 €/m', montaza(70) === 70, String(montaza(70)));
-  check('pri 28 €/h je montaža 28 €/m', montaza(28) === 28, String(montaza(28)));
-  check('brez nastavljene ure je cena NaN in ne 35', Number.isNaN(montaza(Number.NaN)));
-  check('materialne vrstice ostanejo svojstvene (ura jih ne spreminja)',
-    calculateOgraje(BASE, 70).lines.find((l) => l.name === 'Aluminijasta ograja')?.unitPrice ===
-    calculateOgraje(BASE, 35).lines.find((l) => l.name === 'Aluminijasta ograja')?.unitPrice);
+  console.log('\n── cena iz Cenika, ne iz kalkulatorja ──');
+  const goli = calculateOgraje(BASE).lines;
+  check('izračun sam nima nobene cene, dokler je Cenik prazen',
+    goli.length > 0 && goli.every((l) => l.unitPrice === null),
+    JSON.stringify(goli.map((l) => l.unitPrice)));
+  check('vsaka vrstica nosi ključ, po katerem se cena poišče',
+    goli.every((l) => typeof l.priceKey === 'string'),
+    goli.map((l) => String(l.priceKey)).join(','));
+  check('brez Cenika ni obračunljiva nobena vrstica', unpricedLines(goli).length === goli.length);
+
+  const polni = zCenikom(goli);
+  check('vrstica dobi ceno SVOJEGA ključa in ne soseda',
+    polni.every((l) => l.unitPrice === CENIK_KEYS.indexOf(l.priceKey as PriceKey) + 1),
+    polni.map((l) => `${l.priceKey}=${l.unitPrice}`).join(' '));
+  check('montaža nosi ključ montaza.ograje', polni.some((l) => l.priceKey === 'montaza.ograje'));
+
+  // Vpisana decimalka ostane dobesedna — brez zaokroževanja in brez useka.
+  const rocno: CenikValues = { 'ograje.alu': 12.34, 'ograje.steber': 7.05, 'ograje.vijaki': 1.2, 'montaza.ograje': 18.75 };
+  const zRocno = applyCenik(goli, readCenik(rocno));
+  check('12,34 € ostane 12,34 € (brez zaokroževanja)', cenaVrslice(zRocno, 'ograje.alu') === 12.34, String(cenaVrslice(zRocno, 'ograje.alu')));
+  check('18,75 €/m za montažo ostane dobeseden', cenaVrslice(zRocno, 'montaza.ograje') === 18.75, String(cenaVrslice(zRocno, 'montaza.ograje')));
+
+  // Ena sama manjkajoča cena porazi CELOTNO ponudbo — delnega izračuna ni.
+  const zLuknjo = applyCenik(goli, readCenik({ ...rocno, 'montaza.ograje': undefined }));
+  check('manjkajoča cena pusti vrstico PRAZNO in ne 0 €', cenaVrslice(zLuknjo, 'montaza.ograje') === null);
+  check('manjkajoča cena je poimenovana', unpricedLines(zLuknjo).map((l) => l.name).join(',').includes('Montaža ograje'));
+  check('z luknjo je vsota NaN in ne delna vsota', Number.isNaN(cenikVsota(zLuknjo)), String(cenikVsota(zLuknjo)));
+
+  check('kalkulator ne sprejme več urne postavke (en argument)',
+    SRC('src/lib/pricing.ts').includes('export function calculateOgraje(input: CraftInputs)'));
 }
 
 console.log(`\nREZULTAT: ${pass} OK, ${fail} NAPAK`);
