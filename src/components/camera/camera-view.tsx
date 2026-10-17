@@ -23,6 +23,8 @@ import {
   Ruler, Wrench, Copy, Download, Box, Boxes, Layers, PackagePlus, Palette, FileText, Save, Columns3, Footprints, Grid3X3, DoorOpen, Umbrella, Square, ImagePlus, Printer,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLaborRate } from '@/hooks/use-labor-rate';
+import { settingsProblemShort } from '@/lib/settings-inputs';
 import { useDraft, useView } from '@/lib/store';
 import { buildProjectFromPhotos, type ProjectSummary } from '@/lib/photo-project';
 import { buildVizProjectProposal, printProjectProposalCanvas, type ProjectPairSpec } from '@/lib/viz-project-proposal';
@@ -111,6 +113,12 @@ export function CameraView() {
   const [barSuggest, setBarSuggest] = useState<VizBarSuggest | null>(null);
 
   const [gallery, setGallery] = useState<PhotoRecord[] | null>(null);
+
+  /** Cena dela v projektu in v predlogih sme priti samo iz Nastavitev.
+   *  Dokler veljavna ni, denar nigče ne zasveti — ne v seštku projekta,
+   *  ne v zbiranju osnutka, ne na dokumentu za stranko (Task 87). */
+  const delo = useLaborRate();
+  const priced = delo.loaded && !delo.problem;
 
   // Podatki obrtnika (Nastavitve) → merilni list + predlog za stranko nosita NJEGOVO znamko
   const [company, setCompany] = useState<ProposalCompany | null>(null);
@@ -548,12 +556,23 @@ export function CameraView() {
         analysis: g.analysis,
         measurements: g.measurements,
       })),
+      delo.value,
     );
     return summary.groups.length > 0 ? summary : null;
-  }, [gallery]);
+  }, [gallery, delo.value]);
 
   const collectProject = () => {
     if (!project) return;
+    if (!priced) {
+      toast({
+        title: 'Cen ni izračunanih',
+        description: delo.problem
+          ? `Urne postavke dela nismo prebrali: ${delo.problem.bound.label} — nastavite jo v Nastavitvah, preden projekt zberete v ponudbo.`
+          : 'Nastavitve še niso na zaslonu — počakajte ali osvežite, preden zberete projekt.',
+        variant: 'destructive',
+      });
+      return;
+    }
     // Stabilni ključi → ponovno zbiranje POSODOBI količine namesto podvajanja
     const items = project.groups.flatMap((g) =>
       g.lines.map((l) => ({
@@ -615,10 +634,10 @@ export function CameraView() {
         const colorLabel = l0.customHex ?? VIZ_COLORS.find((c) => c.id === l0.colorId)?.label ?? l0.colorId;
         const patternLabel = VIZ_STYLES.find((s) => s.id === l0.pattern)?.label ?? l0.pattern;
         let estimateTotal: number | null = null;
-        if (st.craft !== 'drugo' && d) {
+        if (st.craft !== 'drugo' && d && priced) {
           try {
             const inp = { ...CRAFT_INPUT_DEFAULTS, ...craftInputsFromQuad(st.craft as CraftId, d) } as CraftInputs;
-            const res = runCalculator(st.craft as CraftId, inp, 35);
+            const res = runCalculator(st.craft as CraftId, inp, delo.value);
             const total = res.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
             if (res.lines.length > 0 && total > 0) estimateTotal = total;
           } catch { /* ocena ne sme ustaviti dokumenta */ }
@@ -1360,12 +1379,29 @@ export function CameraView() {
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {project.usedPhotos} {photoWord(project.usedPhotos)} ·{' '}
                   {project.groups.length} {project.groups.length === 1 ? 'dejavnost' : 'dejavnosti'} ·{' '}
-                  skupaj <strong className="text-foreground">{formatEUR(project.total)}</strong> brez DDV
+                  {priced ? (
+                    <>skupaj <strong className="text-foreground">{formatEUR(project.total)}</strong> brez DDV</>
+                  ) : (
+                    <>skupaj <strong className="text-foreground">ni izračunano</strong></>
+                  )}
                   {project.skippedPhotos > 0 && <> · {project.skippedPhotos} preskočenih</>}
                 </p>
+                {!priced && (
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="project-price-refusal">
+                    {delo.problem
+                      ? `Cen ni izračunanih — urna postavka dela v Nastavitvah ni veljavna (${settingsProblemShort(delo.problem)}); nastavite jo, preden projekt zberete.`
+                      : 'Cen ni izračunanih — nastavitve še niso na zaslonu.'}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" className="min-h-10" onClick={collectProject} data-testid="collect-project">
+                <Button
+                  size="sm"
+                  className="min-h-10"
+                  onClick={collectProject}
+                  disabled={!priced}
+                  data-testid="collect-project"
+                >
                   <PackagePlus className="mr-2 h-4 w-4" />
                   Zberi v ponudbo
                 </Button>
@@ -1403,7 +1439,7 @@ export function CameraView() {
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{g.lines.length} postavk</p>
-                  <p className="text-sm font-bold text-primary">{formatEUR(g.subtotal)}</p>
+                  <p className="text-sm font-bold text-primary">{priced ? formatEUR(g.subtotal) : '—'}</p>
                 </div>
               ))}
             </div>

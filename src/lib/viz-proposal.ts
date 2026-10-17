@@ -9,6 +9,8 @@
 // prenos PNG / shranjevanje v galerijo / tisk v PDF.
 
 import { loadImage } from './measure-sheet';
+import { formatNum } from './format';
+import { readSettings } from './settings-inputs';
 
 const W = 1240;
 const PAD = 56;
@@ -51,7 +53,9 @@ export interface ProposalEstimate {
   lines: ProposalEstimateLine[];
   /** Skupaj brez DDV (€). */
   totalNoVat: number;
-  /** DDV stopnja v % (privzeto 22 — slovenska splošna stopnja). */
+  /** DDV stopnja v % — tista, ki jo je monter dejansko videl na zaslonu.
+   *  Brez nje (ali če je zunaj okna) slika pokaže oceno brez DDV in ne
+   *  napiše izmišljene stopnje (Task 86). */
   vatRate?: number;
 }
 
@@ -321,8 +325,15 @@ export function buildVizProposal(
       ]);
       y += ROW_H;
     });
-    // vsota
-    const vat = opts.estimate.vatRate ?? 22;
+    // Vsota. Stopnja DDV je lahko zapisana na oceni (monter jo je videl na
+    // zaslonu); če je ni ali je zunaj okna, dokument NE napiše izmišljenih
+    // 22 % in ne krivi Nastavitev — stranka na sliki vidi znesek brez DDV,
+    // točno tistega, ki je izračunan iz postavk.
+    const imaStopnjo = opts.estimate.vatRate !== undefined && opts.estimate.vatRate !== null;
+    const vat = readSettings({ vatRate: opts.estimate.vatRate }).vatRate;
+    const vatBesedilo = !imaStopnjo || vat.problem
+      ? 'DDV prištejemo po ponudbi'
+      : `DDV ${formatNum(vat.value, 2)} % prištejemo po ponudbi`;
     y += 8;
     ctx.fillStyle = '#1c1917';
     ctx.fillRect(PAD, y, innerW, 26);
@@ -331,7 +342,7 @@ export function buildVizProposal(
     ctx.textAlign = 'left';
     ctx.fillText('SKUPAJ (brez DDV)', PAD + 12, y + 17);
     ctx.textAlign = 'right';
-    ctx.fillText(`${fmtEUR(opts.estimate.totalNoVat)} · DDV ${vat} % prištejemo po ponudbi`, W - PAD - 12, y + 17);
+    ctx.fillText(`${fmtEUR(opts.estimate.totalNoVat)} · ${vatBesedilo}`, W - PAD - 12, y + 17);
     y += 26;
   }
 

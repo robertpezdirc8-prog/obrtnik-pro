@@ -51,7 +51,7 @@ const CHROME_CANDIDATES = [
 ].filter((p): p is string => typeof p === 'string' && p.length > 0);
 
 const PORT = 9335;
-const APP = 'http://localhost:3000/';
+const APP = process.env.APP_URL ?? 'http://localhost:3000/';
 
 // Konstruirana resnica (glej glavo). Toleranca 1,5 % višine ≈ 3 px pri
 // delovnih 192 px: pokriva zaokroževanje downscale-a, ne zgrešene črte.

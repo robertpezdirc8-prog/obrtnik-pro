@@ -23,6 +23,7 @@ import {
   Magnet, ChevronsLeftRight, Wand2, ClipboardList,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useLaborRate } from '@/hooks/use-labor-rate';
 import { processImage } from '@/lib/image-quality';
 import type { CraftCategory, DetectedSurface } from '@/lib/camera-types';
 import type { CraftInputs } from '@/lib/types';
@@ -94,6 +95,9 @@ const MAX_CUSTOM = 3;
 
 export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQuote, onSaved, measuresSummary = [], company = null, photoId = null }: VizPanelProps) {
   const { toast } = useToast();
+  /** Ocena na predlogu sme imeti samo nastavljeno uro. Brez nje dokument
+   *  ostane brez denarne ocene, ne pa po izmišljenih 35 €/h (Task 87). */
+  const delo = useLaborRate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const afterRef = useRef<HTMLCanvasElement | null>(null);
@@ -651,10 +655,10 @@ export function VizPanel({ dataUrl, craft, surfaces, reference, barSuggest, onQu
     });
     // Groba ocena: prefill iz dimenzij območja + privzete vrednosti → kalkulator
     let estimate: ProposalEstimate | null = null;
-    if (craft !== 'drugo' && quoteDims) {
+    if (craft !== 'drugo' && quoteDims && delo.loaded && !delo.problem) {
       try {
         const inp = { ...CRAFT_INPUT_DEFAULTS, ...craftInputsFromQuad(craft as CraftId, quoteDims) } as CraftInputs;
-        const res = runCalculator(craft as CraftId, inp, 35);
+        const res = runCalculator(craft as CraftId, inp, delo.value);
         const total = res.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
         if (res.lines.length > 0 && total > 0) {
           estimate = {

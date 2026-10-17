@@ -185,5 +185,22 @@ const opisCene = (i: CraftInputs) => calculateOgraje(i, 35).lines.map((l) => `${
   check('prazno polje (0 m) norme ne pokaže', estimateDuration('ograje', { ...BASE, length: 0 }) === null);
 }
 
+// ── 9) Montaža ograje sledi NASTAVLJENI uri, ne izmišljenih 35 €/h ──
+//     Vrstica »Montaža ograje« je bila 35 €/m, ki jih je napisal kalkulator,
+//     ne obrtnik. Povzetek istega izračuna pravi 0,5 h/m z dvema monterjema,
+//     torej 1,0 urne postavke na meter.
+{
+  console.log('\n── cena dela ograje iz nastavitve ──');
+  const montaza = (rate: number) =>
+    calculateOgraje(BASE, rate).lines.find((l) => l.name === 'Montaža ograje')?.unitPrice ?? Number.NaN;
+  check('pri nastavljeni 35 €/h je montaža 35 €/m (ponudbe se ne spremenijo)', montaza(35) === 35, String(montaza(35)));
+  check('pri 70 €/h je montaža 70 €/m', montaza(70) === 70, String(montaza(70)));
+  check('pri 28 €/h je montaža 28 €/m', montaza(28) === 28, String(montaza(28)));
+  check('brez nastavljene ure je cena NaN in ne 35', Number.isNaN(montaza(Number.NaN)));
+  check('materialne vrstice ostanejo svojstvene (ura jih ne spreminja)',
+    calculateOgraje(BASE, 70).lines.find((l) => l.name === 'Aluminijasta ograja')?.unitPrice ===
+    calculateOgraje(BASE, 35).lines.find((l) => l.name === 'Aluminijasta ograja')?.unitPrice);
+}
+
 console.log(`\nREZULTAT: ${pass} OK, ${fail} NAPAK`);
 process.exit(fail > 0 ? 1 : 0);

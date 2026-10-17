@@ -250,7 +250,7 @@ async function main(): Promise<void> {
     check('4 kartica Stopnice odprta', (await clickCard('Stopnice')) === 'OK' && (await waitFor(ROOT)), 'calc');
     await sleep(500);
 
-    check('5 privzeta širina je 1,1 m', (await getValue('Širina stopnic')) === '1.1', await getValue('Širina stopnic'));
+    check('5 privzeta širina je 1,1 m', (await getValue('Širina stopnic')) === '1,1', await getValue('Širina stopnic'));
     check('6 DOM meje min={0.6}, ki je obljubljala tiho usekanje, ni več',
       (await getAttr('Širina stopnic', 'min')) !== '0.6', await getAttr('Širina stopnic', 'min'));
     check('7 zgornje meje DOM prav tako ne prepušča vnosu (razsodba je samo v resolverju)',

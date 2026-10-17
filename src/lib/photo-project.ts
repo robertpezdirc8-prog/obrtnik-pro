@@ -60,10 +60,14 @@ interface AccGroup {
  * Sestavi povzetek projekta iz shranjenih fotografij.
  * Vrne skupine po dejavnosti s seštetimi postavkami — pripravljeno
  * za direkten vnos v osnutek ponudbe.
+ *
+ * `laborRate` je OBVEZEN in sme priti samo iz Nastavitev. Prejšnji privzetek
+ * `= 35` je cene dela celega projekta gnal po številk, ki je obrtnik ni
+ * nastavil (Task 86/87).
  */
 export function buildProjectFromPhotos(
   records: PhotoProjectSource[],
-  laborRate = 35,
+  laborRate: number,
 ): ProjectSummary {
   const groups = new Map<CraftId, AccGroup>();
   let used = 0;

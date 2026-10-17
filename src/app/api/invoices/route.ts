@@ -13,7 +13,7 @@ import { ensureSeeded } from '@/lib/seed';
 // (InvoiceItem) — e-račun (EN 16931, ZIERDED od 2028) zahteva vrstice
 // (BR-16) in zgodovina računa ne sme slediti poznejšim spremembam ponudbe.
 
-import { DEFAULT_DUE_DAYS } from '@/lib/payment-tracking';
+import { readSettings } from '@/lib/settings-inputs';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -78,9 +78,13 @@ export async function POST(req: NextRequest) {
     });
     const number = `RAC-${year}-${String(count + 1).padStart(3, '0')}`;
 
-    // Privzeti rok: DEFAULT_DUE_DAYS od izdaje (dodeli strežnik).
-    const due = new Date();
-    due.setDate(due.getDate() + DEFAULT_DUE_DAYS);
+    // Rok plačila: SHRANJENA nastavitev, skozi ISTO okno kot račun v PDF in
+    // evidenca terjatev. Prej je bil tu hardcodiran 30 dni, PDF pa je pisal
+    // iz paymentDays (in ob prazni nastavitvi iz 15) — isti račun je imel dva
+    // datuma zapadlosti. Če vnos ni veljaven, rok OSTANE prazen; ga ne izmislimo.
+    const settingsRow = await db.settings.findUnique({ where: { id: 'default' } });
+    const rok = readSettings(settingsRow ?? {}).paymentDays;
+    const due = rok.problem ? null : new Date(Date.now() + rok.value * 86_400_000);
 
     const invoice = await db.invoice.create({
       data: {

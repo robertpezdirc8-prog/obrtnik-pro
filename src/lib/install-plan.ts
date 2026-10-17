@@ -469,9 +469,12 @@ function nadstresekPlan(i: CraftInputs): InstallPlan {
     cuts: [],
     checks: [
       postCheck,
-      { label: 'Minimalni naklon kritine', detail: `${minSlope}° za ${cover === 'ploc' ? 'trapezno pločevino' : cover === 'polikar' ? 'polikarbonat' : 'steklo'} — pri manjšem naklonu uhaja voda na spojih`, status: 'info' },
-      { label: 'Preklop kritine', detail: '10 % za preklope in odpad ob rezanju', status: 'info' },
-      { label: 'Odvod vode', detail: (i.waterDrain ?? true) ? 'odvodni žleb + cev po sprednji strani — vzdržuj padec ≥ 0,5 %' : 'brez odvoda — voda kaplja na sprednji rob; priporočamo odvodni žleb', status: (i.waterDrain ?? true) ? 'ok' : 'warn' },
+      // 5 / 7 / 10° so PRIPOROČILA IZ PRAKSE za tri kritine, ne citiran predpis
+      // in ne objavljen podatek ROKSAL — aplikacija jih ne more preveriti, zato
+      // jih ne prodaja kot zahtevo. Monter preveri list proizvajalca kritine.
+      { label: 'Minimalni naklon kritine', detail: `${minSlope}° za ${cover === 'ploc' ? 'trapezno pločevino' : cover === 'polikar' ? 'polikarbonat' : 'steklo'} — priporočilo iz prakse, ne citiran predpis; zanesljivo vrednost in zahtevane spoje preveri pri proizvajalcu kritine`, status: 'info' },
+      { label: 'Preklop kritine', detail: '10 % za preklope in odpad ob rezanju — praktična ocena, ne objavljen podatek; preveri dejanski odpad svojega rezanja', status: 'info' },
+      { label: 'Odvod vode', detail: (i.waterDrain ?? true) ? 'odvodni žleb + cev po sprednji strani — priporočen padec ≥ 0,5 % (praksa, ne citiran predpis)' : 'brez odvoda — voda kaplja na sprednji rob; priporočamo odvodni žleb', status: (i.waterDrain ?? true) ? 'ok' : 'warn' },
     ],
   };
 }

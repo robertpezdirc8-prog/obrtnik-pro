@@ -52,7 +52,7 @@ const CHROME_CANDIDATES = [
 ].filter((p): p is string => typeof p === 'string' && p.length > 0);
 
 const PORT = 9337;
-const APP = 'http://localhost:3000/';
+const APP = process.env.APP_URL ?? 'http://localhost:3000/';
 const PROFILE_ID = 'wpc-deka-140';
 const EXPORTED = path.join(OUT, `fotomontaza-${PROFILE_ID}.png`);
 

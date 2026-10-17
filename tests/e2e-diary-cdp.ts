@@ -17,13 +17,20 @@ const TMP = (name: string) => __vfyPath.join(__vfyOutDir, name);
 import { accessSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+// Pot do chromiuma: okoljska spremenljivka, nato Windows/macOS/Linux poti, na
+// koncu kontejnerski playwright cache (stari seznam je veljal samo v kontejnerju).
 const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}/Microsoft/Edge/Application/msedge.exe` : undefined,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
   '/home/z/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome',
-  '/home/z/.cache/ms-playwright/chromium-1200/chrome-linux/chrome',
-  '/home/z/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
-];
-const PORT = 9334;
-const APP = 'http://localhost:3000/';
+].filter((p): p is string => typeof p === 'string' && p.length > 0);
+const PORT = Number(process.env.CDP_PORT ?? 9334);
+const APP = process.env.APP_URL ?? 'http://localhost:3000/';
 
 let pass = 0;
 let fail = 0;
@@ -58,7 +65,7 @@ function launchChrome(): ChildProcess {
       '--disable-gpu',
       '--disable-dev-shm-usage',
       '--remote-allow-origins=*',
-      `--user-data-dir=/tmp/diary-e2e`,
+      `--user-data-dir=${TMP('diary-e2e')}`,
       `--remote-debugging-port=${PORT}`,
       'about:blank',
     ],

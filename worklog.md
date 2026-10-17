@@ -2354,3 +2354,84 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   funkcija, zato mešanje obeh takoj pokaže piko namesto vejice; agregator je nov skript brez
   povzetka štel kot napako, kar je pravilno. Popravljena so bila pričakovanja, ne koda.
 - Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.
+
+## Task 86 — DOKUMENTI BERIJO ISTO ŠTEVILKO KOT ZASLON: kapara, veljavnost, rok plačila, DDV (2026-10-17)
+
+- **KAJ JE BILO NAREJENO.** Številke iz Nastavitev so imele štiri bralce in štiri različne
+  posege. Zdaj zanje skrbi en modul: `src/lib/settings-inputs.ts` nosi register petih
+  številčnih polj (`vatRate`, `laborRate`, `quoteValidDays`, `depositPercent`, `paymentDays`),
+  kratko in dolgo besedilo zavrnitve ter namig okna. Čez `readSettings` hodijo Nastavitve,
+  urejevalnik ponudbe, PDF ponudbe, PDF računa, SMS-skript in kar trije API-ji (`PUT
+  /api/settings`, `POST /api/offers`, `POST /api/invoices`).
+- **NAJDBE, ENA ZA ENO.**
+  - akontacija 33,7 % je na PDF postala 33 % (`Math.floor(depositPercent ?? 0)`), v SMS pa je
+    skript imel SVOJ privzetek `?? 30` in je prav tako usekal na celota — oba dokumenta in SMS
+    zdaj tiskata 33,7 %;
+  - veljavnost ponudbe je ob praznem ali ničelnem vnosu postala +15 dni (`|| 15`); `validUntil`
+    zdaj vrne `null` in dokument vrsto izpusti z razlogom;
+  - račun je imel DVA datuma zapadlosti: `POST /api/invoices` je rok dodelil po hardcodirani
+    konstanti `DEFAULT_DUE_DAYS = 30`, PDF računa pa je pisal `paymentDays` (in ob praznem
+    svojih 15). `effectiveDueAt` je dodala TRETJEGA, ker ob praznem `dueAt` vrne 30 dni. Zdaj je
+    `effectiveDueAt` samo SHRANJENI `dueAt`, konstanta `DEFAULT_DUE_DAYS` je izbrisana (preizkus
+    to preverja z `'DEFAULT_DUE_DAYS' in mod === false`), `PaymentStatus` pa je dobil stanje
+    `no-due`, ki se izpiše »Brez roka«;
+  - `POST /api/offers` je ob manjkajoči stopnji v bazo poslal izmišljenih 22 %; zdaj DDV gre
+    skozi register in neveljaven vnos vrne 400. Enako velja za vrstice: količina ali cena na
+    enoto, ki nista števili, ponudbo ZAVRNETA z imenom postavke, ne da bi tiho nastali na 0.
+- **ROB SISTEMA.** `PUT /api/settings` je prej z `Number(body[key])` shranil karkoli — 150 %
+  akontacije ali »abc« (→ NaN) sta lahko prišla v bazo in tam ostala, neopažena. Zdaj strežnik
+  ZAVRNE s 400 in v stavku imenuje VPISANO vrednost; UI ob tem shrani OSTALA polja in javi
+  »Delno shranjeno«, nikoli pa ne pošlje nesrejenega zapisa.
+- IZMERJENO: novi `tests/verify/settings-input-guard.ts` skupaj **175 OK / 0 NAPAK** (register,
+  dobesedni izpisi, plavajoči rob po poljih, pariteta PDF ponudbe ⇄ PDF računa ⇄ SMS ⇄
+  urejevalnik ⇄ strežnik, datumi brez izmišljenih 15 dni, roki brez izmišljenih 30 dni);
+  `payment-tracking` 77 → **83**; `ograje-input-guard` 75 → **80** (montaža ograje sledi
+  nastavljeni uri); `tests/e2e-eslog-cdp.ts` **43/43** v živem brskalniku (prvič na tej stroji:
+  DDV 407,88 € in skupaj 2.261,88 € iz ZIP XML-ja, zajetega prek pravega prenosa; račun brez
+  davčne stopnje je pošteno zavrnjen s 409); sweep **3754 OK / 0 NAPAK** v 47/54 skriptih; `tsc`
+  0; `eslint` 0 zapisov.
+- POUK O OKOLJU: šest E2E skriptov je imelo `http://localhost:3000` vtaknjeno v kodo in samo
+  Linux poti do chromiuma, zato na tem računalniku NIKOLI niso mogli teči — dokazna veriga je
+  bila v dokumentih »zelena«, v resnici pa NEIZVEDLJIVA. Zdaj vseh enajst navigacijskih skriptov
+  sprejme `APP_URL` in `CDP_PORT`, seznam poti pa pokriva Windows, macOS in Linux. To je hkrati
+  razlaga občutka »4 ure in ni napredka«: delo je bilo, dokazov iz brskalnika pa ni bilo mogoče
+  pokazati.
+
+## Task 87 — VPISANA ŠTEVILKA NE SME TIHO POSTATI 0: NumField, ročna cena, Nastavitve (2026-10-17)
+
+- **KAJ JE MONTER VIDEL.** Vsa številčna polja so bila `type="number"`. Pri slovenski tipki
+  vejica brskalnik vrne PRAZEN string, `Number('')` pa je 0: monter je tipkal 12,5, vrstica
+  v ponudbi pa je tekla pri 0 € — in noben napis na zaslonu tega ni izdal.
+- **KAJ JE NAREJENO.** Vsa številčna polja so zdaj `type="text"` z `inputMode="decimal"`
+  (nastavitve, urejevalnik ponudbe, NumField v kalkulatorjih, evidenca ur). Neveljaven vnos gre
+  naprej kot `NaN`, izračun se USTAVI z razlogom, ki imenuje VPISANO vrednost, in nič se ne
+  pretvori v ničlo. Posledično: postavka v urejevalniku pokaže »—«, ne 0,00 €; gumb »Dodaj v
+  ponudbo« je ob neveljavni ceni zaprt in javi »Cena na enoto ni prebrana«; gumb »Shrani
+  ponudbo« je zaprt, strežnik pa vrne »Postavka ni izračunana — ponudbe nismo shranili«, število
+  ponudb v bazi se NE spremeni. Zavrnitev ima SKUPEN stavek (`numberProblemSentence`), ki ga
+  uporabijo vsi štirje vnosi, zato se formulacija ne more raziti.
+- **VEJICA OBE SMERI.** Polje OHRANI tipkano besedilo dobesedno (vpisan `6.5` ostane `6.5`),
+  izpis postavlke pa je z vejico (`6,5 m`). E2E preverja obe trditvi na istem polju.
+- **IZMIŠLJENA URA 35 €.** Kamera je klicala `runCalculator(..., 35)` in vizualizer je predlagal
+  s privzeto uro; pogon cen je imel `unitPrice: 35`. Zdaj je `useLaborRate()` edini vir ure,
+  kamera brez veljavne ure ne zbere projekta v ponudbo in ne natisne denarja, pri seštevku
+  fotografij pa je urna postavka IZREČEN parameter brez privzetka.
+- **Resnična napaka, ki jo je ujel šele brskalnik, ne test.** `settings-view.save()` je na strežnik
+  pošiljal `{ ...settings }` (STARO stanje) namesto `{ ...draft }`: monter, ki je vpisal 33,7 in
+  pritisnil Shrani, je dobil potrditev »Nastavitve shranjene ✓«, v bazi pa je ostalo 30. To je
+  tiho neshranjenje, ki ga enotski test ne more videti, ker ne pozna gumba. Popravljeno in
+  zaklenjeno z dvema preverjanjema; E2E ga ujame tako, da PO shranjevanju prebere `/api/settings`
+  in primerja z vpisano vrednostjo, nato še z zaslonom po ponovnem nalaganju.
+- **DVOJNI ODTIS V TESTIH (najdeno ob končnem pregledu, ne ob pisanju).** V
+  `tests/verify/ograje-input-guard.ts` je bil blok petih preverjanj zapisan DVAJKRAT. Drugi izvod
+  je primerjal vrstico `Aluminijasta ograje` (imena take vrstice ni) z enakim imenom na obeh
+  straneh — `undefined === undefined`, torej preizkus, ki ne more spodleteti. Odtis je izbrisan,
+  seštevek je bil IZMERJEN ZNOVA (3759 → **3754**, `ograje-input-guard` 85 → **80**) in zapisana
+  je nova, ne prva številka.
+- IZMERJENO: novi `tests/e2e-typed-number-ui.ts` **92/92** v živem brskalniku po treh površinah
+  (Nastavitve → kalkulator → urejevalnik), s šestimi posnetki preverjenimi po velikosti NA DISKU,
+  s skenom DOM-a (nič `type="number"`, noben `input` nima `min`/`max`/`step`) in brez konzolnih
+  napak; `e2e-ograje-input-ui` **42/42**, `e2e-craft-inputs-ui` **79/79**, `e2e-terasa-input-ui`
+  **36/36** (vsi ponovljene po ukinitvi DOM meja in po vejčnih izpisih); `settings-input-guard`
+  **175/175**; sweep **3754 OK / 0 NAPAK** v 47/54 skriptih; `tsc` 0; `eslint` 0 zapisov.
+- Nič pushano. Lokalni commit: ta. 0 AI, 0 novih odvisnosti, 0 mrežnih klicev, nič pobrisanega.

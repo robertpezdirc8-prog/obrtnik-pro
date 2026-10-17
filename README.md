@@ -139,6 +139,49 @@ klasičnih CV/postopkih (homografija, detekcija robov, SfM, teksturno tlakovanje
 > registrirane robove vseh petih dejavnosti + pariteta treh bralcev) in
 > `tests/e2e-craft-inputs-ui.ts` (**79/79** v živem brskalniku na treh dejavnostih, s tremi
 > posnetki na disku).
+>
+> **Isti pogon velja zdaj tudi za nastavitve, dokumente in ročno vpisano ceno (Tasks 86–87,
+> 2026-10-17).** Številka, ki jo monter vpíše v Nastavitvah, je imela štiri bralce in štiri
+> različne posege: PDF ponudbe in PDF računa sta akontacijo usekali (`Math.floor(depositPercent ??
+> 0)` — 33,7 % je na dokumentu postalo 33 %), SMS-skript je imel SVOJ privzetek (`?? 30`) in je
+> prav tako usekal na celota, urejevalnik ponudbe pa je računal tretjič. Veljavnost ponudbe je ob
+> praznem ali ničelnem vnosu postala +15 dni (`|| 15`), rok plačila na računu pa +15 dni IN hkrati
+> hardcodiranih 30 dni: `POST /api/invoices` je rok dodelil po `DEFAULT_DUE_DAYS`, PDF pa je pisal
+> `paymentDays` — isti račun je imel DVA datuma zapadlosti, evidenca terjatev pa je izmislila še
+> tretjega, ker je `effectiveDueAt` ob praznem roku vrnil 30 dni. `POST /api/offers` je
+> ob manjkajoči stopnji v bazo poslal izmišljenih 22 %. Zdaj vsi bralci — Nastavitve, urejevalnik,
+> PDF ponudbe, PDF računa, SMS in vsi trije API-ji — hodijo čez `readSettings` iz
+> `src/lib/settings-inputs.ts`: vpisana številka gre na dokument DOBESEDNO (33,7 % ostane 33,7 %),
+> sicer dokument vrsto izpusti in v razlogu navede VPISANO vrednost. Račun brez veljavnega roka
+> nima datuma zapadlosti in ga evidenca označi kot »Brez roka«; konstanta `DEFAULT_DUE_DAYS` je
+> izbrisana.
+> Strežnik je rob sistema: `PUT /api/settings` zdaj 150 % akontacije ali »abc« ZAVRNE s 400 in
+> imenuje vpisano vrednost, namesto da bi `Number()` v bazo shranil NaN.
+>
+> Task 87 je isto bolezen zdravil na strani vnosa. Vsa številčna polja so `type="text"` z
+> `inputMode="decimal"`, ker je `type="number"` slovensko vejico vrnil kot PRAZEN string,
+> `Number('')` pa je 0: monter je tipkal 12,5 in vrstica je tekla pri 0 €. Neveljaven vnos
+> gre naprej kot NaN — izračun se USTAVI z razlogom, ki imenuje vpisano vrednost, postavka pokaže
+> »—« namesto 0,00 €, gumboma »Dodaj v ponudbo« in »Shrani ponudbo« pa sta zaprta, da v bazo ne
+> more iti znesek, ki ga noben zaslon ni izračunal. NumField hkrati OHRANI TIPKANO besedilo (če je
+> nekdo vpisal 6.5, polje kaže 6.5); vejica je oblika shranjenih in izpeljanih izpisov, ne
+> lastnost vnosa. Iz klica kamere in iz pogona cen je odstranjena IZMIŠLJENA ura 35 €: kamera
+> bere postavko iz Nastavitev in brez veljavne ure ne zbere projekta v ponudbo.
+>
+> **Napako v produktivni logiki, ki jo je ujel šele brskalnik:** `settings-view.save()`
+> je na strežnik poslal `{ ...settings }` (STARO stanje) namesto `{ ...draft }`. Monter, ki je
+> vpisal 33,7 in pritisnil Shrani, je dobil potrditev »Nastavitve shranjene ✓« — v bazi pa je
+> ostalo 30. Tiho neshranjenje, ki ga enotski test ne more videti, ker ne pozna gumba.
+>
+> Zaklenjeno: novi `tests/verify/settings-input-guard.ts` (**175/175**: register petih polj,
+> pariteta PDF ponudbe ⇄ PDF računa ⇄ SMS ⇄ urejevalnik ⇄ strežnik, veljavnost brez 15 dni, rok
+> brez 30 dni), `payment-tracking` je zrastel 77 → **83** (stanje »Brez roka«),
+> `ograje-input-guard` 75 → **80** (montaža ograje sledi nastavljeni uri). V živem brskalniku: novi `tests/e2e-typed-number-ui.ts`
+> **92/92** po treh površinah (Nastavitve → kalkulator → urejevalnik), s šestimi posnetki,
+> preverjenimi po velikosti NA DISKU, in `e2e-eslog-cdp.ts` **43/43**. Šest E2E skriptov doslej
+> na tem računalniku NI MOGOLO teči (trdo vpisan `http://localhost:3000` in samo Linux poti do
+> chromiuma); vseh enajst navigacijskih skriptov zdaj sprejme `APP_URL` in `CDP_PORT`, seznam poti
+> do brskalnika pa pokriva Windows, macOS in Linux.
 
 ---
 
@@ -439,7 +482,7 @@ bun tests/verify/roksal-board-gap.ts  # Task 82: reža sme biti samo objavljena 
 ```
 
 Izhod vsake skripte: `REZULTAT: N OK, 0 NAPAK` + izhodna koda `1` ob napaki.
-Zadnja preverba (2026-10-16, FAZA-8 + F3 + Task 71 + FAZA-9 + Task 75 + Task 80/81/82 + Task 83): **51 skriptov, 51 z izhodno kodo 0**.
+Zadnja preverba (2026-10-17, do Tasks 86–87): **54 skriptov, 54 z izhodno kodo 0** (47 jih nosi brojač preverb, sedem je raziskovalnih izpisov brez njega).
 Pet skriptov, ki je doslej padalo (`canopy-analysis`, `deck-analysis`, `fasada-analysis`,
 `stair-profile`, `tile-grid`), je prevedenih na `os.tmpdir()` oziroma relacijo do
 `import.meta.url`, njihovi števci pa so zdaj izmerjeni NA TEJ STROJI: 52 + 53 + 33 + 15 + 41
@@ -452,21 +495,33 @@ absolutne strojno vezane poti v `src/` in `tests/`. Izmerjeno posamezno: **photo
 25/25**, **gt-evidence 102/102**, **roksal-span-rules 133/133**, **roksal-board-gap 58/58**,
 **terasa-input-guard 84/84** (Task 83: noben vnos terase se tiho ne useka; cena in montažni načrt
 se ravnavata po ISTEM resolverju),
-**ograje-input-guard 75/75** (Task 84: isti pogon pri ograjah — cena, načrt IN norma za trajanje
-berejo vpisano višino dobesedno ali pa jo vsi trije zavrnejo),
+**ograje-input-guard 80/80** (Task 84: isti pogon pri ograjah — cena, načrt IN norma za trajanje
+berejo vpisano višino dobesedno ali pa jo vsi trije zavrnejo; 75 → 80 ob Tasku 87, ker mora vrstica
+»Montaža ograje« slediti NASTAVLJENI uri in ne izmišljenih 35 €/m),
 **craft-inputs-all 481/481** (Task 85: ista trditev čez vseh pet preostalih dejavnosti — vsak
-registriran rob posebej, oba izpista vnosa in plavajoči rob pri fasadi).
+registriran rob posebej, oba izpista vnosa in plavajoči rob pri fasadi),
+**settings-input-guard 175/175** (Tasks 86–87, NOV: register petih nastavitvenih polj in pariteta
+vseh šestih bralcev — Nastavitve, urejevalnik, PDF ponudbe, PDF računa, SMS, oba API-ja; veljavnost
+brez izmišljenih 15 dni, rok plačila brez izmišljenih 30 dni, DDV brez izmišljenih 22 %,
+nobeno številčno polje ni več `type="number"` in nobeno nima DOM meje),
+**payment-tracking 83/83** (Task 86: 77 → 83, ker je računu brez roka dodano stanje »Brez roka«
+in je `DEFAULT_DUE_DAYS` izbrisan — preizkus to preverja neposredno v modulu).
 Assertivnih preverjanj skupaj,
 zdaj IZMERJENO Z ENO STEVLJO in
-ne sešteto iz spomina: **3568 OK / 0 NAPAK** v **46** od **53** `tests/verify/*.ts` skriptov;
+ne sešteto iz spomina: **3754 OK / 0 NAPAK** v **47** od **54** `tests/verify/*.ts` skriptov;
 sedem (`features-photos`, `real-photos`, `structure-photos`, `debug-energies`, `scores-debug`,
 `quality-calibrate`, `scene-classify`) je raziskovalnih izpisov brez brojača preverb. Ponovi z
 `bun tests/verify-counts.ts` — če nov skript ne izpiše povzetka, agregator vrne izhodno kodo 1,
 zato številka ne more pasti neopaženo. Prejšnja ročno sestavljena številka **2757** je bila za
 **20 previsoka**: `eslog.ts` v izpisu vrve DVE zaporedni števili (72 in 101) in seštevek jima je
 obema prisluhnil, agregator pa zna poizvedeti samo zadnjo vrsto (101) — dokaz, da mora biti
-seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako: 3087 → **3568** = +481
-(`craft-inputs-all` je nov s 481 preverjanji), nič se ni izgubilo.
+seštevek izmerjen, ne zapisan. Zadnja delta je izmerjena enako in SEŠTEJE SE TOČNO: 3568 →
+**3754** = +186 = +175 (nov `settings-input-guard`) +5 (`ograje-input-guard` 75 → 80, ura iz
+Nastavitev) +6 (`payment-tracking` 77 → 83); nobeno preverjanje ni izginilo. Prvi izmerjen seštevek
+te runde je bil **3759**, ne 3754 — pet preverjanj je bilo dvakrat zapisanih v `ograje-input-guard`,
+pri čemer je drugi izvod primerjal `Aluminijasta ograje` (imena take vrstice ni) z enakim imenom na
+obeh straneh, torej `undefined === undefined`: preizkus, ki ne more spodleteti. Odtis je izbrisan,
+številka je bila merjena znova, in dokumentirana je IZMERJENA, ne prva.
 E2E preverjanj (tečajo v brskalniku, NISO v zgornjem seštevku): `e2e-band-ui.ts` **50/50** (vključno s tremi posnetki, katerih velikost je preverjena),
 `e2e-fotomontaza-full.ts` **55/55** (vseh sedem korakov, vključno s pravim downloadom PNG na disk),
 `e2e-fotomontaza-real.ts` **53/53** (pravi fotki 04.jpg + 16.jpg, napaka merjena proti GT —
@@ -508,7 +563,23 @@ Keramika — vpisanih 50 % rezerve ostane 50 % (»Skupaj z rezervo 18 m²«; sta
 zaračunal 15,6 m²), 101 % je zavrnjen po imenu polja. Vsak krog nazaj na privzeto vrednost da
 POVEČ ISTO vsoto; trije posnetki (sprejeta 0,45 m, zavrnitev, fasada) preverjeni po velikosti NA
 DISKU),
-`e2e-colmap-cdp.ts` 36/36.
+`e2e-colmap-cdp.ts` 36/36,
+`e2e-typed-number-ui.ts` **92/92** (Tasks 86–87: VSAJA številčna polja so besedilo z
+`inputMode="decimal"` in nobeno nima DOM meje — potrjeno s skenom DOM-a na nastavitvah, v
+kalkulatorju in v urejevalniku. Nastavitve: vpisani 33,7 % akontacije PREŽIVI pot do strežnika in
+povratno nalaganje zaslona (to je tisti popravek, ki ga je ujel brskalnik: `{ ...settings }` je
+namesto osnutka pošiljal STARO vrednost, a odgovor je bil »shranjeno ✓«); 150 in »abc« sta
+ZAVRNJENA s stavkom, ki imenuje VPISANO vrednost, ostala polja se vseeno shranijo (`Delno
+shranjeno`), izpraznjeno polje pa reče »številka ni vpisana« in NE reče »0 %«. Kalkulator:
+izpraznjena višina ustavi račun (`Izračun ni opravljen`) in odstrani postavke, gumb in normo
+trajanja; 12,5 m se izračuna (vsota raste v razmerju 12,5/6 z toleranco 2 %); tipkana `6.5`
+OSTANE `6.5` v polju, izpis postavlke pa je `6,5 m`. Urejevalnik: ročna cena `0,75` zniža vsoto,
+»abc« jo zavrne in zapre dodajanje v ponudbo; izpraznjena količina pokaže »—« in zapre shranjevanje
+ponudbe, število ponudb v bazi se NE spremeni; `2 × 13,50 €` je `27,00 €`. Konzola brez napak,
+šest posnetkov preverjenih po velikosti NA DISKU),
+`e2e-eslog-cdp.ts` **43/43** (Task 86: e-račun v živem brskalniku — DDV 407,88 € in skupaj 2.261,88 €
+iz ZIP XML-ja, zajetega prek pravega prenosa, račun brez davčne stopnje pa je pošteno zavrnjen s
+409; ta skript je na tem računalniku doslej NIKOLI tekel).
 
 ### E2E dokazi
 

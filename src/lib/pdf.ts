@@ -2,14 +2,28 @@ import type { InvoiceDTO, OfferDTO, SettingsDTO } from './types';
 import { formatDate, formatNum } from './format';
 import type { HandoverData } from './paperwork';
 import { buildHandoverDoc } from './paperwork';
+import { readSettings, settingsProblemText, type SettingReading } from './settings-inputs';
 
 // ─── Tiskalni prikaz ponudbe (odpre okno → shrani kot PDF) ──
 
-/** Datum poteka veljavnosti = datum izdaje + quoteValidDays dni. */
-export function validUntil(createdAtIso: string, validDays: number): string {
+const nf = (n: number) => formatNum(n, 2);
+
+/**
+ * Vsi trditveni podatki na dokumentih (veljavnost, akontacija, rok plačila)
+ * pridejo iz `readSettings` — iz istega registra kot zaslon urejevalnika in
+ * strežnik. Dokument sme ob napačnem vnosu izpustiti SAMO to vrsto in mora
+ * povedati zakaj; vpisane številke pa NE sme popraviti (isti razred napake kot
+ * pri kalkulatorjih, Task 83–85: `Math.floor` in `|| 15` sta iz 33,7 % naredila
+ * 33 %, iz 0 dni pa 15 dni).
+ */
+
+/** Datum poteka veljavnosti = datum izdaje + quoteValidDays dni.
+ *  Število dni je vpisano dobesedno: brez `Math.floor` in brez tihega 15.
+ *  `null` = vnos ni veljaven, zato dokument vrste ne more izračunati. */
+export function validUntil(createdAtIso: string, validDays: number): string | null {
+  if (!Number.isFinite(validDays)) return null;
   const t = new Date(createdAtIso).getTime();
-  const days = Number.isFinite(validDays) && validDays > 0 ? Math.floor(validDays) : 15;
-  const d = new Date((Number.isFinite(t) ? t : Date.now()) + days * 86_400_000);
+  const d = new Date((Number.isFinite(t) ? t : Date.now()) + validDays * 86_400_000);
   return new Intl.DateTimeFormat('sl-SI', {
     day: '2-digit', month: '2-digit', year: 'numeric',
   }).format(d);
@@ -21,6 +35,8 @@ function esc(s: string | null | undefined): string {
 }
 
 export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
+  const s = readSettings(settings);
+  const veljava = s.quoteValidDays;
   const rows = offer.items
     .map(
       (item, i) => `
@@ -86,7 +102,7 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
     <div class="offer-meta">
       <div class="num">PONUDBA ${esc(offer.number)}</div>
       <p>Datum: ${formatDate(offer.createdAt)}</p>
-      <p>Velja do: ${validUntil(offer.createdAt, settings.quoteValidDays)}</p>
+      <p>Velja do: ${veljava.problem ? '— (razlog je zapisan spodaj)' : validUntil(offer.createdAt, veljava.value) ?? '—'}</p>
       <p>Status: ${offer.status === 'draft' ? 'Osnutek' : offer.status === 'sent' ? 'Poslana' : offer.status === 'accepted' ? 'Sprejeta' : 'Zavrnjena'}</p>
     </div>
   </div>
@@ -119,7 +135,7 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
       <tr><td>Plačljiva vrednost (brez DDV)</td><td class="r">${formatNum(offer.subtotal)} €</td></tr>
       <tr><td>DDV ${formatNum(offer.vatRate)} %</td><td class="r">${formatNum(offer.vatAmount)} €</td></tr>
       <tr class="grand"><td>SKUPAJ Z DDV</td><td class="r">${formatNum(offer.total)} €</td></tr>
-      ${depositRows(offer, settings)}
+      ${depositRows(offer.total, s.depositPercent)}
     </table>
   </div>
 
@@ -131,23 +147,29 @@ export function buildOfferHTML(offer: OfferDTO, settings: SettingsDTO): string {
   </div>
 
   <div class="foot">
-    <span>Ponudba velja ${Math.max(1, Math.floor(settings.quoteValidDays) || 15)} dni od datuma izdaje; cene so vezane na nabavne cene materiala na dan izdaje.</span>
-    <span>Cene so izražene v EUR.</span>
+    <span>${veljava.problem
+      ? `Veljavnost ni izračunana — ${esc(settingsProblemText(veljava.problem))}`
+      : `Ponudba velja ${nf(veljava.value)} dni od datuma izdaje.`}</span>
+    <span>Cene so izražene v EUR in vezane na nabavne cene materiala na dan izdaje.</span>
   </div>
 </body>
 </html>`;
 }
 
-/** Akontacijske vrstice za tabelo vsot — raziskava (Joist, sweeten,
- *  angi): jasno dogovorjena akontacija 10–50 % zmanjša nepoplačila.
- *  Deterministični izračun iz settings.depositPercent. */
-function depositRows(offer: OfferDTO, settings: SettingsDTO): string {
-  const pct = Math.max(0, Math.min(100, Math.floor(settings.depositPercent ?? 0)));
-  if (pct <= 0 || offer.total <= 0) return '';
-  const deposit = offer.total * (pct / 100);
-  const rest = offer.total - deposit;
+/** Akontacijski vrstici v tabeli vsot. Vpisan odstotek se uporabi DOBESEDNO
+ *  (brez `Math.floor` in brez lastnega privzetka) — če je zunaj okna vnosa,
+ *  dokument izpusti razlog in ne popravljene številke. */
+function depositRows(total: number, capara: SettingReading): string {
+  if (capara.problem) {
+    return `
+      <tr><td colspan="2" style="color:#b45309">Akontacija ni izračunana — ${esc(settingsProblemText(capara.problem))}</td></tr>`;
+  }
+  const pct = capara.value;
+  if (pct <= 0 || total <= 0) return '';
+  const deposit = total * (pct / 100);
+  const rest = total - deposit;
   return `
-      <tr><td style="color:#78716c">— od tega akontacija ${pct} % (ob naročilu)</td><td class="r" style="color:#78716c">${formatNum(deposit)} €</td></tr>
+      <tr><td style="color:#78716c">— od tega akontacija ${nf(pct)} % (ob naročilu)</td><td class="r" style="color:#78716c">${formatNum(deposit)} €</td></tr>
       <tr><td style="color:#78716c">— ostanek po zaključku in prevzemu dela</td><td class="r" style="color:#78716c">${formatNum(rest)} €</td></tr>`;
 }
 
@@ -219,19 +241,32 @@ export function openHandoverPrint(offer: OfferDTO, settings: SettingsDTO, opts: 
 
 // ─── Račun (iz sprejete ponudbe) ────────────────────────────
 
-/** Datum zapadlosti = izdaja + paymentDays dni. */
-export function dueDate(createdAtIso: string, paymentDays: number): string {
-  const t = new Date(createdAtIso).getTime();
-  const days = Number.isFinite(paymentDays) && paymentDays > 0 ? Math.floor(paymentDays) : 15;
-  const d = new Date((Number.isFinite(t) ? t : Date.now()) + days * 86_400_000);
+/** Samo datum (brez ure) — za rok plačila na računu. */
+function dayOnly(iso: string): string {
   return new Intl.DateTimeFormat('sl-SI', {
     day: '2-digit', month: '2-digit', year: 'numeric',
-  }).format(d);
+  }).format(new Date(iso));
 }
 
 /** Račun gradi iz podatkov računa (server izračuna iz ponudbe) +
  *  podrobnosti ponudbe za referenco in postavke. */
 export function buildInvoiceHTML(invoice: InvoiceDTO, offer: OfferDTO | null, settings: SettingsDTO): string {
+  const s = readSettings(settings);
+  const capara = s.depositPercent;
+  /** Rok plačila na računu bere SHRANJENI `dueAt` (strežnik ga dodeli ob
+   *  izdaji iz nastavitve), ne pa današnje nastavitve — sicer bi račun,
+   *  izdan pred spremembo roka, na papirju trdil drugo kot evidenca terjatev.
+   *  Št. dni od izdaje je izračun IZ obeh shranjenih datumov, ne izmislek. */
+  const trenutniRok = s.paymentDays;
+  const rokDatum = invoice.dueAt ? dayOnly(invoice.dueAt) : null;
+  const dniOdIzdaje = invoice.dueAt
+    ? Math.round((new Date(invoice.dueAt).getTime() - new Date(invoice.createdAt).getTime()) / 86_400_000)
+    : null;
+  const akontacijaVrstica = capara.problem
+    ? `<p style="color:#b45309">Akontacija ni izračunana — ${esc(settingsProblemText(capara.problem))}</p>`
+    : capara.value > 0 && invoice.total > 0
+      ? `<p>Akontacija ${nf(capara.value)} % (${formatNum(invoice.total * (capara.value / 100))} €) je že plačana ob naročilu — za plačilo je preostanek ${formatNum(invoice.total - invoice.total * (capara.value / 100))} € (če akontacija ni bila plačana, za plačilo velja celoten znesek).</p>`
+      : '';
   const items = (offer?.items ?? [])
     .map(
       (item, i) => `
@@ -244,9 +279,6 @@ export function buildInvoiceHTML(invoice: InvoiceDTO, offer: OfferDTO | null, se
       </tr>`,
     )
     .join('');
-
-  const pct = Math.max(0, Math.min(100, Math.floor(settings.depositPercent ?? 0)));
-  const deposit = invoice.total * (pct / 100);
 
   return `<!DOCTYPE html>
 <html lang="sl">
@@ -295,7 +327,7 @@ export function buildInvoiceHTML(invoice: InvoiceDTO, offer: OfferDTO | null, se
     <div class="meta">
       <div class="num">RAČUN ${esc(invoice.number)}</div>
       <p>Datum izdaje: ${formatDate(invoice.createdAt)}</p>
-      <p>Rok plačila: ${dueDate(invoice.createdAt, settings.paymentDays)}</p>
+      <p>Rok plačila: ${rokDatum ?? '— (razlog je v plačilnih podatkih)'}</p>
     </div>
   </div>
 
@@ -332,8 +364,15 @@ export function buildInvoiceHTML(invoice: InvoiceDTO, offer: OfferDTO | null, se
     <strong>Plačilni podatki</strong>
     ${settings.iban ? `<p>IBAN: <strong>${esc(settings.iban)}</strong></p>` : '<p>IBAN: — (dopolni v nastavitvah)</p>'}
     ${settings.taxNumber ? `<p>Referenca: ${esc(invoice.number)} · Davčna št. izdajatelja: ${esc(settings.taxNumber)}</p>` : ''}
-    ${pct > 0 && invoice.total > 0 ? `<p>Akontacija ${pct} % (${formatNum(deposit)} €) je že plačana ob naročilu — za plačilo je preostanek ${formatNum(invoice.total - deposit)} € (če akontacija ni bila plačana, za plačilo velja celoten znesek).</p>` : ''}
-    <p>Rok za plačilo: ${dueDate(invoice.createdAt, settings.paymentDays)} (${Math.max(1, Math.floor(settings.paymentDays) || 15)} dni od izdaje).</p>
+    ${akontacijaVrstica}
+    ${rokDatum
+      ? `<p>Rok za plačilo: ${rokDatum} (${dniOdIzdaje} dni od izdaje).</p>`
+      : `<p style="color:#b45309">Račun nima roka plačila: ob izdaji nastavitev roka (dni) ni bila veljavna, `
+        + 'datuma zapadlosti pa nismo izmislili. '
+        + (trenutniRok.problem
+            ? 'Nastavitev roka plačila je danes prav tako zunaj okna — popravi jo v Nastavitvah in izdaj nov dokument.'
+            : `Trenutna nastavitev (${nf(trenutniRok.value)} dni) velja za NOVE račune; tega ne spreminja.`)
+        + '</p>'}
   </div>
 
   <div class="foot">

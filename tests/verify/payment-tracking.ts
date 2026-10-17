@@ -3,6 +3,7 @@
 // 2026-02-01, zdaj 2026-02-11 → 10 dni zapadla; avg (16+28+10)/3
 // = 18). Poženi: bun run tests/verify/payment-tracking.ts
 
+import * as mod from '../../src/lib/payment-tracking';
 import {
   computeReceivables,
   dunningLevel,
@@ -12,7 +13,6 @@ import {
   actionableInvoices,
   daysBetween,
   suggestDueIso,
-  DEFAULT_DUE_DAYS,
   DUE_SOON_DAYS,
   MIN_PAID_FOR_AVG,
   type PaymentInvoice,
@@ -56,27 +56,27 @@ function inv(p: Partial<PaymentInvoice> & { id: string }): PaymentInvoice {
   eq('daysBetween 10 dni nazaj', daysBetween(new Date(daysAgo(10)), NOW), 10);
   eq('daysBetween 10 dni naprej (negativno)', daysBetween(NOW, new Date(daysAgo(10))), -10);
   eq('daysBetween isti trenutek', daysBetween(NOW, NOW), 0);
-  eq('DEFAULT_DUE_DAYS', DEFAULT_DUE_DAYS, 30);
+  // Task 86: moduli NE sme več imeti izmišljenega privzetega roka. Stari
+  // DEFAULT_DUE_DAYS = 30 je evidenci terjatev dal drug datum kot PDF računa.
+  eq('DEFAULT_DUE_DAYS ne obstaja več', 'DEFAULT_DUE_DAYS' in mod, false);
   eq('DUE_SOON_DAYS', DUE_SOON_DAYS, 5);
   eq('MIN_PAID_FOR_AVG', MIN_PAID_FOR_AVG, 3);
 }
 
-// ─── 2) effectiveDueAt: izrecen vs privzet ──────────────────
+// ─── 2) effectiveDueAt: izrecen ali NIHČE ───────────────────
 {
   const explicit = inv({ id: 'D', dueAt: '2026-02-01T12:00:00.000Z' });
   const e = effectiveDueAt(explicit);
   eq('effectiveDueAt izrecen', e.iso, '2026-02-01T12:00:00.000Z');
   eq('effectiveDueAt izrecen flag', e.explicit, true);
 
-  // createdAt = NOW − 30 dni → privzeti rok = točno NOW
-  const def = inv({ id: 'I', createdAt: daysAgo(30), dueAt: null });
-  const d = effectiveDueAt(def);
-  eq('effectiveDueAt privzet = createdAt+30', d.iso, daysAgo(0));
-  eq('effectiveDueAt privzet flag', d.explicit, false);
+  // brez roka: NI datum + 30 dni, ampak null
+  const noDue = inv({ id: 'I', createdAt: daysAgo(30), dueAt: null });
+  eq('effectiveDueAt brez roka = null', effectiveDueAt(noDue).iso, null);
+  eq('effectiveDueAt brez roka flag', effectiveDueAt(noDue).explicit, false);
 
-  // ročno: 2025-12-20 + 30 dni = 2026-01-19 (ist čas)
   const dec = inv({ id: 'A', createdAt: '2025-12-20T12:00:00.000Z', dueAt: null });
-  eq('effectiveDueAt dec+jan', effectiveDueAt(dec).iso, '2026-01-19T12:00:00.000Z');
+  eq('effectiveDueAt brez roka (drug createdAt)', effectiveDueAt(dec).iso, null);
 }
 
 // ─── 3) paymentStatus: posamezni primeri (ročno) ────────────
@@ -92,11 +92,13 @@ function inv(p: Partial<PaymentInvoice> & { id: string }): PaymentInvoice {
   eq('D zapadlost 10 dni', od.daysOverdue, 10);
   eq('D izrecen rok', od.dueExplicit, true);
 
-  // privzeti rok: createdAt 2026-01-12 + 30 = 2026-02-11 (rok DANES) → due-soon, 0
-  const today = paymentStatus(inv({ id: 'I', createdAt: '2026-01-12T12:00:00.000Z' }), NOW);
-  eq('I rok danes', today.status, 'due-soon');
-  eq('I dni do roka 0', today.daysLeft, 0);
-  eq('I privzet rok', today.dueExplicit, false);
+  // brez roka → 'no-due' (ne več 'due-soon' po izmišljenem 30-dnevnem roku)
+  const noDue = paymentStatus(inv({ id: 'I', createdAt: '2026-01-12T12:00:00.000Z' }), NOW);
+  eq('I brez roka → no-due', noDue.status, 'no-due');
+  eq('I brez dni zapadlosti', noDue.daysOverdue, null);
+  eq('I brez dni do roka', noDue.daysLeft, null);
+  eq('I privzet rok flag false', noDue.dueExplicit, false);
+  eq('I učinkovit rok null', noDue.effectiveDueAt, null);
 
   // due-soon 3 dni
   const soon = paymentStatus(inv({ id: 'H', dueAt: daysAhead(3) }), NOW);
@@ -126,6 +128,10 @@ function inv(p: Partial<PaymentInvoice> & { id: string }): PaymentInvoice {
   eq('label plačano', dunningLevel(inv({ id: 'x', paidAt: daysAgo(1) }), NOW).label, 'Plačano');
   eq('level 0 v roku', dunningLevel(inv({ id: 'y', dueAt: daysAhead(20) }), NOW).label, 'V roku');
   eq('level 0 rok se izteka', dunningLevel(inv({ id: 'z', dueAt: daysAhead(2) }), NOW).label, 'Rok se izteka');
+  // Brez roka NI »V roku« — to bi trdilo, da plačilo še ni zapadlo, čeprav
+  // datum nikoli ni bil dodeljen.
+  eq('brez roka → level 0', dunningLevel(inv({ id: 'nd', dueAt: null }), NOW).level, 0);
+  eq('brez roka → label Brez roka', dunningLevel(inv({ id: 'nd', dueAt: null }), NOW).label, 'Brez roka');
 
   const l1 = dunningLevel(inv({ id: 'D', dueAt: daysAgo(10) }), NOW);
   eq('10 dni → level 1', l1.level, 1);
@@ -228,8 +234,10 @@ const DATASET: PaymentInvoice[] = [
 {
   const overdue = paymentStatus(inv({ id: 'D', dueAt: daysAgo(10) }), NOW);
   eq('format zapadla pred 10 dni', formatDueRelative(overdue, NOW), 'zapadla pred 10 dni');
-  const today = paymentStatus(inv({ id: 'I', createdAt: daysAgo(30) }), NOW);
+  const today = paymentStatus(inv({ id: 'T0', dueAt: daysAgo(0) }), NOW);
   eq('format rok danes', formatDueRelative(today, NOW), 'rok danes');
+  const noDue = paymentStatus(inv({ id: 'I', createdAt: daysAgo(30), dueAt: null }), NOW);
+  eq('format brez roka', formatDueRelative(noDue, NOW), 'rok ni nastavljen');
   const tomorrow = paymentStatus(inv({ id: 'T', dueAt: daysAhead(1) }), NOW);
   eq('format rok jutri', formatDueRelative(tomorrow, NOW), 'rok jutri');
   const soon = paymentStatus(inv({ id: 'H', dueAt: daysAhead(3) }), NOW);
@@ -242,8 +250,10 @@ const DATASET: PaymentInvoice[] = [
 
 // ─── 10) suggestDueIso ──────────────────────────────────────
 {
-  eq('rok +30 dni privzeto', suggestDueIso('2026-02-11T12:00:00.000Z'), '2026-03-13T12:00:00.000Z');
+  // `days` je obvezen: prejšnji privzetek 30 dni je bil izmišljen podatek.
+  eq('rok +13 dni', suggestDueIso('2026-02-11T12:00:00.000Z', 13), '2026-02-24T12:00:00.000Z');
   eq('rok +7 dni', suggestDueIso('2026-02-11T12:00:00.000Z', 7), '2026-02-18T12:00:00.000Z');
+  eq('rok +0 dni = isti trenutek', suggestDueIso('2026-02-11T12:00:00.000Z', 0), '2026-02-11T12:00:00.000Z');
 }
 
 // ─── 11) determinizem: isti vnos → isti izhod ───────────────

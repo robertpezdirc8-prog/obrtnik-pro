@@ -20,6 +20,12 @@ const refusal = (problems: InputProblem[]): CalcResult => ({
   summary: [{ label: 'Izračun ni opravljen', value: problems.map(craftProblemShort).join(' · ') }],
 });
 
+/** Ograje: povzetek povie »0,5 na meter« z EKIPO DVA MONTERJA, torej 1,0
+ *  urne postavke na meter. Montaža je bila dopisana kot `35` — enak znesek,
+ *  a samo ob uri 35 €/h, ki je je monter nikoli nastavil. Zdaj sledi
+ *  nastavitvi (Task 87). */
+const OGRAJE_MONTAZA_HNA_M = 2 * 0.5;
+
 /** Ograje – balkonske in vrtne ograje ter pragovi.
  *  Stebri na vsakih ~1,5 m + vogali; material na meter; steklo po m².
  *  Vpisana višina se NE sme več usekati: `Math.max(0.9, višina)` je iz 0,5 m
@@ -66,7 +72,7 @@ export function calculateOgraje(input: CraftInputs, laborRate: number): CalcResu
       description: 'Dva monterja, vključno z izravnavo',
       quantity: r2(length),
       unit: 'm',
-      unitPrice: 35,
+      unitPrice: r2(OGRAJE_MONTAZA_HNA_M * laborRate),
     },
   ];
 

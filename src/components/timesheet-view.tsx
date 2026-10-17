@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { CRAFTS } from '@/lib/crafts-meta';
 import { type AppView, useDraft, useTimer, useView } from '@/lib/store';
 import { formatEUR, formatNum } from '@/lib/format';
+import { parseNumberInput, readSettings, settingsProblemText } from '@/lib/settings-inputs';
 import {
   billableHours, computeTimeStats, formatHours, formatMinutesHM,
   hoursToInvoiceItems, todayDay, weekStartDay,
@@ -36,7 +37,6 @@ export function TimesheetView() {
   const setDraftCustomer = useDraft((s) => s.setCustomer);
 
   const [entries, setEntries] = useState<TimeEntryInput[] | null>(null);
-  const [laborRate, setLaborRate] = useState(35);
   const [customers, setCustomers] = useState<string[]>([]);
   const [now, setNow] = useState<Date | null>(null);
   const [saving, setSaving] = useState(false);
@@ -83,10 +83,11 @@ export function TimesheetView() {
     fetch('/api/settings')
       .then((r) => r.json())
       .then((s) => {
-        if (s?.settings?.laborRate) {
-          setLaborRate(s.settings.laborRate);
-          setFormRate(String(s.settings.laborRate));
-        }
+        // Predpolnimo SAMO veljavno nastavljeno postavko in samo, dokler
+        // monter v polje še ni ničesar vpisal. Stari začetnih 35 €/h je bil
+        // izmišljen podatek (Task 86) — zdaj ga ni več nikoli.
+        const delo = readSettings({ laborRate: s?.settings?.laborRate }).laborRate;
+        if (!delo.problem) setFormRate((cur) => (cur === '' ? formatNum(delo.value, 2) : cur));
       })
       .catch(() => undefined);
     fetch('/api/offers')
@@ -138,7 +139,7 @@ export function TimesheetView() {
 
   const submitEntry = async () => {
     const hoursNum = Number(formHours.replace(',', '.'));
-    const rateNum = Number(formRate.replace(',', '.'));
+    const delo = readSettings({ laborRate: parseNumberInput(formRate) }).laborRate;
     const minutes = Math.round(hoursNum * 60);
     if (!formDesc.trim()) {
       toast({ title: 'Manjka opis', description: 'Napiši, kaj si delal.', variant: 'destructive' });
@@ -146,6 +147,13 @@ export function TimesheetView() {
     }
     if (!Number.isFinite(minutes) || minutes < 1) {
       toast({ title: 'Neveljavne ure', description: 'Vpiši število ur (npr. 1,75).', variant: 'destructive' });
+      return;
+    }
+    // Vpisane urne postavke NE nadomeščamo z nastavljeno: stara različica je
+    // ob `0` ali neštevilk tiho shranila uro po privzetki, monter pa je na
+    // zaslonu videl svojo številko. Zdaj vnos zavrnemo z razlogom.
+    if (delo.problem) {
+      toast({ title: 'Urna postavka ni shranjena', description: settingsProblemText(delo.problem), variant: 'destructive' });
       return;
     }
     setSaving(true);
@@ -157,7 +165,7 @@ export function TimesheetView() {
           day: formDay,
           description: formDesc.trim(),
           minutes,
-          hourlyRate: Number.isFinite(rateNum) && rateNum > 0 ? rateNum : laborRate,
+          hourlyRate: delo.value,
           customerName: formCustomer.trim() || null,
           craftId: formCraft === 'drugo' ? null : formCraft,
         }),

@@ -73,6 +73,7 @@ async function main(): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       customerName: 'Stranka e-računa d.o.o.', customerAddress: 'Cesta 1, 2000 Maribor',
+      vatRate: 22,
       items: [
         { name: 'Aluminijasta ograja', description: 'Eloksirana', quantity: 12, unit: 'm', unitPrice: 145 },
         { name: 'Steber aluminij 40×40', quantity: 3, unit: 'kos', unitPrice: 38 },

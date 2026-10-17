@@ -228,7 +228,10 @@ async function main(): Promise<void> {
     await sleep(500);
 
     // ── 2) polje obljublja samo še okno vnosa, ne posega v meritev ──
-    check('4 privzeta višina je 1,1 m', (await getValue('Višina ograje')) === '1.1', await getValue('Višina ograje'));
+    // Nalog 87: polje prikaže številko TAKO kot jo monter bere (vejica), ne
+    // interno obliko `String(1.1)`. Če bi tu pisalo piko, bi bil vnos ponovno
+    // sestavljen iz number-formata in ne iz vpisanega besedila.
+    check('4 privzeta višina je 1,1 m', (await getValue('Višina ograje')) === '1,1', await getValue('Višina ograje'));
     check('5 DOM meje min={0.9}, ki je obljubljala tiho usekanje, ni več',
       (await getAttr('Višina ograje', 'min')) !== '0.9', await getAttr('Višina ograje', 'min'));
     const hint = await evaluate(`(() => {

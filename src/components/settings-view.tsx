@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,22 @@ import { Switch } from '@/components/ui/switch';
 import { Loader2, Save, Building, HardHat } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFieldMode } from '@/lib/store';
+import { formatNum } from '@/lib/format';
 import type { SettingsDTO } from '@/lib/types';
+import {
+  numberProblemSentence,
+  parseNumberInput,
+  readSettings,
+  SETTINGS_INPUT_BOUNDS,
+  settingsProblemShort,
+  settingsProblemText,
+  settingsWindowHint,
+  type SettingsField,
+} from '@/lib/settings-inputs';
+
+/** Vsa številčna polja nastavitev — seznam vzame REGISTRA, da se ne more
+ *  raziti (nova nastavitev brez okna tu ne more ostati). */
+const SETTINGS_NUMBER_FIELDS = SETTINGS_INPUT_BOUNDS.map((b) => b.field as SettingsField);
 
 export function SettingsView() {
   const { toast } = useToast();
@@ -30,19 +45,62 @@ export function SettingsView() {
   const patch = (key: keyof SettingsDTO, value: string | number) =>
     setSettings((s) => (s ? { ...s, [key]: value } : s));
 
+  // ─── Številčna polja: VPISANO ostane dobesedno ─────────────
+  // Stara različica je vsak `onChange` prevedla z `Number(v) || 0` oziroma
+  // `|| 15`, torej je izprazniti polje pomenilo tiho zapisati 0 ali 15. Zdaj
+  // gre vnos skozi `raw` (string), preden je kaj shranjeno; če je zunaj
+  // okna, ga pokažemo z razlogom in ga NE pošljemo na strežnik.
+  const [raw, setRaw] = useState<Partial<Record<SettingsField, string>>>({});
+
+  const draft = useMemo<SettingsDTO | null>(() => {
+    if (!settings) return null;
+    const d = { ...settings };
+    for (const f of SETTINGS_NUMBER_FIELDS) {
+      const typed = raw[f];
+      if (typed !== undefined) d[f] = parseNumberInput(typed);
+    }
+    return d;
+  }, [settings, raw]);
+
+  const readings = draft ? readSettings(draft) : null;
+
   const save = async () => {
-    if (!settings) return;
+    if (!settings || !draft || !readings) return;
+    // Nekaj je vpisano, a zunaj okna → ta polja NE grejo na strežnik (nič se
+    // ne popravi in nič se ne izmisli); ostala se shrani normalno.
+    const blocked = SETTINGS_NUMBER_FIELDS.filter((f) => readings[f].problem);
+    // Pošljemo OSNUTEK (`draft`), ne `settings`: monter, ki vpíše 33,7 in
+    // pritisne Shrani, mora tudi DOBITI 33,7. Z `{ ...settings }` bi bila na
+    // strežnik odposlana STARA vrednost, odgovor pa »Nastavitve shranjene ✓« —
+    // tiho neshranjenje, ki ga enotski test ne vidi, ker ne pozna gumba.
+    const payload: Partial<SettingsDTO> = { ...draft };
+    for (const f of blocked) delete payload[f];
     setSaving(true);
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setSettings(data.settings);
-      toast({ title: 'Nastavitve shranjene ✓', description: 'Podatki se pojavijo na novih ponudbah.' });
+      setRaw((prev) => {
+        const next = { ...prev };
+        for (const f of SETTINGS_NUMBER_FIELDS) if (!readings[f].problem) delete next[f];
+        return next;
+      });
+      toast(
+        blocked.length === 0
+          ? { title: 'Nastavitve shranjene ✓', description: 'Podatki se pojavijo na NOVIH dokumentih; že izdane ponudbe in računi ostanejo takšni, kot so bili izdani.' }
+          : {
+              title: 'Delno shranjeno',
+              description:
+                `${blocked.map((f) => settingsProblemShort(readings[f].problem!)).join(', ')} — ` +
+                'vpisane vrednosti niso shranjene in niso popravljene; dokumenti zanje uporabljajo zadnjo veljavno vrednost.',
+              variant: 'destructive',
+            },
+      );
     } catch {
       toast({ title: 'Napaka', description: 'Shranjevanje ni uspelo.', variant: 'destructive' });
     } finally {
@@ -57,7 +115,39 @@ export function SettingsView() {
       </div>
     );
   }
-  if (!settings) return null;
+  if (!settings || !draft || !readings) return null;
+
+  /** Ena vrstica polja: vpis DOBESEDNO iz `raw`, namig ali zavrnitev iz REGISTRA. */
+  const numberField = (field: SettingsField, label: string, extra?: string) => {
+    const r = readings[field];
+    const typed = raw[field];
+    // Shranjena vrednost se prikaže Z VEJICO: `String(33.7)` bi v polju
+    // pokazalo "33.7", monter pa številko bere kot 33,7. Brez veljavne
+    // shranjene številke je polje PRAZNO — ni nadomestne vrednosti.
+    const stored = settings[field];
+    const shown = Number.isFinite(stored) ? formatNum(stored, 2) : '';
+    return (
+      <div className="space-y-1.5" data-settings-field={field}>
+        <Label htmlFor={`settings-${field}`}>{label}</Label>
+        <Input
+          id={`settings-${field}`}
+          type="text"
+          inputMode="decimal"
+          aria-label={label}
+          aria-invalid={r.problem ? true : undefined}
+          value={typed ?? shown}
+          onChange={(e) => setRaw((p) => ({ ...p, [field]: e.target.value }))}
+        />
+        <p className={`text-xs ${r.problem ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`} data-testid="settings-field-problem">
+          {r.problem
+            ? r.problem.side === 'nan' && (typed ?? '').trim() !== ''
+              ? `${numberProblemSentence(label, typed ?? '')}. Te vrednosti ne shranimo.`
+              : settingsProblemText(r.problem)
+            : settingsWindowHint(field, extra)}
+        </p>
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
@@ -113,52 +203,11 @@ export function SettingsView() {
           <CardDescription>Uporabijo se pri novih ponudbah in kalkulatorjih.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>DDV stopnja (%)</Label>
-            <Input
-              type="number" min={0} max={30} step={0.5}
-              value={settings.vatRate}
-              onChange={(e) => patch('vatRate', Number(e.target.value) || 0)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Urna postavka dela (€/h)</Label>
-            <Input
-              type="number" min={0} step={0.5}
-              value={settings.laborRate}
-              onChange={(e) => patch('laborRate', Number(e.target.value) || 0)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Veljavnost ponudbe (dni)</Label>
-            <Input
-              type="number" min={1} max={90} step={1}
-              value={settings.quoteValidDays}
-              onChange={(e) => patch('quoteValidDays', Number(e.target.value) || 15)}
-            />
-            <p className="text-xs text-muted-foreground">Izpiše se na PDF — zaščita pred nihanjem cen materiala</p>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Akontacija (%)</Label>
-            <Input
-              type="number" min={0} max={100} step={5}
-              value={settings.depositPercent}
-              onChange={(e) => patch('depositPercent', Number(e.target.value) || 0)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Izpiše se na PDF in v SMS povzetku. Običajno 30 %; nad 50 % stranke odneha
-              (raziskave: priporočilo 10–50 % glede na velikost projekta).
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Rok plačila računa (dni)</Label>
-            <Input
-              type="number" min={1} max={90} step={1}
-              value={settings.paymentDays}
-              onChange={(e) => patch('paymentDays', Number(e.target.value) || 15)}
-            />
-            <p className="text-xs text-muted-foreground">Izpiše se na računu kot datum zapadlosti (tipično 15 ali 30 dni)</p>
-          </div>
+          {numberField('vatRate', 'DDV stopnja (%)')}
+          {numberField('laborRate', 'Urna postavka dela (€/h)')}
+          {numberField('quoteValidDays', 'Veljavnost ponudbe (dni)', 'Izpiše se na PDF')}
+          {numberField('depositPercent', 'Akontacija (%)', 'Izpiše se na PDF in v SMS povzetku')}
+          {numberField('paymentDays', 'Rok plačila računa (dni)', 'Izpiše se na računu kot datum zapadlosti')}
         </CardContent>
       </Card>
 

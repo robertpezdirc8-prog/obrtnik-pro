@@ -73,7 +73,7 @@ const MAX_DIM = 1280;
 const JPEG_Q = 0.82;
 
 const PORT = 9338;
-const APP = 'http://localhost:3000/';
+const APP = process.env.APP_URL ?? 'http://localhost:3000/';
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
   'C:/Program Files/Google/Chrome/Application/chrome.exe',

@@ -12,22 +12,19 @@ export interface PaymentInvoice {
   customerName: string;
   total: number;
   createdAt: string;
-  /** Rok plačila (ISO) — null pomeni privzeti rok od izdaje. */
+  /** Rok plačila (ISO) — null = računu nikoli ni bil dodeljen (brez roka). */
   dueAt: string | null;
   /** Kdaj plačano (ISO) — null = neplačan. */
   paidAt: string | null;
 }
 
-export type PaymentStatus = 'paid' | 'overdue' | 'due-soon' | 'pending';
+export type PaymentStatus = 'paid' | 'overdue' | 'due-soon' | 'pending' | 'no-due';
 
-/** Privzeti rok plačila, če račun nima izrecnega (dueAt null). */
-export const DEFAULT_DUE_DAYS = 30;
+const DAY_MS = 86_400_000;
 /** Kdaj se opozori PRED rokom ("rok čez N dni"). */
 export const DUE_SOON_DAYS = 5;
 /** Iskrenost povprečja: manj kot toliko plačanih = brez trditve. */
 export const MIN_PAID_FOR_AVG = 3;
-
-const DAY_MS = 86_400_000;
 
 /** Koliko polnih dni od a do b (pozitivno = b kasneje). */
 export function daysBetween(a: Date, b: Date): number {
@@ -40,18 +37,20 @@ export interface PaymentInfo {
   daysOverdue: number | null;
   /** Za 'due-soon': polni dnevi do roka (≥ 0 = še danes). */
   daysLeft: number | null;
-  /** Učinkovit rok (ISO) — izrecen ali privzet. */
-  effectiveDueAt: string;
-  /** Ali je rok izrecen (true) ali privzet 30 dni od izdaje (false). */
+  /** Rok (ISO) — `null` pomeni, da računu nikoli ni bil dodeljen. */
+  effectiveDueAt: string | null;
+  /** Ali je rok izrecen (true) ali ga ni (false). */
   dueExplicit: boolean;
 }
 
-/** Učinkovit rok računa (izrecen dueAt ali privzet DEFAULT_DUE_DAYS od izdaje). */
-export function effectiveDueAt(inv: PaymentInvoice): { iso: string; explicit: boolean } {
-  if (inv.dueAt) return { iso: inv.dueAt, explicit: true };
-  const due = new Date(inv.createdAt);
-  due.setDate(due.getDate() + DEFAULT_DUE_DAYS);
-  return { iso: due.toISOString(), explicit: false };
+/**
+ * Učinkovit rok = SHRANJENI `dueAt`. Prejšnja različica je v primeru brez
+ * roka sama izmislila 30 dni od izdaje (`DEFAULT_DUE_DAYS`), medtem ko je
+ * račun v PDF pisal datum iz nastavitve `paymentDays` — isti račun je imel
+ * dva zapadla datuma. Task 86: brez izmišljene roka.
+ */
+export function effectiveDueAt(inv: PaymentInvoice): { iso: string | null; explicit: boolean } {
+  return inv.dueAt ? { iso: inv.dueAt, explicit: true } : { iso: null, explicit: false };
 }
 
 /** Stanje enega računa glede na `now` (deterministično). */
@@ -65,6 +64,7 @@ export function paymentStatus(inv: PaymentInvoice, now: Date): PaymentInfo {
     dueExplicit: explicit,
   };
   if (inv.paidAt) return { ...base, status: 'paid' };
+  if (!dueIso) return { ...base, status: 'no-due' };
 
   const due = new Date(dueIso);
   const overdue = daysBetween(due, now); // >0 = zapadel
@@ -108,6 +108,9 @@ export function dunningLevel(inv: PaymentInvoice, now: Date): Dunning {
   const info = paymentStatus(inv, now);
   if (info.status === 'paid') {
     return { level: 0, label: 'Plačano', message: '' };
+  }
+  if (info.status === 'no-due') {
+    return { level: 0, label: 'Brez roka', message: '' };
   }
   const d = info.daysOverdue ?? 0;
   if (d === 0) {
@@ -219,18 +222,20 @@ export function actionableInvoices(invoices: PaymentInvoice[], now: Date): Array
 /** »rok danes« · »rok jutri« · »rok čez N dni« · »zapadla pred N dni« · »plačana«. */
 export function formatDueRelative(info: PaymentInfo, now: Date): string {
   if (info.status === 'paid') return 'plačana';
+  if (info.status === 'no-due') return 'rok ni nastavljen';
   if (info.status === 'overdue') return `zapadla pred ${info.daysOverdue} dni`;
   if (info.status === 'due-soon') {
     if (info.daysLeft === 0) return 'rok danes';
     if (info.daysLeft === 1) return 'rok jutri';
     return `rok čez ${info.daysLeft} dni`;
   }
-  const left = daysBetween(now, new Date(info.effectiveDueAt));
+  const left = daysBetween(now, new Date(info.effectiveDueAt as string));
   return left === 0 ? 'rok danes' : `rok čez ${left} dni`;
 }
 
-/** Predlagan rok: `from` + `days` dni (za UI hitre akcije). */
-export function suggestDueIso(from: Date | string, days = DEFAULT_DUE_DAYS): string {
+/** Predlagan rok: `from` + `days` dni (za UI hitre akcije). `days` je obvezen —
+ *  prejšnji privzetek 30 dni je bil izmišljen podatek in ni imel vira. */
+export function suggestDueIso(from: Date | string, days: number): string {
   const d = new Date(from);
   d.setDate(d.getDate() + days);
   return d.toISOString();

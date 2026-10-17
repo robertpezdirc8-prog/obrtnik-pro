@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { readSettings, settingsProblemText } from '@/lib/settings-inputs';
 
 interface IncomingItem {
   name: string;
@@ -45,7 +46,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ponudba mora imeti vsaj eno postavko' }, { status: 400 });
     }
 
-    const vatRate = Number(body.vatRate ?? 22);
+    // DDV se bere skozi ISTI register kot urejevalnik, PDF, račun in SMS.
+    // Strežnik ne sme izmisliti 22 % tam, kjer klijent ni poslal veljavne
+    // stopnje — sicer gre v bazo znesek, ki ga noben zaslon ni izračunal.
+    const ddv = readSettings({ vatRate: body.vatRate }).vatRate;
+    if (ddv.problem) {
+      return NextResponse.json(
+        { error: `Ponudba ni shranjena — ${settingsProblemText(ddv.problem)}` },
+        { status: 400 },
+      );
+    }
+    const vatRate = ddv.value;
+
+    const neStevilka = items.findIndex((i) => !Number.isFinite(Number(i.quantity)) || !Number.isFinite(Number(i.unitPrice)));
+    if (neStevilka >= 0) {
+      const i = items[neStevilka];
+      return NextResponse.json(
+        {
+          error:
+            `Ponudba ni shranjena — postavka ${neStevilka + 1} (${i.name || 'brez imena'}) ` +
+            `nima veljavne količine ali cene na enoto. Vpisani vrednosti nismo popravili.`,
+        },
+        { status: 400 },
+      );
+    }
+
     const subtotal = r2(items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitPrice), 0));
     const vatAmount = r2(subtotal * (vatRate / 100));
     const total = r2(subtotal + vatAmount);

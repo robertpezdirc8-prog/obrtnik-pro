@@ -22,7 +22,7 @@ import { formatNum } from './format';
 // izračunati. Inženirske meje (ROKSALovi razmiki, pasovi) ostajajo v
 // `roksal-span-rules.ts` in znotraj okna samo OCENIJO vpisano vrednost.
 
-/** Katera koli številčna vnosna polja kalkulatorjev. */
+/** Katera koli številčna vnosna polja kalkulatorjev in nastavitev. */
 export type NumericField =
   | 'length' | 'height' | 'gates'
   | 'steps' | 'stepWidth' | 'railingLength' | 'totalRiseCm'
@@ -31,7 +31,8 @@ export type NumericField =
   | 'sideGapMm' | 'endGapMm'
   | 'windowCount' | 'windowSize' | 'doorCount'
   | 'canopyWidth' | 'canopyDepth' | 'canopyPosts'
-  | 'facadePerimeter' | 'facadeHeight' | 'openingsM2';
+  | 'facadePerimeter' | 'facadeHeight' | 'openingsM2'
+  | 'vatRate' | 'laborRate' | 'quoteValidDays' | 'depositPercent' | 'paymentDays';
 
 export interface InputBound {
   field: NumericField;
@@ -41,6 +42,13 @@ export interface InputBound {
   /** Rob okna; `null` = ta smer ni omejena. */
   min: number | null;
   max: number | null;
+  /**
+   * Vrednost mora biti celo število. Uporablja ga SAMO resolver nastavitev
+   * (`settings-inputs.ts`), ker sta dni v bazi `Int` — sicer bi 15,5 dneva
+   * tiho postalo 15. Kalkulatorski resolverter tega ne preverja, ker št.
+   * stopnic ali kosov doslej nikoli ni bilo zaokroženo.
+   */
+  integer?: boolean;
   /** Zakaj prav TA rob. Okno brez razloga je samo nova izmišljotina. */
   why: string;
 }
@@ -49,7 +57,7 @@ export interface InputProblem {
   bound: InputBound;
   /** Kar je monter dejansko vpisal — nikoli prirejeno. */
   typed: number;
-  side: 'min' | 'max' | 'nan';
+  side: 'min' | 'max' | 'nan' | 'fraction';
 }
 
 export type CraftInputValues = Record<string, number>;
@@ -290,11 +298,17 @@ export function resolveCraftInputs(craft: CraftId, input: CraftInputs): CraftInp
 
 const nf = (n: number) => formatNum(n, 2);
 
-function windowText(b: InputBound): string {
+/** Besedilo okna (»0,4–3 m«, »najmanj 1 dan«). Izvoženo, ker ga uporabljata
+ *  tudi namig pod poljem in zavrnitev — sicer se formulaciji lahko razideta. */
+export function inputWindowText(b: InputBound): string {
   if (b.min !== null && b.max !== null) return `${nf(b.min)}–${nf(b.max)} ${b.unit}`;
   if (b.min !== null) return `najmanj ${nf(b.min)} ${b.unit}`;
   if (b.max !== null) return `največ ${nf(b.max)} ${b.unit}`;
   return 'kar je vpisano';
+}
+
+function windowText(b: InputBound): string {
+  return inputWindowText(b);
 }
 
 /**

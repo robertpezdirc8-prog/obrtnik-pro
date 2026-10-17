@@ -17,13 +17,21 @@ __vfyFs.mkdirSync(__vfyOutDir, { recursive: true });
 const TMP = (name: string) => __vfyPath.join(__vfyOutDir, name);
 import { accessSync, rmSync } from 'node:fs';
 
+// Pot do chromiuma: okoljska spremenljivka, nato Windows/macOS/Linux poti, na
+// koncu kontejnerski playwright cache. Seznam je bil samo kontejnerski, zato ta
+// skript na domačem računalniku nikoli ni mogel zagnati brskalnika.
 const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}/Microsoft/Edge/Application/msedge.exe` : undefined,
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
   '/home/z/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome',
-  '/home/z/.cache/ms-playwright/chromium-1200/chrome-linux/chrome',
-  '/home/z/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
-];
-const PORT = 9335;
-const APP = 'http://localhost:3000/';
+].filter((p): p is string => typeof p === 'string' && p.length > 0);
+const PORT = Number(process.env.CDP_PORT ?? 9335);
+const APP = process.env.APP_URL ?? 'http://localhost:3000/';
 
 let pass = 0;
 let fail = 0;
@@ -58,7 +66,7 @@ function launchChrome(): ChildProcess {
       '--disable-gpu',
       '--disable-dev-shm-usage',
       '--remote-allow-origins=*',
-      `--user-data-dir=/tmp/eslog-e2e`,
+      `--user-data-dir=${TMP('eslog-e2e')}`,
       `--remote-debugging-port=${PORT}`,
       'about:blank',
     ],
@@ -146,7 +154,9 @@ interface SettingsSnapshot {
 }
 
 async function main(): Promise<void> {
-  const API = 'http://localhost:3000';
+  // API JE aplikacija: `/api/...` je bil hardcoded na :3000, zato je skript na
+  // drugem razvojnem portu takoj padel, čeprav je brskalnik deloval.
+  const API = (process.env.APP_URL ?? 'http://localhost:3000/').replace(/\/+$/, '');
 
   // ── 0) Resnica nastavitev (za obnovo ob koncu) ──
   const settingsRes = (await (await fetch(`${API}/api/settings`)).json()) as {
@@ -173,6 +183,9 @@ async function main(): Promise<void> {
       body: JSON.stringify({
         customerName: 'Stranka e-računa d.o.o.',
         customerAddress: 'Cesta 1, 2000 Maribor',
+        vatRate: 22,
+        // Strežnik ne izmišlja 22 % (Task 86): klient pošlje stopnjo, ki jo je
+        // monter dejansko videl na zaslonu.
         items: [
           { name: 'Aluminijasta ograja', description: 'Eloksirana', quantity: 12, unit: 'm', unitPrice: 145 },
           { name: 'Steber aluminij 40×40', quantity: 3, unit: 'kos', unitPrice: 38 },

@@ -1,6 +1,7 @@
 import type { OfferDTO, SettingsDTO } from './types';
 import { formatEUR, formatNum } from './format';
 import { validUntil } from './pdf';
+import { readSettings, settingsProblemShort, settingsWindowHint } from './settings-inputs';
 
 // ─── Pisarniški dokumenti — čiste tekstovne skripte ─────────
 // Raziskava (r/BathroomRemodeling »estimate ghosting«, clearstory,
@@ -9,15 +10,24 @@ import { validUntil } from './pdf';
 // dokumentiran change order (dodatno delo) in zapisnik o predaji.
 // Vse je deterministična sestava iz podatkov ponudbe in nastavitev.
 
+const nf = (n: number) => formatNum(n, 2);
+
 /** Kratek povzetek ponudbe za SMS / WhatsApp / Viber.
- *  Stranka na en pogled vidi obseg, ceno, veljavnost in akontacijo. */
+ *  Stranka na en pogled vidi obseg, ceno, veljavnost in akontacijo.
+ *
+ *  Task 86: ta skript je bil ČETRTI bralec `depositPercent` in je imel SVOJ
+ *  privzetek 30 %, medtem ko sta oba PDF-ja imela svojega (0 %); odstotek je
+ *  tudi usekal na celota. Zdaj bere istega `readSettings` kot dokumenti — če
+ *  vnosa ni ali je zunaj okna, vrstica to pove z VPISANO vrednostjo, ne z
+ *  izmišljeno. */
 export function buildOfferShareText(offer: OfferDTO, settings: SettingsDTO): string {
   const items = offer.items
     .map((i, n) => `${n + 1}. ${i.name} — ${formatNum(i.quantity)} ${i.unit} × ${formatNum(i.unitPrice)} € = ${formatNum(i.total)} €`)
     .join('\n');
 
-  const depositPct = Math.max(0, Math.min(100, Math.floor(settings.depositPercent ?? 30)));
-  const deposit = offer.total * (depositPct / 100);
+  const s = readSettings(settings);
+  const veljava = s.quoteValidDays;
+  const capara = s.depositPercent;
   const lines: string[] = [
     `PONUDBA ${offer.number} — ${settings.companyName}`,
     `Stranka: ${offer.customerName}`,
@@ -27,10 +37,15 @@ export function buildOfferShareText(offer: OfferDTO, settings: SettingsDTO): str
     `Skupaj brez DDV: ${formatNum(offer.subtotal)} €`,
     `DDV ${formatNum(offer.vatRate)} %: ${formatNum(offer.vatAmount)} €`,
     `SKUPAJ Z DDV: ${formatNum(offer.total)} €`,
-    `Velja do: ${validUntil(offer.createdAt, settings.quoteValidDays)}`,
+    veljava.problem
+      ? `Velja do: — (${settingsProblemShort(veljava.problem)}; ${settingsWindowHint('quoteValidDays')})`
+      : `Velja do: ${validUntil(offer.createdAt, veljava.value) ?? '—'}`,
   ];
-  if (depositPct > 0) {
-    lines.push(`Akontacija ${depositPct} %: ${formatNum(deposit)} € ob naročilu, ostanek po zaključku.`);
+  if (capara.problem) {
+    lines.push(`Akontacija: ni izračunana (${settingsProblemShort(capara.problem)}; ${settingsWindowHint('depositPercent')}).`);
+  } else if (capara.value > 0) {
+    const deposit = offer.total * (capara.value / 100);
+    lines.push(`Akontacija ${nf(capara.value)} %: ${formatNum(deposit)} € ob naročilu, ostanek po zaključku.`);
   }
   if (settings.iban) {
     lines.push(`IBAN: ${settings.iban}`);

@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useDraft } from '@/lib/store';
 import { calcTotals } from '@/lib/pricing';
 import { formatEUR, formatNum } from '@/lib/format';
+import { numberProblemSentence, readSettings, settingsProblemText, parseNumberInput } from '@/lib/settings-inputs';
 import type { SettingsDTO } from '@/lib/types';
 
 // ─── Razlikovanje dela od materiala (deterministično) ────────
@@ -58,26 +59,87 @@ export function OfferEditor() {
   const setCustomer = useDraft((s) => s.setCustomer);
   const clearDraft = useDraft((s) => s.clearDraft);
 
-  const [vatRate, setVatRate] = useState(22);
+  /** DDV pride iz nastavitev, ročni vpis v tem oknu ga preseže. Shranjen je
+   *  kot BESEDILO (`Number('')` bi bil 0 %, kar monter ni vpisal). */
+  const [settingsVat, setSettingsVat] = useState(Number.NaN);
+  const [vatText, setVatText] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [laborRate, setLaborRate] = useState(35);
-  const [depositPercent, setDepositPercent] = useState(30);
+  const [laborRate, setLaborRate] = useState(Number.NaN);
+  const [depositPercent, setDepositPercent] = useState(Number.NaN);
   const [buyListOpen, setBuyListOpen] = useState(false);
+  /** Dokler nastavitve niso prebrane, denarnih vrst NI za pokazati — začetna
+   *  vrednost 22 / 35 / 30 bi bila na zaslonu izmišljen podatek (Task 86:
+   *  urejevalnik je bil peta različica istega vnosa). */
+  const [settingsReady, setSettingsReady] = useState(false);
 
   useEffect(() => {
     fetch('/api/settings')
       .then((r) => r.json())
       .then((d) => {
         if (d.settings) {
-          setVatRate(d.settings.vatRate ?? 22);
-          setLaborRate(d.settings.laborRate ?? 35);
-          setDepositPercent(Number.isFinite(d.settings.depositPercent) ? d.settings.depositPercent : 30);
+          setSettingsVat(d.settings.vatRate);
+          setLaborRate(d.settings.laborRate);
+          setDepositPercent(d.settings.depositPercent);
+          setSettingsReady(true);
         }
       })
       .catch(() => {});
   }, []);
 
-  const totals = calcTotals(items, vatRate);
+  /** DDV, akontacija in urna postavka se berejo skozi ISTI register kot PDF,
+   *  račun in SMS — nič se ne useka, ne zaokroži, ne nadomesti. Vrstica pod
+   *  poljem imenuje VPISANO vrednost, ker je tiha menjava ravno tisto, kar je
+   *  bilo narobe (monter je vpisal 33,7, dokument je šel po 33). */
+  const settingsV = {
+    vatRate: vatText === null ? settingsVat : parseNumberInput(vatText),
+    laborRate,
+    depositPercent,
+  };
+  const read = readSettings(settingsV);
+  const ddv = read.vatRate;
+  const capara = read.depositPercent;
+  const delo = read.laborRate;
+  const totals = calcTotals(items, ddv.value);
+  const ddvVrednost = vatText === null
+    ? (Number.isFinite(settingsVat) ? formatNum(settingsVat, 2) : '')
+    : vatText;
+
+  // ─── Količina in cena na enoto: VPISANO je BESEDILO ────────
+  // `type="number"` slovensko vejico vrne kot PRAZEN string, stara različica pa
+  // je ta prazen string prevedla z `Number(e.target.value) || 0`. Monter je
+  // vpisal 12,5 m, na zaslonu videl 12,5, postavka pa je tekla pri 0 € —
+  // enaka tiha menjava številke kot pri DDV in akontaciji (Task 86).
+  type ItemNumField = 'quantity' | 'unitPrice';
+  const FIELD_LABEL: Record<ItemNumField, string> = { quantity: 'Količina', unitPrice: 'Cena/en. (€)' };
+  const [itemRaw, setItemRaw] = useState<Record<string, string>>({});
+  const rawId = (key: string, f: ItemNumField) => `${key}::${f}`;
+
+  const setItemNumber = (key: string, f: ItemNumField, text: string) => {
+    setItemRaw((p) => ({ ...p, [rawId(key, f)]: text }));
+    const v = parseNumberInput(text);
+    // Neveljavnega vpisa NIKOLI ne pretvorimo v 0. V bazi ostane zadnja
+    // veljavna številka, ponudba pa je do popravka blokirana (spodnja vrstica).
+    if (Number.isFinite(v)) updateItem(key, f === 'quantity' ? { quantity: v } : { unitPrice: v });
+  };
+
+  /** Vrnjen je VPISAN tekst, kadar ga aplikacija ne more prebrati. */
+  const itemProblem = (key: string, f: ItemNumField): string | null => {
+    const t = itemRaw[rawId(key, f)];
+    if (t === undefined) return null;
+    return Number.isFinite(parseNumberInput(t)) ? null : t;
+  };
+
+  const blockedFields = items.flatMap((it) =>
+    (['quantity', 'unitPrice'] as ItemNumField[])
+      .map((f) => ({ name: it.name, label: FIELD_LABEL[f], typed: itemProblem(it.key, f), field: f, key: it.key }))
+      .filter((x) => x.typed !== null));
+
+  const itemHasProblem = (key: string) => blockedFields.some((b) => b.key === key);
+
+  /** Stavki, ki imata na zaslonu enako obliko kot pri nastavitvah: imenujeta
+   *  VPISANO, ne nadomestne številke. */
+  const itemProblemSentence = (b: { label: string; typed: string | null }): string =>
+    numberProblemSentence(b.label, b.typed ?? '');
 
   // Struktura cene: material vs delo (deterministično po imenih)
   const split = useMemo(() => {
@@ -112,6 +174,29 @@ export function OfferEditor() {
       toast({ title: 'Ponudba je prazna', description: 'Dodaj vsaj eno postavko iz kalkulatorja.', variant: 'destructive' });
       return;
     }
+    // Vrstica z neveljavnim vpisom pomeni, da na dokument NE sme iti številka,
+    // ki je monter ni vpisal — v bazi bi ostala zadnja veljavna.
+    if (blockedFields.length > 0) {
+      const b = blockedFields[0];
+      toast({
+        title: 'Postavka ni izračunana',
+        description: `${b.name} — ${itemProblemSentence(b)}. Vpisanih vrednosti nismo popravili in ponudbe nismo shranili.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    // Brez veljavne stopnje DDV ponudbe NI za shraniti: strežnik bi jo moral
+    // izmeriti čez `?? 22` in v bazo zapisati znesek, ki ga monter ni izračunal.
+    if (!settingsReady || ddv.problem) {
+      toast({
+        title: 'DDV ni izračunan',
+        description: ddv.problem
+          ? settingsProblemText(ddv.problem)
+          : 'Nastavitev DDV ni bilo mogoče prebrati. Poskusi znova čez trenutek.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/offers', {
@@ -124,7 +209,7 @@ export function OfferEditor() {
           customerAddress,
           objectAddress,
           note,
-          vatRate,
+          vatRate: ddv.value,
           items: items.map((i) => ({
             name: i.name,
             description: i.description ?? null,
@@ -197,8 +282,21 @@ export function OfferEditor() {
                   </Button>
                 </div>
               ) : (
-                <div className="max-h-[420px] overflow-y-auto scroll-area -mx-1 px-1">
-                  <div className="space-y-2">
+                <div className="space-y-3">
+                  {blockedFields.length > 0 && (
+                    <div
+                      className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                      data-testid="item-refusal"
+                    >
+                      <p className="font-semibold">Ponudba ni shranjena — {blockedFields.length} {blockedFields.length === 1 ? 'vrstica ni prebrana' : 'vrstice niso prebrane'}.</p>
+                      {blockedFields.map((b) => (
+                        <p key={`${b.key}::${b.field}`}>{b.name}: {itemProblemSentence(b)}</p>
+                      ))}
+                      <p>Vpisanih vrednosti nismo popravili in nihče znesek po njih ni izračunan.</p>
+                    </div>
+                  )}
+                  <div className="max-h-[420px] overflow-y-auto scroll-area -mx-1 px-1">
+                    <div className="space-y-2">
                     {items.map((item) => (
                       <div key={item.key} className="rounded-lg border p-3">
                         <div className="flex items-start justify-between gap-2">
@@ -218,17 +316,23 @@ export function OfferEditor() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:items-start">
                           <div>
                             <Label className="text-[10px] uppercase text-muted-foreground">Količina</Label>
                             <Input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               className="h-8 text-sm"
-                              value={item.quantity}
-                              min={0}
-                              step={0.1}
-                              onChange={(e) => updateItem(item.key, { quantity: Number(e.target.value) || 0 })}
+                              aria-label={`Količina — ${item.name}`}
+                              aria-invalid={itemProblem(item.key, 'quantity') !== null || undefined}
+                              value={itemRaw[rawId(item.key, 'quantity')] ?? formatNum(item.quantity, 2)}
+                              onChange={(e) => setItemNumber(item.key, 'quantity', e.target.value)}
                             />
+                            {itemProblem(item.key, 'quantity') !== null && (
+                              <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400" data-testid="item-field-problem">
+                                {itemProblemSentence({ label: FIELD_LABEL.quantity, typed: itemProblem(item.key, 'quantity') })}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <Label className="text-[10px] uppercase text-muted-foreground">Enota</Label>
@@ -241,24 +345,38 @@ export function OfferEditor() {
                           <div>
                             <Label className="text-[10px] uppercase text-muted-foreground">Cena/en. (€)</Label>
                             <Input
-                              type="number"
+                              type="text"
+                              inputMode="decimal"
                               className="h-8 text-sm"
-                              value={item.unitPrice}
-                              min={0}
-                              step={0.5}
-                              onChange={(e) => updateItem(item.key, { unitPrice: Number(e.target.value) || 0 })}
+                              aria-label={`Cena na enoto — ${item.name}`}
+                              aria-invalid={itemProblem(item.key, 'unitPrice') !== null || undefined}
+                              value={itemRaw[rawId(item.key, 'unitPrice')] ?? formatNum(item.unitPrice, 2)}
+                              onChange={(e) => setItemNumber(item.key, 'unitPrice', e.target.value)}
                             />
+                            {itemProblem(item.key, 'unitPrice') !== null && (
+                              <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400" data-testid="item-field-problem">
+                                {itemProblemSentence({ label: FIELD_LABEL.unitPrice, typed: itemProblem(item.key, 'unitPrice') })}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <Label className="text-[10px] uppercase text-muted-foreground">Vrednost</Label>
-                            <p className="text-sm font-semibold h-8 flex items-center">
-                              {formatEUR(item.quantity * item.unitPrice)}
+                            <p className="text-sm font-semibold h-8 flex items-center" data-testid="item-line-value">
+                              {itemHasProblem(item.key)
+                                ? '—'
+                                : formatEUR(item.quantity * item.unitPrice)}
                             </p>
+                            {itemHasProblem(item.key) && (
+                              <p className="text-[11px] leading-tight text-muted-foreground">
+                                Vrednost ni izračunana — popravi vpisano številko.
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
                 </div>
               )}
             </CardContent>
@@ -321,30 +439,40 @@ export function OfferEditor() {
               <div className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">DDV</span>
+                  {/* Isti register kot Nastavitve, PDF in račun: brez DOM
+                      meje in brez `|| 0`, ki bi izpraznjen polje spremenil v 0 %. */}
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     className="h-7 w-16 text-sm"
-                    value={vatRate}
-                    min={0}
-                    max={30}
-                    step={0.5}
-                    onChange={(e) => setVatRate(Number(e.target.value) || 0)}
+                    value={ddvVrednost}
+                    step="any"
+                    aria-invalid={ddv.problem !== null}
+                    onChange={(e) => { setVatText(e.target.value); }}
                     aria-label="DDV stopnja"
                   />
                   <span className="text-muted-foreground">%</span>
                 </div>
-                <span className="font-semibold">{formatEUR(totals.vatAmount)}</span>
+                <span className="font-semibold">{ddv.problem ? '—' : formatEUR(totals.vatAmount)}</span>
               </div>
-              {/* Hitri preklop DDV — 9,5 % za obnovo zasebnih stanovanj (54. člen PZDDV) */}
+              {ddv.problem && (
+                <p
+                  className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-800 dark:text-amber-300"
+                  data-testid="vat-row"
+                >
+                  DDV ni izračunan — {settingsProblemText(ddv.problem)}
+                </p>
+              )}
+              {/* Hitri preklop DDV — standardna in nižja stopnja. */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] text-muted-foreground mr-0.5">Hitro:</span>
                 {[22, 9.5].map((v) => (
                   <button
                     key={v}
                     type="button"
-                    onClick={() => setVatRate(v)}
+                    onClick={() => setVatText(String(v))}
                     className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors min-h-[28px] ${
-                      vatRate === v
+                      !ddv.problem && ddv.value === v
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-card text-muted-foreground hover:bg-accent'
                     }`}
@@ -354,13 +482,14 @@ export function OfferEditor() {
                 ))}
               </div>
               <p className="text-[11px] leading-snug text-muted-foreground">
-                9,5 %: obnova in popravila zasebnih stanovanj (54. člen PZDDV).
-                Materiali, ki so bistven del dobave, ostanejo 22 % — za natančno razdelitev se posvetuj z davčnim svetovalcem.
+                9,5 % je nižja stopnja za določena dela na stavbah za stanovanjske namene.
+                Katero stopnjo obračunaš, je davčna odločitev — točno razmejitev preveri pri
+                davčnem svetovalcu ali na finansi.si, aplikacija je ne more presoditi.
               </p>
               <Separator />
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Skupaj z DDV</span>
-                <span className="text-xl font-bold text-primary">{formatEUR(totals.total)}</span>
+                <span className="text-xl font-bold text-primary">{ddv.problem ? '—' : formatEUR(totals.total)}</span>
               </div>
               {/* Struktura cene — material vs delo (raziskava: konsistentna
                   marža zahteva vidno razdelitev pred oddajo). */}
@@ -390,17 +519,38 @@ export function OfferEditor() {
                   )}
                 </div>
               )}
-              {/* Akontacija — raziskava: jasno dogovorjena akontacija (10–50 %)
-                  zmanjša nepoplačila; izpiše se tudi na PDF. */}
-              {depositPercent > 0 && totals.total > 0 && (
+              {/* Akontacija — isti register kot PDF, račun in SMS. Vpisana
+                  vrednost se uporabi dobesedno (vejica, brez `Math.floor`);
+                  zunaj okna vrstica pove razlog in ne prirejenega odstotka. */}
+              {settingsReady && capara.problem && (
+                <div
+                  className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                  data-testid="deposit-row"
+                >
+                  Akontacija ni izračunana — {settingsProblemText(capara.problem)}
+                </div>
+              )}
+              {/* Akontacija je delež ZNESKA Z DDV. Če DDV ni izračunan, tudi ta
+                  vrstica ne more biti — izpustiti jo brez razloga bi bilo isto
+                  tiho molčanje, kot ga preprečuje ta celotna naloga. */}
+              {settingsReady && !capara.problem && capara.value > 0 && ddv.problem && (
+                <div
+                  className="rounded-lg border border-amber-600/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+                  data-testid="deposit-row"
+                >
+                  Akontacija {formatNum(capara.value, 2)} % ni izračunana — znesek z DDV ni izračunan, ker
+                  stopnja DDV ni veljavna (razlog je izpisan zgoraj).
+                </div>
+              )}
+              {settingsReady && !capara.problem && !ddv.problem && capara.value > 0 && totals.total > 0 && (
                 <div className="rounded-lg bg-secondary/60 px-3 py-2 text-sm" data-testid="deposit-row">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Akontacija {depositPercent} % ob naročilu</span>
-                    <span className="font-semibold">{formatEUR((totals.total * depositPercent) / 100)}</span>
+                    <span className="text-muted-foreground">Akontacija {formatNum(capara.value, 2)} % ob naročilu</span>
+                    <span className="font-semibold">{formatEUR((totals.total * capara.value) / 100)}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground mt-0.5">
                     <span>Ostanek po zaključku dela</span>
-                    <span>{formatEUR(totals.total * (1 - depositPercent / 100))}</span>
+                    <span>{formatEUR(totals.total * (1 - capara.value / 100))}</span>
                   </div>
                 </div>
               )}
@@ -408,9 +558,15 @@ export function OfferEditor() {
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Shrani ponudbo
               </Button>
-              <p className="text-xs text-muted-foreground text-center">
-                {formatNum(laborRate)} €/h je nastavljena urna postavka dela
-              </p>
+              {settingsReady && delo.problem ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400 text-center" data-testid="labor-rate-row">
+                  Urna postavka dela ni uporabljena — {settingsProblemText(delo.problem)}
+                </p>
+              ) : settingsReady ? (
+                <p className="text-xs text-muted-foreground text-center" data-testid="labor-rate-row">
+                  {formatNum(delo.value, 2)} €/h je nastavljena urna postavka dela
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </div>

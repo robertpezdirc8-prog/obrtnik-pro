@@ -200,8 +200,11 @@ async function main(): Promise<void> {
     await sleep(500);
 
     // ── 2) privzeta vrednost = utemeljena vrednost ──
+    // Nalog 87: privzeta mera se prikaže z vejico, tako kot jo monter bere in
+    // kot jo bo vpisal sam. Pika tu bi pomenila, da polje sestavlja besedilo iz
+    // number-formata (`String(0.33)`) in ne iz vnosa.
     const spacingDefault = await getValue('Razmak nosilcev');
-    check('4 privzeti razmak je 0,33 m (ROKSALov spodnji rob), ne več 0,4 m', spacingDefault === '0.33', spacingDefault);
+    check('4 privzeti razmak je 0,33 m (ROKSALov spodnji rob), ne več 0,4 m', spacingDefault === '0,33', spacingDefault);
     const hint = await evaluate(`(() => {
       const lab = [...document.querySelectorAll('[data-craft="wpc-terasa"] label')].find((x) => (x.textContent || '').includes('Razmak nosilcev'));
       const wrap = lab && lab.parentElement;
