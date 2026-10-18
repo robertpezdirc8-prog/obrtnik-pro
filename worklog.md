@@ -2556,3 +2556,75 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
 - V `src/` ni spremenjena nobena vrstica, nič pushano, nič pobrisano. Predlogi
   popravkov (P0 vrstni red kadra, prikaz razloga v fazi zajema, obstanek mer, skloni
   množin) so napisani in čakajo na odločitev. Lokalni commit: ta.
+
+## Task 90 — KAMERA: P0 POPRAVLJEN, RAZLOGI NAPAK PA VIDNI, SKLONI UREJENI; tablica izmerjena (2026-10-18)
+
+- **KAJ JE BILO NAREJENO.** Tri stvari, v tem vrstnem redu: (1) realna naprava namesto
+  simulacije — Galaxy Tab A8 priklopljena, `adb` nameščen, kamera zagnana v pravem
+  Chrome na tablici; (2) popravek P0 iz Taska 89 (vrstni red živega kadra) skupaj s
+  tremi tihimi napakami; (3) štirje nesklonjeni množini na merski poti. Meritve
+  kamere so bile doslej samo napovedi iz kode; zdaj so vsaj za P0 dokazane na
+  strojni opremi, ki jo monter res uporablja.
+- **PREKLICANA TRDITEV IZ TASKA 89: TABLICA NE POTREBUJE HTTPS.** Napisal sem, da
+  kamera na tablici zahteva deployed URL, ker je `http://<LAN-ip>:3018` ne-secure
+  kontekst. Zmerjeno je drugo: `adb reverse tcp:3018 tcp:3018` tablici pokaže
+  `http://localhost:3018`, kjer je `isSecureContext === true`, `getUserMedia` pa
+  zares zažene. Brez HTTPS, brez deploya, brez spreminjanja aplikacije. Pot do
+  naprave je enaka obstoječemu E2E: `adb forward tcp:9222 localabstract:chrome_devtools_remote`
+  in `http://127.0.0.1:9222/json/list` govori isti CDP kot headless zagoni, zato
+  `Browser.grantPermissions {origin, ['videoCapture']}` deluje in okna za dovoljenje,
+  ki ga odpre brskalnik, ni treba klikati.
+- **NA TABLICI IZMERJENO (prava oprema, ne simulacija).** Zadnja kamera pogaja
+  `facingMode: 'environment'` na **1440×1920 @ 30 fps**. Kader, zajet PREK
+  ustavitve toka, je veljaven JPEG **960×1280, 60 095 B**; ista koda z Task 89
+  vrstnim redom je na tablici vrnila **0×0 → `data:,` (6 B)** — torej točno
+  isto kot v headless Chromiumu, kar dokazuje, da namizna mera tega P0 ni
+  zmanjševala. Tablica razen tega ponudi šest zmogljivosti, ki jih namizni
+  brskalnik ni dal: Web Bluetooth, SpeechRecognition, XR, wakelock,
+  DeviceOrientationEvent (skupaj z `requestPermission()`), dotik (5 točk, dpr 1,5,
+  coarse pointer) in `showSaveFilePicker`. Manjki 15, 60, 61, 68–71, ki jih je
+  Task 89 moral označiti za »brskalnik ni dal preizkusiti«, so na tablici
+  merljivi kot prave poti.
+- **POPRAVEK 1 — `src/components/camera/photo-capture.tsx`.** `captureFrame()`
+  zdaj najprej `compressVideo(video)` in šele nato `stopStream()`, z komentarjem,
+  zakaj (sicer `srcObject = null` zniži `videoWidth` na 0 in platno vrne `data:,`).
+  To je edini logični zamik; `live-ar.tsx` ga je že vedel.
+- **POPRAVEK 2 — razlog je zdaj tam, kjer monter stoji.** `camera-view.tsx`: zavihek
+  `analiza` prikazuje `PhotoCapture` tudi v fazi `analyzing`, nad njim pa
+  `{error && … role="alert"}`, da zavrnitev analize pade na zaslonu za zajem, ne v
+  veji `phase === 'result'`, do katere prazen kader nikoli ne pride. Enako banner
+  `camError` v `photo-capture.tsx` zdaj pokriva tudi preklop na nalaganje, kamor
+  aplikacija sama skoči ob zavrnjeni kameri. Posledica: merjeni manjki 22, 23, 76,
+  80, 81 so obrnjeni iz `gap()` v `check()` — regresija zdaj pade, ne samo označi.
+- **POPRAVEK 3 — skloni.** `MERITEV`, `DODANE_MERITEV`, `PRESKOCENA` kot četverice
+  poleg obstoječih `POSTAVKE`, vse štiri glave skozi obstoječi `plural()`
+  (dvojino vključuje); naslov seznama dobi `data-testid="aux-measures-title"`,
+  seznam `data-testid="aux-measures"` in `data-count`, da test ne more več
+  pasti samo zato, ker se je spremenilo besedilo. Dodan 63a, ki
+  meri sklon neposredno (1 → »Dodana mera (1)«), 64 pa je preusmerjen na testid.
+- **24: PRIČAKOVANJE JE BILO MOJE, NE IZDELKA.** Prva verzija novega checka 24 je zahtevala
+  besedilo »Merilni list« na rezultatni strani. Kartica je `camera-view.tsx:935`
+  namenoma zaklenjena z `{allMeasures.length > 0 && (` — svež živi zajem še nima
+  nobene mere, zato je nikoli ne more pokazati. Prepisano v to, kar stran res
+  izriše: označena fotka z `naturalWidth > 0` in `[data-testid="photo-analysis"]`.
+  Izdelka nisem spuščal k svojemu napačnemu pričakovanju.
+- IZMERJENO: `tests/e2e-kamera-zmogljivosti.ts` **106 OK / 0 NAPAK / 1 IZMERJENIH
+  MANJKOV**, exit 0, **v treh zaporednih zagonih enako** (107 meritev: Task 89 jih je
+  imel 105, od sedmih manjkov jih je šest zdaj preverjeno, dodana sta 24b in 63a);
+  14 dokaznih posnetkov preverjenih po velikosti NA DISKU, `kamera-13` je preimenovan
+  v `kamera-13-analiza-ziva.png` ker več ni prazen; **0 konzolnih izjem**; edini
+  preostali manjko je **63b** (mere iz laserja ne preživijo izhoda iz modula), ki je
+  poslovna odločitev in ne tehnični dolg; sweep **3873 OK / 0 NAPAK** v 48/56
+  skriptih — enako kot bazna meritev Taska 89, torej zamik v `src/` ničesar ni
+  regrediral; `tsc` 0; `eslint` 0 zapisov.
+- **OSTANE.** (a) 63b: ali je mera vezana na fotko in gre v bazo, ali samo preživi
+  izhod iz modula — odločitev je Robertova, ne moja. (b) 22 `type="number"` polj v
+  kameri z DOM `min`/`max` je še vedno ločen Task (vsako polje živi v drugi
+  komponenti). (c) Merjenje po tablici je fizično blokirano: ob zaklepu zaslona
+  izgine adb vmesnik (`offline`), `svc power stayon true` pa ni bilo mogoče
+  nastaviti, dokler naprave ni na seznamu — jajce in kura, nastavitev je izvedljiva
+  šele, ko je naprava budna.
+  PIN-a v orodje nisem vnašal. (d) `.env` je popravljen lokalno (`file:./dev.db`
+  namesto kontejnerske Linux poti) in NE sodi v ta commit; namenoma ostaja
+  nespremenjen v indeksu.
+- Nič pushano. Lokalni commit: ta.

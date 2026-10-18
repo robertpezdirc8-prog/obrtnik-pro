@@ -47,7 +47,7 @@ const FILES = [
   'kamera-03-ar.png', 'kamera-04-vizualizer.png', 'kamera-05-fotomontaza.png',
   'kamera-06-vecpogled.png', 'kamera-07-model3d.png', 'kamera-08-orodja.png',
   'kamera-09-brez-kamere.png', 'kamera-10-napaka-analize.png', 'kamera-11-projekt-z-cenami.png',
-  'kamera-12-merilni-list.png', 'kamera-13-prazni-zivi-kader.png',
+  'kamera-12-merilni-list.png', 'kamera-13-analiza-ziva.png',
 ];
 
 const CHROME_CANDIDATES = [
@@ -453,23 +453,34 @@ async function main(): Promise<void> {
     check('21 kakovost fotke je ocenjena IN povedana', await exists('[data-testid="quality-card"]'), await notifications());
     await shot(FILES[2]);
     // 22–25 KAJ JE V KADRU, KI GA vrne živi zajem? To je edini preostali
-    // dokaz, da monotova fotka sploh obstaja — merimo ga, ne verjanje.
+    // dokaz, da monterjeva fotka sploh obstaja — merimo ga, ne verjanje.
+    // Task 89 je tu izmeril MANJKO (kader = `data:,`); po popravku vrstnega reda
+    // v photo-capture.tsx so te vrstice zaklenjene kot CHECK, ne več kot blagi
+    // MANJKO — regresija zdaj pade, ne samo označi.
     const živi = await kader();
-    gap('22 živi zajem vrne pravo sliko (JPEG data-URL z dejanskimi piksli)',
+    check('22 živi zajem vrne pravo sliko (JPEG data-URL z dejanskimi piksli)',
       živi.glava.startsWith('data:image/') && živi.b > 5_000 && živi.px > 0, JSON.stringify(živi));
     await zasledujFetch();
     await clickText('Analiziraj s pametjo');
     await sleep(6_000);
     const živiFaza = await faza();
-    gap('23 analiza živega kadra pride do rezultata (monter vidi analizo, ne začetnega zaslona)',
+    check('23 analiza živega kadra pride do rezultata (monter vidi analizo, ne začetnega zaslona)',
       živiFaza === 'rezultat', `faza=${živiFaza}; poteze aplikacije=${await zaznano()}`);
-    gap('24 aplikacija MONTERJU POVEDO, zakaj analiza živega kadra ni uspela',
-      (await notifications()).length > 0, `obvestila=[${await notifications()}]`);
+    // 'Merilni list' tu NE more biti zahtevan: kartica je namenoma skrita, dokler
+    // `allMeasures.length === 0`, svež živi zajem pa še nima nobene mere.
+    check('24 rezultat živega kadra je viden v celoti: označena fotka in panel analize',
+      (await exists('img[alt="Zajeta fotografija z oznakami"]')) && Number(await evaluate(
+        `(() => { const i = document.querySelector('img[alt="Zajeta fotografija z oznakami"]'); return i ? i.naturalWidth : 0; })()`
+      )) > 0 && (await exists('[data-testid="photo-analysis"]')),
+      await pogled());
     await shot(FILES[13]);
-    // Po padli analizi modul NE ostane na praznem predogledu — ponovno se
-    // priklopi in vrne na čist zaslon za zajem. To je edina pot, ki jo monter
-    // tu res najde, zato merimo njo (ne gumba, ki ga v tej fazi ni).
-    check('25 po padli analizi je monterju vrnjen čist zaslon za nov zajem',
+    // Uspešna pot NE sme pustiti lažnega razloga; razlog ob padcu meri 80/81 na
+    // isti banner (gleda na fazo, ne na pot vnosa).
+    check('24b ob uspehu aplikacija ne izmišlja napake',
+      !(await bodyText()).includes('Analiza ni uspela'), (await bodyText()).slice(0, 160));
+    await clickText('Nova fotografija');
+    await sleep(900);
+    check('25 z rezultatne strani monter vrne na čist zaslon za nov zajem',
       (await exists('[data-testid="capture-guide"]')) && (await bodyText()).includes('Vključi kamero'), await pogled());
     await sleep(1_200);
     // Od tu dalje gre E2E po cesti, ki jo monter res uporabi, ko kamere ni:
@@ -625,22 +636,31 @@ async function main(): Promise<void> {
     const laserInput = 'input[aria-label="Dolžina iz laserskega merilnika v centimetrih"]';
     const laserGumb = 'button[aria-label="Dodaj izmer iz laserskega merilnika"]';
     check('62 ročni izmer je vpisan', (await setVal(laserInput, '350')) === 'OK' && (await clickSel(laserGumb)) === 'OK', await val(laserInput));
-    const seznamMer = async (): Promise<string> => {
-      const t = await bodyText();
-      const i = t.indexOf('Dodane meritve');
-      return i < 0 ? '__NI_SEZNAMA__' : t.slice(i, i + 200).replace(/\s+/g, ' ');
-    };
-    const steviloMer = async (): Promise<number> => {
-      const m = (await seznamMer()).match(/Dodane meritve \((\d+)\)/);
-      return m ? Number(m[1]) : -1;
+    // Branje prek data-testid, NE prek slovenskega naslova: naslov se sklania
+    // (1 → »Dodana mera«, 5 → »Dodane meritve«), test pa ne sme zasledovati copypaste.
+    const seznamMer = async (): Promise<string> => String(await evaluate(`(() => {
+      const el = document.querySelector('[data-testid="aux-measures"]');
+      return el ? (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 240) : '__NI_SEZNAMA__';
+    })()`));
+    const steviloMer = async (): Promise<number> =>
+      Number(await evaluate(`Number(document.querySelector('[data-testid="aux-measures"]')?.getAttribute('data-count') ?? -1)`));
+    const naslovMer = async (): Promise<string> => String(await evaluate(
+      `document.querySelector('[data-testid="aux-measures-title"]')?.textContent ?? '__NI_NASLOVA__'`));
+    const SKLONI = ['Dodana mera', 'Dodani meri', 'Dodane mere', 'Dodane meritve'];
+    const pričakovaniNaslov = (n: number): string => {
+      const m = n % 100;
+      const oblika = n === 1 ? SKLONI[0] : n === 2 || m === 2 ? SKLONI[1] : n === 3 || n === 4 || m === 3 || m === 4 ? SKLONI[2] : SKLONI[3];
+      return `${oblika} (${n})`;
     };
     await sleep(400);
     const predZavrnitvijo = await steviloMer();
     check('63 mera iz laserja je dodana in OZNAČENA kot ročna (laser)',
-      (await seznamMer()).includes('Dodane meritve') && (await seznamMer()).includes('Laser'), await seznamMer());
+      (await steviloMer()) >= 1 && (await seznamMer()).includes('Laser'), await seznamMer());
+    check('63a naslov seznama se SKLONI po številu mer (ne »Dodane meritve (1)«)',
+      (await naslovMer()) === pričakovaniNaslov(await steviloMer()), `${await naslovMer()} <> ${pričakovaniNaslov(await steviloMer())}`);
     gap('63b mera, dodana v prejšnjem obisku modula, JE še na seznamu (800 cm iz koraka 36)',
       (await seznamMer()).includes('8,00 m'), await seznamMer());
-    check('64 350 cm se pokaže kot 3,50 m (enotna pretvorba na zaslonu)', (await bodyText()).includes('3,50 m'), await bodyText().then((b) => b.slice(b.indexOf('Dodane meritve'), b.indexOf('Dodane meritve') + 200)));
+    check('64 350 cm se pokaže kot 3,50 m (enotna pretvorba na zaslonu)', (await bodyText()).includes('3,50 m'), await seznamMer());
     check('65 mera je takoj uporabljena naprej (razpored stebrov se pojavi)',
       (await bodyText()).includes('Razpored stebrov iz teh meritev'), (await bodyText()).slice(0, 140));
     await shot(FILES[8]);
@@ -703,7 +723,7 @@ async function main(): Promise<void> {
     await sleep(1500);
     const mode = await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.textContent||'').trim() === 'Naloži sliko'); return b ? String(b.getAttribute('aria-pressed')) : 'NO'; })()`);
     check('75 brez kamere se aplikacija SAMA preklopi na nalaganje (monter ne obtiči)', mode === 'true', String(mode));
-    gap('76 in razlog, zakaj kamera ni zažela, je monterju POVEDAN',
+    check('76 in razlog, zakaj kamera ni zažela, je monterju POVEDAN',
       (await bodyText()).includes('Dostop do kamere ni mogoč'), await notifications());
     await shot(FILES[9]);
 
@@ -723,8 +743,8 @@ async function main(): Promise<void> {
     await sleep(6000);
     const failText = await bodyText();
     check('79 zavrnitev strežnika ne pokaže polovičnega rezultata', !failText.includes('Merilni list'), failText.slice(0, 200));
-    gap('80 razlog zavrnitve je monterju POVEDAN', failText.includes('Fotografije ni bilo mogoče prebrati'), await notifications());
-    gap('81 in izbira fotke NI tiho izgubljena (monter je ne rabi ponovno brati)',
+    check('80 razlog zavrnitve je monterju POVEDAN', failText.includes('Fotografije ni bilo mogoče prebrati'), await notifications());
+    check('81 in izbira fotke NI tiho izgubljena (monter je ne rabi ponovno brati)',
       failText.includes('Zamenjaj fotko'), await pogled());
     await shot(FILES[10]);
     await evaluate('location.reload()');

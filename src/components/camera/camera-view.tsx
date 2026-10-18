@@ -71,6 +71,9 @@ import { plural } from '@/lib/install-plan';
 
 const VRSTICE: [string, string, string, string] = ['vrstica', 'vrstici', 'vrstice', 'vrstic'];
 const POSTAVKE: [string, string, string, string] = ['postavka', 'postavki', 'postavke', 'postavk'];
+const MERITEV: [string, string, string, string] = ['mera', 'meri', 'mere', 'meritev'];
+const DODANE_MERITEV: [string, string, string, string] = ['Dodana mera', 'Dodani meri', 'Dodane mere', 'Dodane meritve'];
+const PRESKOCENA: [string, string, string, string] = ['preskočena fotka', 'preskočeni fotki', 'preskočene fotke', 'preskočenih fotk'];
 
 interface PhotoRecord {
   id: string;
@@ -777,7 +780,45 @@ export function CameraView() {
       </div>
 
       {/* ── Zajem + analiza ─────────────────────────────────────── */}
-      {tab === 'analiza' && phase === 'capture' && (
+      {/* PhotoCapture ostane NAMEHOBEN tudi med analizo: panogled bi sicer
+          uničil že izbrano fotko, monter pa je moral na nov zajem. */}
+      {tab === 'analiza' && (phase === 'capture' || phase === 'analyzing') && (
+        <>
+          {error && (
+            <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+              {error}
+            </div>
+          )}
+          {phase === 'analyzing' && (
+            <Card className="mb-4">
+              <CardContent className="flex flex-col items-center justify-center gap-5 p-6 sm:p-10">
+                <div className="relative">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                  <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                    <Sparkles className="h-9 w-9" />
+                  </span>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold">{ANALYSIS_STEPS[stepIdx]}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Pametna kamera analizira fotografijo — traja nekaj sekund.</p>
+                </div>
+                <div className="w-full max-w-xs space-y-2">
+                  {ANALYSIS_STEPS.map((s, i) => (
+                    <div key={s} className="flex items-center gap-2 text-sm">
+                      {i < stepIdx ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : i === stepIdx ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <span className="h-4 w-4 rounded-full border border-border" />
+                      )}
+                      <span className={i === stepIdx ? 'font-medium text-foreground' : 'text-muted-foreground'}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="space-y-4 lg:col-span-3">
             <Card>
@@ -832,37 +873,7 @@ export function CameraView() {
             </Card>
           </div>
         </div>
-      )}
-
-      {tab === 'analiza' && phase === 'analyzing' && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center gap-5 p-10 sm:p-14">
-            <div className="relative">
-              <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
-              <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                <Sparkles className="h-9 w-9" />
-              </span>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold">{ANALYSIS_STEPS[stepIdx]}</p>
-              <p className="mt-1 text-sm text-muted-foreground">Pametna kamera analizira fotografijo — traja nekaj sekund.</p>
-            </div>
-            <div className="w-full max-w-xs space-y-2">
-              {ANALYSIS_STEPS.map((s, i) => (
-                <div key={s} className="flex items-center gap-2 text-sm">
-                  {i < stepIdx ? (
-                    <Check className="h-4 w-4 text-green-600" />
-                  ) : i === stepIdx ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  ) : (
-                    <span className="h-4 w-4 rounded-full border border-border" />
-                  )}
-                  <span className={i === stepIdx ? 'font-medium text-foreground' : 'text-muted-foreground'}>{s}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        </>
       )}
 
       {tab === 'analiza' && phase === 'result' && result && photoUrl && (
@@ -1300,13 +1311,13 @@ export function CameraView() {
             <Card>
               <CardContent className="p-4 sm:p-5 space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold">Dodane meritve ({auxMeasures.length})</h3>
+                  <h3 className="text-sm font-bold" data-testid="aux-measures-title">{plural(auxMeasures.length, DODANE_MERITEV)} ({auxMeasures.length})</h3>
                   <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive hover:text-destructive" onClick={() => setAuxMeasures([])}>
                     <Trash2 className="mr-1 h-3.5 w-3.5" />
                     Počisti
                   </Button>
                 </div>
-                <ul className="max-h-48 space-y-1 overflow-y-auto scroll-area pr-1">
+                <ul className="max-h-48 space-y-1 overflow-y-auto scroll-area pr-1" data-testid="aux-measures" data-count={auxMeasures.length}>
                   {auxMeasures.map((m) => (
                     <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-secondary/50 px-2.5 py-1.5 text-sm">
                       <span className="flex min-w-0 items-center gap-1.5">
@@ -1363,7 +1374,7 @@ export function CameraView() {
           <div className="flex flex-col items-start justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-3 sm:flex-row sm:items-center">
             <p className="text-sm text-muted-foreground">
               {allMeasures.length > 0
-                ? `Skupaj ${allMeasures.length} meritev (fotomeritve + pripomočki) — izvoz ali takojšnja uporaba v kalkulatorju.`
+                ? `Skupaj ${allMeasures.length} ${plural(allMeasures.length, MERITEV)} (fotomeritve + pripomočki) — izvoz ali takojšnja uporaba v kalkulatorju.`
                 : 'Meritve iz AR, laserja in glasu se združijo tu in gredo v kalkulator en klik.'}
             </p>
             {allMeasures.length > 0 && (
@@ -1400,7 +1411,7 @@ export function CameraView() {
                   ) : (
                     <>skupaj <strong className="text-foreground">ni izračunano</strong></>
                   )}
-                  {project.skippedPhotos > 0 && <> · {project.skippedPhotos} preskočenih</>}
+                  {project.skippedPhotos > 0 && <> · {project.skippedPhotos} {plural(project.skippedPhotos, PRESKOCENA)}</>}
                 </p>
                 {!projectPriced && (
                   <p className="mt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="project-price-refusal">
@@ -1454,7 +1465,7 @@ export function CameraView() {
                       {g.photoCount} fot.
                     </Badge>
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{g.lines.length} postavk</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{g.lines.length} {plural(g.lines.length, POSTAVKE)}</p>
                   <p className="text-sm font-bold text-primary">{g.subtotal === null ? 'cena ni vpisana' : formatEUR(g.subtotal)}</p>
                 </div>
               ))}

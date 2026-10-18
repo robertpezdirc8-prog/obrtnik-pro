@@ -153,8 +153,10 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
   const captureFrame = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
-    stopStream();
+    // Kader mora nastati PREK ustavitve toka: stopStream() odklopi srcObject, video
+    // takoj meri 0×0 in platno vrni `data:,` (6 B) namesto fotografije.
     const processed = compressVideo(video);
+    stopStream();
     void handleProcessed(processed);
   };
 
@@ -472,6 +474,12 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
               Libela: senzor orientacije ni na voljo (namizni brskalnik)
             </span>
           )}
+        </div>
+      )}
+
+      {camError && mode !== 'live' && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+          {camError}
         </div>
       )}
 
