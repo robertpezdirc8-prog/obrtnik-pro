@@ -725,6 +725,18 @@ async function main(): Promise<void> {
     check('75 brez kamere se aplikacija SAMA preklopi na nalaganje (monter ne obtiči)', mode === 'true', String(mode));
     check('76 in razlog, zakaj kamera ni zažela, je monterju POVEDAN',
       (await bodyText()).includes('Dostop do kamere ni mogoč'), await notifications());
+    // 76b: NA TABLICI IZMERJENO, da Android zavrne kamero tudi, ko je dovoljenje
+    // `granted` (brskalnik je bil v ozadju) — takrat je napaka `NotReadableError`
+    // in svetovanje »preveri dovoljenja« monterja pošlje v napačno smer.
+    await evaluate(`(() => { const d = navigator.mediaDevices; window.__pravi = d.getUserMedia.bind(d);
+      d.getUserMedia = () => Promise.reject(new DOMException('zasedena', 'NotReadableError')); return 'stub'; })()`);
+    await clickText('Kamera');
+    await sleep(1800);
+    const razlog76b = await bodyText();
+    check('76b zasedena kamera (NotReadableError) DOBI svoj razlog, ne besedila o dovoljenjih',
+      razlog76b.includes('Kamera je zasedena') && !razlog76b.includes('preveri dovoljenja'),
+      (await evaluate(`JSON.stringify([...document.querySelectorAll('[role="alert"]')].map((x) => (x.textContent||'').trim()))`)));
+    await evaluate(`(() => { const d = navigator.mediaDevices; if (window.__pravi) d.getUserMedia = window.__pravi; return 'pravi'; })()`);
     await shot(FILES[9]);
 
     // Analiza, ki jo strežnik zavrne → kje je uporabnik?
@@ -762,15 +774,28 @@ async function main(): Promise<void> {
       try { bytes = statSync(guardOutSideRepo(`${OUT_DIR}/${f}`)).size; } catch { /* manjka */ }
       check(`${90 + i} dokaz ${f} je na disku (> 10 kB)`, bytes > 10_000, `${bytes} B`);
     }
-    check('104 brisanje fotke iz galerije uspe (204/200, ne molk)',
-      (await evaluate(`(async () => {
-        const d = await (await fetch('/api/photos')).json();
-        const p = (d.photos ?? [])[0];
-        if (!p) return 'PRAZNO';
-        const r = await fetch('/api/photos/' + p.id, { method: 'DELETE' });
-        const po = await (await fetch('/api/photos')).json();
-        return (r.ok && (po.photos ?? []).length === d.photos.length - 1) ? 'OK' : 'FAIL:' + r.status;
-      })()`)) === 'OK', 'PRAZNO');
+    // Tretji argument je moral biti IZMERJENA vrednost: prej je bila tu hardkodirana
+    // beseda 'PRAZNO', zato je vsak drug izid (FAIL:500, undefined) izgledal kot
+    // prazna galerija in je maskiral pravi vzrok.
+    // Drugi zaporedni ukrep: aritmetika dolžine ni lastnost brisanja. `GET /api/photos`
+    // vrača samo 24 najnovejših (`take: 24` v api/photos/route.ts), zato se v polni bazi
+    // seznam po brisanju NE skrči — zamešeno je bilo 27 fotk v bazi, ne izguba brisanja.
+    // Pravi dokaz: status 200 IN izbrisani id izgine iz seznama.
+    const brisanje = String(await evaluate(`(async () => {
+      const pred = ((await (await fetch('/api/photos')).json()).photos ?? []);
+      const p = pred[0];
+      if (!p) return 'PRAZNO';
+      const r = await fetch('/api/photos/' + p.id, { method: 'DELETE' });
+      if (!r.ok) return 'FAIL:' + r.status;
+      const posle = ((await (await fetch('/api/photos')).json()).photos ?? []);
+      if (posle.some((x) => x.id === p.id)) return 'OSTALA_V_SEZNAMU';
+      if (pred.length < 24 && posle.length !== pred.length - 1) {
+        return 'STEVILO:' + pred.length + '->' + posle.length;
+      }
+      return 'OK:' + pred.length + '->' + posle.length + ' (id ' + p.id.slice(0, 6) + ' izginil)';
+    })()`));
+    check('104 brisanje fotke iz galerije uspe (200, fotka izgine, ne molk)',
+      brisanje.startsWith('OK'), brisanje);
     const exceptions = cdp.exceptions();
     check('105 v celotnem zagonu ni nobene konzolne izjeme', exceptions.length === 0, exceptions.join(' | ').slice(0, 320));
 

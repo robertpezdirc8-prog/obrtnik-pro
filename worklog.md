@@ -2628,3 +2628,82 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   namesto kontejnerske Linux poti) in NE sodi v ta commit; namenoma ostaja
   nespremenjen v indeksu.
 - Nič pushano. Lokalni commit: ta.
+
+## Task 91 — KAMERA IZMERJENA NA PRAVI TABLICI: P0 ODPRAVLJEN NA HARDWARE, ANDROID ZAVRNE KAMERO V OZADJU (2026-10-18)
+
+- **KAJ JE BILO NAREJENO.** Produktna pot živega zajema je bila peljana do konca na
+  Robertovi Galaxy Tab A8 (SM-X200, Android 14, Chrome 155, adb `R8YW205G6DT`), in sicer
+  skozi aplikacijo z miško/CDP ukazi, ne skozi ročni `getUserMedia`: vstop v Pametno
+  kamero → zavihek Zajem + analiza → `Vključi kamero` → sprožilec → `Analiziraj s
+  pametjo` → rezultat. Nato dva produkcijska popravka, ki ju je merjenje razkrilo, in
+  en ukrep v lastnem testu, ki je do tedaj maskiral pravi vzrok napake.
+- **P0 JE NA HARDWARE ODPRAVLJEN — dokazane številke.** Živi video: **1440×1920** (zadnja
+  kamera, portret). Po sprožilcu je `img[alt="Zajeta fotografija za analizo"]` nesel
+  `data:image/jpeg;base64,…` v dolžini **141 163 B**, `naturalWidth×naturalHeight`
+  **960×1280**, v vzorcu 16×16 pikslov **250 različnih barv** — torej prava slika, ne
+  `data:,` (6 B) in platno 0×0 iz Taska 89. Analiza je pripeljala do rezultata: označena
+  fotka z `naturalWidth` 960, prisoten `[data-testid="photo-analysis"]`, toast
+  »Shranjeno v galerijo ✓«. Vidno potrjeno na `tablica-12-po-analizi.png` (876 739 B).
+- **NOV PLATFORMNI POGOJ, KI GA IMA SAMO ANDROID, NAMIZJE PA NE.**
+  `dumpsys media.camera` zapiše `REJECT device 0 client for package com.android.chrome …
+  cannot open camera "0" from background (calling UID 10171 proc state 16)`, medtem ko
+  je `navigator.permissions.query({name:'camera'})` ves čas `granted` in
+  `enumerateDevices` vrne prave oznake naprave. Vsaka varianta omejitev (5 skupaj) je
+  vrnila `NotReadableError: Could not start video source`. Dokler je bil Chrome pripeljan
+  v ospredje (`am start -n com.android.chrome/com.google.android.apps.chrome.Main`), je
+  kamera delovala. Posledica za montera: aplikacija mu je za zasedeno kamero govorila, naj
+  preveri dovoljenja — dovoljenja pa so bila pravilna.
+- **POPRAVEK (v `src/`).** `razlogKamere()` v
+  [src/components/camera/photo-capture.tsx](src/components/camera/photo-capture.tsx) —
+  `startCamera()` je prej imel `catch {` in je DOMException zavrgel; zdaj razloči
+  `NotReadableError` (»Kamera je zasedena — drug program jo ima odprto ali pa je bila
+  aplikacija v ozadju«), `NotFoundError` (ni kamere), `OverconstrainedError` (ne zmore
+  ločljivosti) in splošni primer. `catch {}` brez imena je bil tiha napaka št. 2 iz
+  Taska 89, tukaj dokončno zaprta.
+- **MERITEV, KI NAMIZJE NI MOGLA DATI.** `DeviceOrientationEvent.requestPermission`
+  je na Androidu funkcija (na namizju je ni), prišel pa je pravi dogodek
+  `{alpha: 90.1, beta: -3.7, gamma: 0.6}` — libela (15) je na tablici merljiva, ne
+  onemogočena.
+- **UKREP V LASTNEM TESTU (2. del, pomembnejši od popravka).** Preverba 104 je bila
+  najprej demaskirana (tretji argument je bil hardkodirana beseda `PRAZNO`, zato je vsak
+  izid izgledal kot prazna galerija); dejanski izmerjen izid je bil `FAIL:200`. Vzrok ni
+  bil izdelek: `GET /api/photos` ima [`take: 24`](src/app/api/photos/route.ts), v bazi pa
+  je bilo **27** fotografij, zato se seznam po brisanju ni mogel skršiti za eno. Trditev
+  »brisanje je tiho uspelo« je bila moja napačna aritmetika, ne molk aplikacije.
+  Orakel je zdaj lastnost: status `ok`, izbrisani id **izgine** iz seznama, dolžina pade
+  za eno samo, če seznam ni bil na 24. Izmerjeno: seznam je še zdaj natanko 24 od 27.
+- **REGRESIJA V TESTU ZA NOVO OZADJE.** 76b: `getUserMedia` z `NotReadableError` mora
+  dobiti svoj razlog in ne besedila o dovoljenjih — izmerjeno: `✓ 76b` z nizom
+  »Kamera je zasedena« brez »preveri dovoljenja«. Pošteno opozorilo: 76b je bila napisana
+  ŠE PO popravku, zato izida pred popravkom nismo merili v brskalniku; stari izid je razviden
+  samo iz diff-a (v `catch {` je bila ista beseda o dovoljenjih hardkodirana). Stub se po
+  preverbi vedno vrne na pravi `getUserMedia`.
+- **ŠTEVILKE ZAGONA.** `bun x tsc --noEmit` → 0, `bun x eslint .` → 0 (prava izhodna koda
+  ujeta z preusmeritvijo, ne iz `tail`). E2E `tests/e2e-kamera-zmogljivosti.ts`:
+  **107 OK / 0 NAPAK / 1 IZMERJENIH MANJKOV** v dveh zaporednih zagonih, identično
+  (manjko je 63b — trajnost mer, čaka na Robertovo odločitev). Popolni sweep
+  `bun tests/verify-counts.ts`: **3873 OK / 0 NAPAK** v 48/56 skriptih — enako kot izhodišče
+  Taska 89 in 90, torej nobene regresije.
+- **ARTEFAKTI (izven repozitorija, `os.tmpdir()/obrtnik-pro-e2e/`).**
+  `tablica-10-kamera-ziva.png` 964 892 B, `tablica-11-po-zajemu.png` 629 048 B,
+  `tablica-12-po-analizi.png` 876 739 B; dnevniki `korak-diagnostika.log`,
+  `gum-diagnostika.log`, `gum-diagnostika2.log`, `zajem-tablica.log`. Sonde:
+  `probe-tablica-produkt.mjs`, `probe-tablica-korak.mjs`, `probe-tablica-gum.mjs`,
+  `probe-tablica-zajem.mjs`.
+- **HARNESS, ZMERJENO NA ANDROIDU (tri pasti, ki so stale ure).** (1) CDP
+  `Page.captureScreenshot` na tablici dvakrat ni vrnil nič v 20 s — namesto njega
+  `adb exec-out screencap -p > datoteka`. (2) `execSync('adb …')` iz Node ne vidi
+  `.qoder\bin` ovijača — rabi absolutno pot do `adb.exe`. (3) `adb reconnect offline` je
+  napravo iz seznama kar izbrisel; obnovil jo je šele `adb kill-server` + čakanje. Tab,
+  odprt pred `adb reverse`, ostane na `chrome-error://chromewebdata/` in ga je treba
+  navigirati znova.
+- **OPAŽANJE IZDELA, KI NI BILO POPRAVLJENO (Robertova odločitev).** Galerija prikaže samo
+  24 najnovejših fotografij brez paginacije — monter, ki jih nabere več, starejših ne
+  vidi in ne dobi nobenega opozorila. Nisem segel v to: ni prijavljeno kot napaka in
+  sprememba je odločitev o produktu, ne o kodi.
+- **OSTANE.** (a) 63b: ali je mera vezana na fotko in gre v bazo, ali samo preživi izhod
+  iz modula — Robertova odločitev. (b) 22 `type="number"` polj v kameri z DOM `min`/`max`
+  je ločen Task. (c) `.env` (lokalna pot do SQLite) in `prisma/dev*.db` NE sodijo v ta
+  commit; namenoma ostanejo nespremenjeni v indeksu. (d) Merjenje na tablici zahteva, da
+  zaslon ostane buden in Chrome v ospredju — brez tega Android zavrne kamero.
+- Nič pushano. Lokalni commit: ta.

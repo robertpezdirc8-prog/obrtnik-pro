@@ -35,6 +35,25 @@ type GridMode = 'tretjine' | 'zlati' | 'off';
 const GUIDE_LS_KEY = 'obrtnik-vodnik-izbor';
 const GRID_LS_KEY = 'obrtnik-mreza';
 
+/**
+ * Razlog, zakaj kamera ni zažela, v jezik montera. Merjeno na tablici: Android
+ * zavrne odprtje kamere, če je brskalnik v ozadju (`NotReadableError`), dovoljenje
+ * pa je bilo ves čas `granted` — kar je monter poizvedel po nepotrebnem.
+ */
+function razlogKamere(e: unknown): string {
+  const ime = e instanceof DOMException ? e.name : '';
+  if (ime === 'NotReadableError') {
+    return 'Kamera je zasedena — drug program jo ima odprto ali pa je bila aplikacija v ozadju. Zapri ga in poskusi znova, lahko pa naložiš sliko.';
+  }
+  if (ime === 'NotFoundError' || ime === 'DevicesNotFoundError') {
+    return 'Na tej napravi ni kamere. Uporabi nalaganje slike.';
+  }
+  if (ime === 'OverconstrainedError') {
+    return 'Kamera ne zmore zahtevane ločljivosti. Uporabi nalaganje slike.';
+  }
+  return 'Dostop do kamere ni mogoč (preveri dovoljenja) ali pa kamera ni na voljo. Uporabi nalaganje slike.';
+}
+
 export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProps) {
   const [mode, setMode] = useState<CaptureMode>('live');
   const [photo, setPhoto] = useState<ProcessedImage | null>(null);
@@ -142,8 +161,8 @@ export function PhotoCapture({ onAnalyze, busy, initialCraft }: PhotoCaptureProp
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-    } catch {
-      setCamError('Dostop do kamere ni mogoč (preveri dovoljenja) ali pa kamera ni na voljo. Uporabi nalaganje slike.');
+    } catch (e) {
+      setCamError(razlogKamere(e));
       setMode('upload');
     } finally {
       setStarting(false);
