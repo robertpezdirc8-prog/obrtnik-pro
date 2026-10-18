@@ -8,15 +8,25 @@ import {
   type SettingsField,
 } from '@/lib/settings-inputs';
 import { requireSession } from '@/lib/auth-guard';
+import { resolveOwner, settingsWhere } from '@/lib/tenancy';
 
 export async function GET(req: Request) {
   const zavrnjen = await requireSession(req);
   if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
-    let settings = await db.settings.findUnique({ where: { id: 'default' } });
+    // Obseg (Task 94): prijavljen obrt bere SVOJO vrstico (ownerId);
+    // brez seje legacy vrstico "default" (lokalni način).
+    const uid = await resolveOwner(req);
+    let settings = await db.settings.findFirst({ where: settingsWhere(uid) });
     if (!settings) {
-      settings = await db.settings.create({ data: { id: 'default' } });
+      settings = await db.settings.create({
+        data: {
+          ...(uid ? { ownerId: uid } : {}),
+          // id po default (cuid) — "default" je samo legacy (brez seje).
+          ...(uid ? {} : { id: 'default' }),
+        },
+      });
     }
     return NextResponse.json({ settings });
   } catch (error) {
@@ -62,10 +72,13 @@ export async function PUT(req: NextRequest) {
       data[key] = NUMERIC.has(key) ? readings[key as SettingsField].value : body[key];
     }
 
+    // Upsert po obsegu (Task 94): prijavljen piše SVOJO vrstico; brez
+    // seje legacy "default". Create ne dela kolizij — id je cuid.
+    const uid = await resolveOwner(req);
     const settings = await db.settings.upsert({
-      where: { id: 'default' },
+      where: settingsWhere(uid),
       update: data,
-      create: { id: 'default', ...data },
+      create: { ...(uid ? { ownerId: uid } : { id: 'default' }), ...data },
     });
     return NextResponse.json({ settings });
   } catch (error) {

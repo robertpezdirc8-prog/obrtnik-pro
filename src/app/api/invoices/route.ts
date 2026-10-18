@@ -16,6 +16,7 @@ import { createWithUniqueNumber } from '@/lib/numbering';
 
 import { readSettings } from '@/lib/settings-inputs';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner, settingsWhere } from '@/lib/tenancy';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -24,7 +25,9 @@ export async function GET(req: Request) {
   if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
+    const uid = await resolveOwner(req);
     const invoices = await db.invoice.findMany({
+      where: ownScope(uid),
       orderBy: { createdAt: 'desc' },
       include: {
         offer: { select: { number: true } },
@@ -60,14 +63,17 @@ export async function POST(req: NextRequest) {
   if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
+    const uid = await resolveOwner(req);
     const body = await req.json();
     const offerId = typeof body.offerId === 'string' ? body.offerId : '';
     if (!offerId) {
       return NextResponse.json({ error: 'Manjka ID ponudbe' }, { status: 400 });
     }
 
-    const offer = await db.offer.findUnique({
-      where: { id: offerId },
+    // Račun izhaja IZ ponudbe istega obrta: tuja (ali brezobsežna)
+    // ponudba je 404 — enako kot pri GET ponudbe po ID-ju.
+    const offer = await db.offer.findFirst({
+      where: { id: offerId, ...ownScope(uid) },
       include: { items: true },
     });
     if (!offer) {
@@ -93,7 +99,7 @@ export async function POST(req: NextRequest) {
     // evidenca terjatev. Prej je bil tu hardcodiran 30 dni, PDF pa je pisal
     // iz paymentDays (in ob prazni nastavitvi iz 15) — isti račun je imel dva
     // datuma zapadlosti. Če vnos ni veljaven, rok OSTANE prazen; ga ne izmislimo.
-    const settingsRow = await db.settings.findUnique({ where: { id: 'default' } });
+    const settingsRow = await db.settings.findFirst({ where: settingsWhere(uid) });
     const rok = readSettings(settingsRow ?? {}).paymentDays;
     const due = rok.problem ? null : new Date(Date.now() + rok.value * 86_400_000);
 
@@ -101,6 +107,8 @@ export async function POST(req: NextRequest) {
       db.invoice.create({
         data: {
           number,
+          // Račun sledi obratu ponudbe (isti lastnik po gradnji).
+          ownerId: uid,
           offerId: offer.id,
           customerName: offer.customerName,
           subtotal: r2(offer.subtotal),

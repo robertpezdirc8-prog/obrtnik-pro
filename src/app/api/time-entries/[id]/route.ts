@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── PATCH /api/time-entries/[id] — popravki + žig obračuna ──
 // billedAt/billedRef beleži STREŽNIK (klient pošlje namen, strežnik
@@ -14,7 +15,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
-    const existing = await db.timeEntry.findUnique({ where: { id } });
+    const uid = await resolveOwner(req);
+    const existing = await db.timeEntry.findFirst({
+      where: { id, ...ownScope(uid) },
+      select: { billedAt: true },
+    });
     if (!existing) {
       return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
     }
@@ -109,7 +114,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Ni sprememb' }, { status: 400 });
     }
 
-    const entry = await db.timeEntry.update({ where: { id }, data });
+    const updated = await db.timeEntry.updateMany({
+      where: { id, ...ownScope(uid) },
+      data,
+    });
+    if (updated.count === 0) {
+      return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
+    }
+    const entry = await db.timeEntry.findUnique({ where: { id } });
+    if (!entry) {
+      return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
+    }
 
     return NextResponse.json({
       entry: {
@@ -139,11 +154,11 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
-    const existing = await db.timeEntry.findUnique({ where: { id } });
-    if (!existing) {
+    const uid = await resolveOwner(req);
+    const del = await db.timeEntry.deleteMany({ where: { id, ...ownScope(uid) } });
+    if (del.count === 0) {
       return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
     }
-    await db.timeEntry.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('DELETE /api/time-entries/[id] failed:', err);

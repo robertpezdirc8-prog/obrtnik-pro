@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── PATCH /api/diary-entries/[id] — urejanje vnosa ─────────
 // Vsako polje je opcijsko (samo poslana se spreminjajo); ista
@@ -15,7 +16,11 @@ export async function PATCH(
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
-    const existing = await db.diaryEntry.findUnique({ where: { id }, select: { id: true } });
+    const uid = await resolveOwner(req);
+    const existing = await db.diaryEntry.findFirst({
+      where: { id, ...ownScope(uid) },
+      select: { id: true },
+    });
     if (!existing) {
       return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
     }
@@ -65,7 +70,11 @@ export async function PATCH(
       if (body.offerId === null || body.offerId === '') {
         data.offerId = null;
       } else if (typeof body.offerId === 'string') {
-        const offer = await db.offer.findUnique({ where: { id: body.offerId }, select: { id: true } });
+        // Vezava sme iti samo na ponudbo ISTEGA obrta (Task 94).
+        const offer = await db.offer.findFirst({
+          where: { id: body.offerId, ...ownScope(uid) },
+          select: { id: true },
+        });
         if (!offer) {
           return NextResponse.json({ error: 'Ponudba ne obstaja' }, { status: 400 });
         }
@@ -95,11 +104,20 @@ export async function PATCH(
       );
     }
 
-    const updated = await db.diaryEntry.update({
-      where: { id },
+    const upd = await db.diaryEntry.updateMany({
+      where: { id, ...ownScope(uid) },
       data,
+    });
+    if (upd.count === 0) {
+      return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
+    }
+    const updated = await db.diaryEntry.findUnique({
+      where: { id },
       include: { offer: { select: { number: true } } },
     });
+    if (!updated) {
+      return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
+    }
 
     let photos: { dataUrl: string; thumb: string | null; caption: string | null }[] = [];
     try {
@@ -147,11 +165,11 @@ export async function DELETE(
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
-    const existing = await db.diaryEntry.findUnique({ where: { id }, select: { id: true } });
-    if (!existing) {
+    const uid = await resolveOwner(req);
+    const del = await db.diaryEntry.deleteMany({ where: { id, ...ownScope(uid) } });
+    if (del.count === 0) {
       return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
     }
-    await db.diaryEntry.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('DELETE /api/diary-entries/[id] failed:', err);

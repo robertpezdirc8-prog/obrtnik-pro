@@ -1,6 +1,7 @@
 import { db } from './db';
 import { ensureSeeded } from './seed';
 import { CENIK_BY_KEY, readCenik, priceLabel, type CenikValues, type PriceKey } from './cenik';
+import { cenikScope } from './tenancy';
 
 // ─── Cenik: branje in pisanje denarja ───────────────────────
 //
@@ -21,10 +22,11 @@ export type CenikSaveResult =
   | { ok: false; refused: { key: string; reason: string }[] };
 
 /** Vsi ključi, ki jih pozna register; manjkajoča vrstica v bazi pomeni, da
- *  cena ŠE NI vpisana — ne pa, da je nič. */
-export async function loadCenik(): Promise<CenikValues> {
+ *  cena ŠE NI vpisana — ne pa, da je nič. `ownerId` je obseg (Task 94):
+ *  prijavljen vidi svoj cenik, brez seje legacy vrstice (ownerId = null). */
+export async function loadCenik(ownerId: string | null = null): Promise<CenikValues> {
   await ensureSeeded();
-  const rows = await db.cenikPrice.findMany();
+  const rows = await db.cenikPrice.findMany({ where: cenikScope(ownerId) });
   const values: Record<string, number> = {};
   for (const r of rows) {
     if (r.unitPrice !== null && isPriceKey(r.key)) values[r.key] = r.unitPrice;
@@ -38,7 +40,10 @@ export async function loadCenik(): Promise<CenikValues> {
  * veljavna odločitev in jo zapišemo, ponudba, ki jo potrebuje, pa bo
  * zavrnjena z razlogom.
  */
-export async function saveCenik(body: Record<string, unknown>): Promise<CenikSaveResult> {
+export async function saveCenik(
+  body: Record<string, unknown>,
+  ownerId: string | null = null,
+): Promise<CenikSaveResult> {
   await ensureSeeded();
 
   const refused: { key: string; reason: string }[] = [];
@@ -67,14 +72,19 @@ export async function saveCenik(body: Record<string, unknown>): Promise<CenikSav
   }
   if (refused.length > 0) return { ok: false, refused };
 
+  // Zapis po obsegu (Task 94): findFirst + update/create namesto upsert,
+  // ker je kompozitna unikatnost (key, ownerId) z null vrednostjo v
+  // where ne uporabna za upsert (null ni enak null v indeksu).
   for (const [key, raw] of Object.entries(body ?? {})) {
     if (!isPriceKey(key)) continue;
-    await db.cenikPrice.upsert({
-      where: { key },
-      update: { unitPrice: raw === null ? null : Number(raw) },
-      create: { key, unitPrice: raw === null ? null : Number(raw) },
-    });
+    const value = raw === null ? null : Number(raw);
+    const row = await db.cenikPrice.findFirst({ where: { key, ...cenikScope(ownerId) } });
+    if (row) {
+      await db.cenikPrice.update({ where: { id: row.id }, data: { unitPrice: value } });
+    } else {
+      await db.cenikPrice.create({ data: { key, ownerId, unitPrice: value } });
+    }
   }
 
-  return { ok: true, values: await loadCenik() };
+  return { ok: true, values: await loadCenik(ownerId) };
 }

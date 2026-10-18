@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadCenik, saveCenik } from '@/lib/cenik-store';
 import { requireSession } from '@/lib/auth-guard';
+import { resolveOwner } from '@/lib/tenancy';
 
 // ─── Cenik (GET/PUT) ────────────────────────────────────────
 // Edini endpoint, ki piše denar. GET vrne SAMO vpisane cene — manjkajoč
@@ -10,7 +11,10 @@ export async function GET(req: Request) {
   const zavrnjen = await requireSession(req);
   if (zavrnjen) return zavrnjen;
   try {
-    const values = await loadCenik();
+    // Cenik je denar obrta (Task 94): prijavljen vidi svoje cene;
+    // brez seje legacy vrstice (ownerId = null).
+    const uid = await resolveOwner(req);
+    const values = await loadCenik(uid);
     return NextResponse.json({ values });
   } catch (error) {
     console.error('cenik GET error', error);
@@ -26,7 +30,8 @@ export async function PUT(req: NextRequest) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'Cenik vpišeš po ključih izdelkov.' }, { status: 400 });
     }
-    const result = await saveCenik(body as Record<string, unknown>);
+    const uid = await resolveOwner(req);
+    const result = await saveCenik(body as Record<string, unknown>, uid);
     if (!result.ok) {
       return NextResponse.json(
         {

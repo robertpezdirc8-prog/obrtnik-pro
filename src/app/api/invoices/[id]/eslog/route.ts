@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { eslogFilename, buildEslogXml, eslogMathIssues } from '@/lib/eslog';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner, settingsWhere } from '@/lib/tenancy';
 
 // ─── GET /api/invoices/[id]/eslog — e-račun XML ─────────────
 // Task 49: izvoz e-računa (EN 16931 / UBL 2.1 — e-SLOG 2.x; ZIERDED,
@@ -15,9 +16,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
+    const uid = await resolveOwner(req);
 
-    const invoice = await db.invoice.findUnique({
-      where: { id },
+    const invoice = await db.invoice.findFirst({
+      where: { id, ...ownScope(uid) },
       include: {
         items: { orderBy: { sortOrder: 'asc' } },
         offer: { select: { number: true, customerAddress: true } },
@@ -27,7 +29,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       return NextResponse.json({ error: 'Račun ne obstaja' }, { status: 404 });
     }
 
-    const settings = await db.settings.findUnique({ where: { id: 'default' } });
+    // Prodajalčevi podatki so NASTAVITVE istega obrta (Task 94) —
+    // tudi e-račun tujega obrta ne sme nositi naših podpisnikov.
+    const settings = await db.settings.findFirst({ where: settingsWhere(uid) });
     if (!settings) {
       return NextResponse.json({ error: 'Nastavitve ne obstajajo' }, { status: 500 });
     }

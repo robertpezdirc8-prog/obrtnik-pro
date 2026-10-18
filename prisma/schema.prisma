@@ -12,6 +12,13 @@ datasource db {
 // lastnik, registracija se po njem ZAPRE (glej /api/auth/register).
 // Koliko montirjev in kakšne pravice, je prihodnja odločitev
 // lastnika — zato tu še ni vlog drug kot `owner`.
+//
+// Task 94 (obseganje): vsi poslovni podatki (ponudbe, računi,
+// fotografije, cenik, nastavitve, časovnica, dnevnik) nosijo
+// `ownerId`. Pri registraciji prvega uporabnika se vsi zapisi
+// brez lastnika (lokalno/E2E zgodovina) PREVZAMEJO — glej
+// src/lib/tenancy.ts. Katalog (Category/Product) ostane SKUPEN:
+// to je aplikacijski register (KAJ je), ne podatek obrta.
 
 model User {
   id           String   @id @default(cuid())
@@ -22,6 +29,14 @@ model User {
   passwordHash String
   role         String   @default("owner")
   createdAt    DateTime @default(now())
+
+  offers       Offer[]
+  invoices     Invoice[]
+  photos       Photo[]
+  cenikPrices  CenikPrice[]
+  settings     Settings[]
+  timeEntries  TimeEntry[]
+  diaryEntries DiaryEntry[]
 }
 
 // ─── Katalog ────────────────────────────────────────────────
@@ -60,9 +75,18 @@ model Product {
 // prek `applyCenik` (`src/lib/cenik.ts`), nikoli iz kode.
 
 model CenikPrice {
-  key       String   @id
+  /// Surrogatni PK: `key` je unikaten samo V OKVIRU lastnika
+  /// (@@unique), ker sta dva obrta dva cenika. Starejše vrstice
+  /// (brez ownerId) pripadajo lokalnemu načinu in jih prevzame
+  /// prvi lastnik ob registraciji.
+  id        Int      @id @default(autoincrement())
+  key       String
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   unitPrice Float?
   updatedAt DateTime @updatedAt
+
+  @@unique([key, ownerId])
 }
 
 // ─── Ponudbe ────────────────────────────────────────────────
@@ -70,6 +94,10 @@ model CenikPrice {
 model Offer {
   id              String      @id @default(cuid())
   number          String      @unique
+  /// Lastnik obrta (Task 94) — null pomeni: ustvarjeno brez seje
+  /// (lokalni način/E2E); prvi registrirani lastnik to prevzame.
+  ownerId         String?
+  owner           User?       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   customerName    String
   customerEmail   String?
   customerPhone   String?
@@ -103,6 +131,9 @@ model Offer {
 model Invoice {
   id           String        @id @default(cuid())
   number       String        @unique
+  /// Lastnik obrta (Task 94) — kot pri ponudbi.
+  ownerId      String?
+  owner        User?         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   offerId      String
   offer        Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
   customerName String
@@ -160,6 +191,9 @@ model OfferItem {
 
 model Photo {
   id           String   @id @default(cuid())
+  /// Lastnik obrta (Task 94) — fotografije so poslovni podatek.
+  ownerId      String?
+  owner        User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   title        String?
   craftId      String?
   dataUrl      String
@@ -170,7 +204,13 @@ model Photo {
 }
 
 model Settings {
-  id              String  @id @default("default")
+  /// `cuid` (ne "default"): nastavitve so na obrta. Legacy vrstica
+  /// z id "default" (ownerId=null) je lokalni način; prvi lastnik jo
+  /// prevzame ob registraciji (Task 94).
+  id              String  @id @default(cuid())
+  /// Lastnik obrta — UNIQUE, en obrat ima eno vrstico nastavitev.
+  ownerId         String? @unique
+  owner           User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   companyName     String  @default("Moj Obrt s.p.")
   ownerName       String  @default("")
   address         String  @default("")
@@ -194,6 +234,9 @@ model Settings {
 
 model TimeEntry {
   id           String    @id @default(cuid())
+  /// Lastnik obrta (Task 94).
+  ownerId      String?
+  owner        User?     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   /// Delovni dan "YYYY-MM-DD" (niz brez časovnih pasov — iskreno in deterministično).
   day          String
   /// Opis opravila (npr. "Montaža ograje — balkon").
@@ -224,6 +267,9 @@ model TimeEntry {
 
 model DiaryEntry {
   id        String   @id @default(cuid())
+  /// Lastnik obrta (Task 94).
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   /// Delovni dan "YYYY-MM-DD" (niz brez časovnih pasov — kot pri časovnici).
   day       String
   /// Faza dela: priprava / demontaza / montaza / zakljucek / ostalo.

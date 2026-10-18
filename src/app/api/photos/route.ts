@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 export const maxDuration = 60;
 
@@ -13,7 +14,9 @@ export async function GET(req: Request) {
   const zavrnjen = await requireSession(req);
   if (zavrnjen) return zavrnjen;
   try {
+    const uid = await resolveOwner(req);
     const photos = await db.photo.findMany({
+      where: ownScope(uid),
       orderBy: { createdAt: 'desc' },
       take: 24,
     });
@@ -45,8 +48,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Fotografija je prevelika.' }, { status: 413 });
     }
 
+    const uid = await resolveOwner(req);
+
     const photo = await db.photo.create({
       data: {
+        // Galerija pripada obrtu (Task 94) — fotke so poslovni podatek.
+        ownerId: uid,
         title: typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 120) : null,
         craftId: typeof body.craftId === 'string' && body.craftId.trim() ? body.craftId.trim().slice(0, 40) : null,
         dataUrl,

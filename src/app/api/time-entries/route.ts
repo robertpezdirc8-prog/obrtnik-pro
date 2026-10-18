@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── GET /api/time-entries — seznam vnosov časovnice ────────
 // Vrstni red: dan padajoče, nato createdAt padajoče (najnovejši
@@ -10,7 +11,9 @@ export async function GET(req: Request) {
   const zavrnjen = await requireSession(req);
   if (zavrnjen) return zavrnjen;
   try {
+    const uid = await resolveOwner(req);
     const rows = await db.timeEntry.findMany({
+      where: ownScope(uid),
       orderBy: [{ day: 'desc' }, { createdAt: 'desc' }],
       take: 500,
     });
@@ -42,6 +45,7 @@ export async function POST(req: NextRequest) {
   const zavrnjen = await requireSession(req);
   if (zavrnjen) return zavrnjen;
   try {
+    const uid = await resolveOwner(req);
     const body = (await req.json()) as {
       day?: unknown;
       description?: unknown;
@@ -78,7 +82,12 @@ export async function POST(req: NextRequest) {
 
     let offerId: string | null = null;
     if (typeof body.offerId === 'string' && body.offerId.trim() !== '') {
-      const offer = await db.offer.findUnique({ where: { id: body.offerId } });
+      // Povezava je dovoljena SAMO na ponudbo istega obrta (Task 94):
+      // prek tuje ponudbe ne sme priti do njenega imena in obračuna.
+      const offer = await db.offer.findFirst({
+        where: { id: body.offerId, ...ownScope(uid) },
+        select: { id: true },
+      });
       if (!offer) {
         return NextResponse.json({ error: 'Ponudba ne obstaja' }, { status: 400 });
       }
@@ -90,7 +99,7 @@ export async function POST(req: NextRequest) {
       : null;
 
     const entry = await db.timeEntry.create({
-      data: { day, description, minutes, hourlyRate, customerName, offerId, craftId },
+      data: { ownerId: uid, day, description, minutes, hourlyRate, customerName, offerId, craftId },
     });
 
     return NextResponse.json({

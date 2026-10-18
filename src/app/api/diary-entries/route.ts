@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── GET /api/diary-entries — seznam dnevniških vnosov ──────
 // ?offerId=... filtrira po ponudbi; ?photos=1 vrne tudi polne
@@ -14,9 +15,15 @@ export async function GET(req: NextRequest) {
   try {
     const offerId = req.nextUrl.searchParams.get('offerId') ?? null;
     const withPhotos = req.nextUrl.searchParams.get('photos') === '1';
+    const uid = await resolveOwner(req);
 
+    // Obseg (Task 94) + filter po ponudbi; tuj offerId prijavi
+    // PRAZEN seznam, ne tujih vnosov (id ne sme biti bralni ključ).
     const rows = await db.diaryEntry.findMany({
-      where: offerId ? { offerId } : {},
+      where: {
+        ...ownScope(uid),
+        ...(offerId ? { offerId } : {}),
+      },
       orderBy: [{ day: 'desc' }, { createdAt: 'desc' }],
       take: 300,
       include: { offer: { select: { number: true } } },
@@ -98,7 +105,12 @@ export async function POST(req: NextRequest) {
       if (typeof body.offerId !== 'string') {
         return NextResponse.json({ error: 'Ponudba mora biti ID ali null' }, { status: 400 });
       }
-      const offer = await db.offer.findUnique({ where: { id: body.offerId }, select: { id: true } });
+      const uid = await resolveOwner(req);
+      // Samo ponudba ISTEGA obrta sme biti vezava (Task 94).
+      const offer = await db.offer.findFirst({
+        where: { id: body.offerId, ...ownScope(uid) },
+        select: { id: true },
+      });
       if (!offer) {
         return NextResponse.json({ error: 'Ponudba ne obstaja' }, { status: 400 });
       }
@@ -118,8 +130,9 @@ export async function POST(req: NextRequest) {
       parsed.photos.map((p) => ({ dataUrl: p.dataUrl, thumb: p.thumb, caption: p.caption })),
     );
 
+    const uid = await resolveOwner(req);
     const created = await db.diaryEntry.create({
-      data: { day, phase, note, offerId, objectLabel, photos: photosJson },
+      data: { ownerId: uid, day, phase, note, offerId, objectLabel, photos: photosJson },
       include: { offer: { select: { number: true } } },
     });
 

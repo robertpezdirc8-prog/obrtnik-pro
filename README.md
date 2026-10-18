@@ -464,11 +464,42 @@ AUTH_ENFORCED=1                          # '1' = API zahteva prijavo
 ```
 
 Brez teh vrstic (privzeto) je aplikacija odprta — lokalni razvoj, E2E
-preverbe in tablica tečejo kot prej. Iskreno zapisane omejitve temelja:
+preverbe in tablica tečejo kot prej.
+
+### Obseganje podatkov (Task 94 — issue #2)
+
+Prijava sama še ničesar ne zaščiti, če vsak vidi vse. Od Taska 94 vsi
+poslovni podatki (ponudbe, računi, fotografije, cenik, nastavitve,
+časovnica, dnevnik) nosijo `ownerId` in so obsegani po prijavljenem
+obrtu:
+
+· **prijavljen** — vidi in ureja SAMO svoje zapise. Tuj ID je 404
+  („ne obstaja“), ne 403 — obstoj tujega zapisa ni berljiv iz odgovora.
+  Račun ne sme izhajati iz tuje ponudbe, ura ne sme biti vezana na tujo
+  ponudbo, e-račun ne sme nositi tujih podpisnikov.
+· **brez seje** (lokalni način, E2E, verify skripte) — obseg ne
+  filtrira: vedenje je kot pred Taskom 94. Uveljavljanje je odločitev
+  namestitve (`AUTH_ENFORCED`), ne kode.
+
+**PREVZEM**: baza, ki je živela pred prijavo, ima zapise brez
+lastnika. Prvi registrirani lastnik jih v ENI transakciji prevzame —
+prijava ne „izgubi podatkov“ (izmerjeno v `tests/http/tenancy.ts`:
+zgodovinska ponudba, cenik, nastavitve, fotka, ura in dnevnik ostanejo
+istemu obrtu).
+
+Katalog (kategorije/izdelki) ostane SKUPEN — to je aplikacijski
+register (KAJ je na voljo), ne podatek obrta. Številke ponudb in
+računov so globalno unikatne: ena instalacija = en obrat.
+
+Preverbe: `bun tests/verify/tenancy.ts` (50 — čiste funkcije +
+statična pokritost vseh 13 poslovnih rut) in HTTP tek
+`tests/http/tenancy.ts` (30 meritev na ločeni bazi, `AUTH_ENFORCED=1`).
+
+Iskreno zapisane omejitve temelja:
 odjava ne prekliče žetona (brezstanjska seja velja do poteka), piškotek
-nima `Secure` (aplikacija teče tudi čez http na LAN/adb reverse), podatki
-pa še niso obsegani po uporabniku (več-uporabniško obseganje ostaja
-odprto — issue #2).
+nima `Secure` (aplikacija teče tudi čez http na LAN/adb reverse),
+vloge znotraj obrta (montir vs. lastnik) še ne obstajajo — vsak
+prijavljen račun je poln lastnik (issue #2 ostaja odprt za te).
 
 Produkcijski build (standalone):
 
@@ -479,7 +510,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (59)
+### Verifikacijske skripte (60)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):

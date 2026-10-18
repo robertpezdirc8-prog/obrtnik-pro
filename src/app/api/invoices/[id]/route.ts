@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── PATCH /api/invoices/[id] — žigi plačil ─────────────────
 // dueAt in paidAt sta zabeleži STREŽNIŠKA (klient pošlje namen,
@@ -13,7 +14,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
-    const existing = await db.invoice.findUnique({ where: { id } });
+    const uid = await resolveOwner(req);
+    const existing = await db.invoice.findFirst({
+      where: { id, ...ownScope(uid) },
+      select: { id: true },
+    });
     if (!existing) {
       return NextResponse.json({ error: 'Račun ne obstaja' }, { status: 404 });
     }
@@ -54,11 +59,20 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ error: 'Ni sprememb' }, { status: 400 });
     }
 
-    const invoice = await db.invoice.update({
-      where: { id },
+    const updateCount = await db.invoice.updateMany({
+      where: { id, ...ownScope(uid) },
       data,
+    });
+    if (updateCount.count === 0) {
+      return NextResponse.json({ error: 'Račun ne obstaja' }, { status: 404 });
+    }
+    const invoice = await db.invoice.findUnique({
+      where: { id },
       include: { _count: { select: { items: true } } },
     });
+    if (!invoice) {
+      return NextResponse.json({ error: 'Račun ne obstaja' }, { status: 404 });
+    }
 
     return NextResponse.json({
       invoice: {

@@ -2881,3 +2881,24 @@ Prvi HTTP tek je pokazal `GET /api/offers` brez seje → **200** namesto 401:
 - Piškotek brez `Secure` (namerno, LAN/http); ob pravi https namestitvi ga
   je treba dodati.
 - Gumb »Odjava« je začasno lebdeč v kotu zaslona.
+
+---
+Task ID: 94
+Agent: Z.ai Code (nadlagovalec)
+Task: Multi-tenant obseganje podatkov (ownerId) — druga polovica issue #2 za Taskom 93
+
+Work Log:
+- Prisma shema: `ownerId String?` + relacija na User (onDelete: Cascade) na VSEH podatkovnih modelih: Offer, Invoice, Photo, CenikPrice, TimeEntry, DiaryEntry, Settings. CenikPrice: PK je postal surrogatni `id Int @default(autoincrement())`, ključ pa `@@unique([key, ownerId])` (dva obrta = dva cenika; upsert z null v kompozitu ne deluje → findFirst+update/create). Settings.id spremenjen iz `@default("default")` v `@default(cuid())`, `ownerId @unique`. Katalog (Category/Product) NAMERNO brez ownerId — skupni register. `db:push` dodalen, obstoječi podatki nedotaknjeni.
+- Novo jedro `src/lib/tenancy.ts`: `resolveOwner` (seja → ownerId, brez → null), `ownScope` (seja → { ownerId }, brez → {} — stara vedenja E2E ostanejo), `settingsWhere` (ownerId vs legacy id "default"), `cenikScope`, `adoptOrphanedData` (prevzem vseh 7 tabel v ENI transakciji). ZAKAJ brez seje ne filtrira: 59 verify skript + E2E kličejo API brez seje; obseg je filter, ne čuvaj — čuvaj ostane requireSession (koda čuva, namestitev odloča).
+- Vseh 27 handlerjev v 13 poslovnih rutah obseganih: GET seznami z ownScope v where; POST piše ownerId; [id] rute findUnique → findFirst({ where: { id, ...ownScope(uid) } }) — tuj zapis je 404 („ne obstaja"), ne 403 (obstoj tujega zapisa ni berljiv); update/delete prek updateMany/deleteMany z obsegom + count check (brez P2025 metanja). invoices POST: račun izhaja IZ ponudbe istega obrta (findFirst s obsegom). time-entries/diary-entries POST+PATCH: vezava na ponudbo samo znotraj obrta. eslog: prodajalčeve nastavitve iz settingsWhere(uid).
+- Prevzem pri registraciji (register): po create uporabnika `adoptOrphanedData(user.id)` — vse ownerId=null zapise (stara instalacija) prevzame prvi lastnik v eni transakciji; prijava ne "izgubi podatkov".
+- Preverbe: nova `tests/verify/tenancy.ts` (50 preverb — čiste funkcije ownScope/settingsWhere/cenikScope + STATIČNA pokritost: vsaka poslovna ruta mora klicati obseg, obseg pred findUnique, register prevzema, shema ownerId kjer pripada in NIMA kjer ne pripada). Nov HTTP tek `tests/http/tenancy.ts` (30 meritev na ločeni bazi, port 3001, AUTH_ENFORCED=1): zgodovinska baza brez lastnika → register → prevzem vseh 7 tabel izmerjen v bazi → A vidi zgodovino → uporabnik B direktno v bazi → A: seznami brez tujega, GET/PATCH/DELETE tuja ponudba 404, račun iz tuje ponudbe 404 (in B-jeva ponudba preživi), ura na tujo ponudbo 400, settings/cenik vsak svoj, nova ponudba nosi ownerId.
+- Regresija v cenik-guardu popravljena: preverba "baza nima privzete cene" je bila prenarrow (ujela je strukturni `@default(autoincrement())` na PK) — zdaj zavrne samo izmišljene vrednosti (številka/niz), strukturni autoincrement/cuid/now so dovoljeni.
+- Privzeti način izmerjen nespremenjen: brez AUTH_ENFORCED GET offers → 200, POST → 201 z ownerId=null, settings → legacy id "default", cenik → 200.
+- README: nov razdelek "Obseganje podatkov (Task 94)", števec skript 59 → 60.
+
+Stage Summary:
+- Komit: "Task 94: obseganje po obrtu — ownerId na vseh podatkih + prevzem pri registraciji (issue #2)"
+- Sweep: 4017 OK, 5 NAPAK (delta +50 = nova skripta; napake NESPREMENJENE — isti 2 skripti, isti vzrok ICU, issue #1)
+- tsc 0 napak; eslint čist; HTTP tek 30/30 OK; privzeti način nespremenjen
+- Ostaja odprto (iskreno): vloge znotraj obrta (montir vs. lastnik) ne obstajajo — vsak prijavljen je poln lastnik; številke dokumentov ostajajo globalno unikatne (ena instalacija = en obrat); odjava ne prekliče žetona (iz Taska 93)

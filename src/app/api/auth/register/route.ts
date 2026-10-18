@@ -16,6 +16,7 @@ import {
   sessionCookie,
 } from '@/lib/auth';
 import { sessionSecret } from '@/lib/auth-guard';
+import { adoptOrphanedData } from '@/lib/tenancy';
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,6 +45,13 @@ export async function POST(req: NextRequest) {
       data: { email, name, passwordHash: hashPassword(password), role: 'owner' },
       select: { id: true, email: true, name: true, role: true },
     });
+
+    // PREVZEM (Task 94): vsi zapisi brez lastnika (lokalno/E2E zgodovina
+    // baze — ponudbe, računi, fotke, cenik, nastavitve, ure, dnevnik)
+    // postanejo LASTNIŠKI. Zato prijava ne "izgubi podatkov": baza, ki
+    // je živela pred prijavo, ostane istemu obrtu. V eni transakciji —
+    // ali prevzeme VSE ali NIČ.
+    await adoptOrphanedData(user.id);
 
     const token = createSessionToken(sessionSecret(), user.id, Date.now());
     const res = NextResponse.json({ user }, { status: 201 });

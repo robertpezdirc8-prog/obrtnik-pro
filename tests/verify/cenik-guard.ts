@@ -288,7 +288,8 @@ console.log('\n5) Denar v ponudbo sme priti samo skozi Cenik:');
   const schema = SRC('prisma/schema.prisma');
   const cenikModel = /model CenikPrice \{([^}]*)\}/.exec(schema)?.[1] ?? '__MANJKA__';
   check('baza hrani ceno kot POLJE (manjkajoča = null, ne 0)', /unitPrice\s+Float\?/.test(cenikModel), cenikModel);
-  check('baza nima privzete cene (@default bi pomenil izmišljeno številko)', !/@default/.test(cenikModel));
+  check('baza nima privzete CENE (@default s številko/nizom bi pomenil izmišljeno številko; strukturni autoincrement/cuid/now na PK so dovoljeni)',
+    !/@default(?!\((autoincrement\(\)|cuid\(\)|now\(\))\))/.test(cenikModel));
 }
 
 // ── 6) Slovenščina šteje enako kot obrtnik ───────────────────

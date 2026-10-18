@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { readSettings, settingsProblemText } from '@/lib/settings-inputs';
 import { createWithUniqueNumber } from '@/lib/numbering';
 import { requireSession } from '@/lib/auth-guard';
+import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 interface IncomingItem {
   name: string;
@@ -29,7 +30,9 @@ export async function GET(req: Request) {
   const zavrnjen = await requireSession(req);
   if (zavrnjen) return zavrnjen;
   try {
+    const uid = await resolveOwner(req);
     const offers = await db.offer.findMany({
+      where: ownScope(uid),
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     });
@@ -53,6 +56,8 @@ export async function POST(req: NextRequest) {
     if (items.length === 0) {
       return NextResponse.json({ error: 'Ponudba mora imeti vsaj eno postavko' }, { status: 400 });
     }
+
+    const uid = await resolveOwner(req);
 
     // DDV se bere skozi ISTI register kot urejevalnik, PDF, račun in SMS.
     // Strežnik ne sme izmisliti 22 % tam, kjer klijent ni poslal veljavne
@@ -102,6 +107,9 @@ export async function POST(req: NextRequest) {
         db.offer.create({
           data: {
             number,
+            // Obseg: zapis pripada prijavljenemu obratu; brez seje (lokalni
+            // način/E2E) ostane brez lastnika, kot pred Taskom 94.
+            ownerId: uid,
             customerName: body.customerName.trim(),
             customerEmail: body.customerEmail || null,
             customerPhone: body.customerPhone || null,
