@@ -1,5 +1,7 @@
 # Obrtnik Pro
 
+[![CI](https://github.com/robertpezdirc8-prog/obrtnik-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/robertpezdirc8-prog/obrtnik-pro/actions/workflows/ci.yml)
+
 Delovna aplikacija za obrtnike: ponudbe in računi, evidence dela, gradbiščni dnevnik,
 katalog ter **pametna kamera** z merjenjem po fotki, 3D predogledom, AR in
 **fotomontažo ograj/fasad z originalnimi ROKSAL profili**.

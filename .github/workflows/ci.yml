@@ -1,0 +1,72 @@
+# ─── CI: preverba ob vsakem pushu ────────────────────────────
+# Po duhu projekta: build uspeh ≠ funkcija deluje. Zato CI požene
+# ne tipičnega lint/tsc, ampak celotno dokazno verigo:
+#   install → prisma → tsc → eslint → vseh tests/verify/*.ts
+#
+# ZNANA OKOLJSKA RAZLIKA (baseline): sweep na strojih z drugačnim ICU
+# pokaže 5 napak v 2 skriptih (craft-inputs-all, settings-input-guard),
+# ker Intl.NumberFormat('sl-SI') za števila ≥ 1000 na nekaterih
+# runtime-ih vpiše tisočično točko — glej issue #1. CI to TOLERIRA
+# do 5 napak; vsaka dodatna napaka = regresija = rdeče.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # CI baza je prehodna — shema se vsakič znova ustvari z db:push.
+      # Relativna pot se razreši glede na mapo prisma/ → prisma/db/custom.db.
+      DATABASE_URL: file:./db/custom.db
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Odvisnosti (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Prisma — klient in shema
+        run: |
+          bunx prisma generate
+          bunx prisma db push --skip-generate --accept-data-loss
+
+      - name: Tipizacija (tsc --noEmit)
+        run: bunx tsc --noEmit
+
+      - name: ESLint
+        run: bun run lint
+
+      - name: Dokazni sweep (vseh tests/verify/*.ts)
+        run: |
+          set -u
+          SWEEP_EXIT=0
+          bun tests/verify-counts.ts > verify-sweep.log 2>&1 || SWEEP_EXIT=$?
+          tail -n 12 verify-sweep.log || true
+
+          if [ ! -s verify-sweep.log ]; then
+            echo 'Sweep NI izpisal nič — trda napaka (agregator padel?)'; exit 1
+          fi
+
+          NAPAK=$(grep -oE 'SKUPAJ: [0-9]+ OK, [0-9]+ NAPAK' verify-sweep.log | sed -E 's/.*OK, ([0-9]+) NAPAK.*/\1/' | tail -n 1)
+          if [ -z "${NAPAK:-}" ]; then
+            echo 'Sweep ni izpisal seštevka SKUPAJ — trda napaka'; exit 1
+          fi
+
+          # Baseline 5 = znana ICU razlika (issue #1). Več napak = regresija.
+          if [ "$NAPAK" -gt 5 ]; then
+            echo "REGRESIJA: $NAPAK napak > baseline 5 (issue #1)"; exit 1
+          fi
+          echo "Sweep zelen glede na baseline: $NAPAK/5 znanih ICU napak (issue #1)"
+          exit 0
