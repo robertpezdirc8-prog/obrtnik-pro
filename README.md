@@ -518,6 +518,37 @@ Preverbe: `bun tests/verify/sessions.ts` (50 — čista logika živosti +
 statična pokritost vseh stikov) in HTTP tek `tests/http/sessions.ts`
 (33 meritev na ločeni bazi, `AUTH_ENFORCED=1`).
 
+### Fotografije na disku (Task 96 — issue #3)
+
+Prej je bila cela fotka (base64, do ~5,5 MB) V BAZI — baza je rasla
+brez meje, vsako branje sličice je vleklo celotno fotko. Od Taska 96:
+
+· **Polna vsebina na DISKU** (`db/photos/<id>.<ext>` — mapa ob bazi,
+  preusmerljiva s `PHOTO_DIR`), v bazi samo ime datoteke + sličica
+  (256 px JPEG za sezname).
+· **Seznam je lahkoten**: `GET /api/photos` NE vrača polnega dataUrl —
+  samo sličico + `imageUrl`. Celotna fotka se naloži POSAMEZNO
+  (`GET /api/photos/[id]`), kadar jo uporabnik res odpre; surovi bajti
+  pa prek `GET /api/photos/[id]/image` (predpomnljivo — vsebina je
+  nespremenljiva).
+· **Varčevanje vsebine**: priponka se ujema z MAGIČNIMI BAJTI (PNG/
+  JPEG/WEBP) — preoblečena datoteka ne gre na disk; ime datoteke je
+  VEDNO očiščeno (brez poti, brez `..`, samo znane končnice).
+· **Lena selitev**: stare instalacije (vsebina še v bazi) se selijo ob
+  prvem odpiranju fotke — datoteka nastane, baza se počisti;
+  idempotentno, brez skript. Dnevniške fotke (`DiaryEntry.photos`)
+  isti protokol (`{file, thumb, caption}`); brisanje vnosa počisti
+  tudi datoteke.
+· **Iskreno**: izgubljena datoteka (disk izbrisan, baza ostala) je 404
+  z razlogom »Vsebina fotografije manjka.« — registr pove, disk pove,
+  UI ne utiša napake.
+
+Preverbe: `bun tests/verify/photo-store.ts` (51 — čiste funkcije z
+injektirano mapo + statična pokritost) in HTTP tek
+`tests/http/photos-disk.ts` (39 meritev na ločeni bazi z `PHOTO_DIR`
+v `/tmp` — merjene prave datoteke, bajti 1:1 po sha256, regist ↔ disk
+1:1 na koncu).
+
 Iskreno zapisane omejitve temelja:
 piškotek nima `Secure` (aplikacija teče tudi čez http na LAN/adb
 reverse), vloge znotraj obrta (montir vs. lastnik) še ne obstajajo —
@@ -533,7 +564,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (61)
+### Verifikacijske skripte (62)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):

@@ -219,7 +219,16 @@ model Photo {
   owner        User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   title        String?
   craftId      String?
-  dataUrl      String
+  /// Task 96 (issue #3): polna vsebina je na DISKU (db/photos), tukaj
+  /// je samo ime datoteke ("<id>.jpg" — brez poti, brez podmap).
+  filePath     String?
+  /// Sličica (256 px JPEG) kot dataURL za sezname — seznami ne vlečejo
+  /// več celotne fotke.
+  thumbUrl     String?
+  /// LEGATA (pred Taskom 96): celoten base64 dataURL. Nova zapisa ga
+  /// ne pišejo (null); vrstice z vsebino se leno selijo na disk ob
+  /// prvem branju (GET /api/photos/[id]) — selitev je idempotentna.
+  dataUrl      String?
   analysis     String?
   measurements String?
   vizState     String?

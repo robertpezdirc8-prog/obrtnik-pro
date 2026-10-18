@@ -501,12 +501,14 @@ async function main(): Promise<void> {
       const p = (d.photos ?? [])[0];
       if (!p) return 'PRAZNO';
       let an = null; try { an = JSON.parse(p.analysis); } catch { /* pokvarjena analiza */ }
-      return JSON.stringify({ n: (d.photos ?? []).length, dataUrl: p.dataUrl.slice(0, 12), h: p.dataUrl.length, analiza: !!an, objekti: an?.analysis?.objects?.length ?? -1, merila: p.measurements, craft: p.craftId });
+      // Task 96: seznam je LAHKOTEN — sličica + imageUrl, BREZ polnega dataUrl.
+      return JSON.stringify({ n: (d.photos ?? []).length, thumb: (p.thumbUrl ?? '').slice(0, 12), h: (p.thumbUrl ?? '').length, imageUrl: p.imageUrl ?? '', analiza: !!an, objekti: an?.analysis?.objects?.length ?? -1, merila: p.measurements, craft: p.craftId });
     })()`));
-    const bazaO = JSON.parse(baza === 'PRAZNO' ? '{}' : baza) as { n?: number; analiza?: boolean; objekti?: number; merila?: string | null; craft?: string };
+    const bazaO = JSON.parse(baza === 'PRAZNO' ? '{}' : baza) as { n?: number; analiza?: boolean; objekti?: number; merila?: string | null; craft?: string; thumb?: string; imageUrl?: string };
     check('30 analiza gre v bazo (persistirana, ne samo prikazana)', (bazaO.n ?? 0) > 0 && bazaO.analiza === true, baza);
     check('31 v bazi je ANALIZIRANA vsebina (objekti / scena), ne surov kader', (bazaO.objekti ?? 0) >= 0 && (bazaO.craft ?? '') !== '', baza);
     check('32 shrani fotka ima seznam meritev, ki je res JSON (lahko prazen)', typeof bazaO.merila === 'string' && (bazaO.merila.startsWith('[')), baza);
+    check('32a seznam je lahkoten (sličica + pot, brez polne fotke v seznamu)', (bazaO.thumb ?? '').startsWith('data:image/jpeg;base64,') && (bazaO.imageUrl ?? '').includes('/image'), baza);
     check('33 obvestilo o shranjevanju je monterju povedano',
       (await toastText()).includes('galerijo') || (await bodyText()).includes('Shranjeno v galerijo'), await toastText());
     await closeToast();

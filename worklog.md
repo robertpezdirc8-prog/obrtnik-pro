@@ -2923,3 +2923,25 @@ Stage Summary:
 - tsc 0 napak; eslint čist; HTTP: sessions 33/33 OK, tenancy regresija 30/30 OK
 - Brskalnik (agent-browser, AUTH_ENFORCED=1, port 3001): prijavni zaslon → registracija skozi UI → AppShell z menijem v glavi → meni pokaže ime/e-pošto + obe akciji → odjava skozi UI vrne prijavni zaslon → ponovna prijava deluje → privzeti način (brez AUTH_ENFORCED): aplikacija se odpre brez prijave, menija NI, offers brez seje → 200 (nič se ni spremenilo); 0 napak strani
 - Ostaja odprto (iskreno): piškotek brez `Secure` (http na LAN); vloge znotraj obrta še ne obstajajo; številke dokumentov globalno unikatne (ena instalacija = en obrat)
+---
+Task ID: 96
+Agent: Z.ai Code (nadlagovalec)
+Task: Fotografije iz base64 v SQLite na DATOTEKE (issue #3) — baza ne sme rasti brez meje
+
+Work Log:
+- Novo jedro src/lib/photo-store.ts (injektirana mapa, čiste funkcije): decodeDataUrl (strogi base64 + MAGIČNI BAJTI za PNG/JPEG/WEBP — preoblečena datoteka ne gre na disk), safeFileName (brez poti/.., samo znane končnice), makeThumb (sharp → 256 px JPEG dataURL, najboljše prizadevanje), savePhoto/readPhotoAsDataUrl/readPhotoBytes/deletePhotoFile, listPhotoFiles (registry ↔ disk), resolvePhotoDir (PHOTO_DIR > mapa ob DATABASE_URL > cwd/db/photos — prenosljivo, Task 71).
+- Prisma: Photo dobi filePath ("​<id>.<ext>", ime brez poti), thumbUrl (256 px sličica za sezname), dataUrl postane nullable (LEGATA — nova zapisa ga ne pišejo). db:push dodalen.
+- Rute: POST /api/photos (vnosna pogodba ista: dataUrl JSON; bajti → disk, vrstica → filePath+thumbUrl, dataUrl=null; padec diska → vrstica POBRISANA + 500, brez slepih zapisov); GET seznam (select BREZ dataUrl — sličica + imageUrl); NOV GET /api/photos/[id] (celotna fotka; LENA SELITEV legacy vrstic: datoteka nastane, baza se počisti, idempotentno; prvi stik z bazo je OBSEGAN findFirst+ownScope); NOV GET /api/photos/[id]/image (surovi bajti + pravi MIME + Cache-Control immutable); DELETE (vrstica + DATOTEKA); PATCH nespremenjen.
+- Dnevnik (DiaryEntry.photos): nov src/lib/diary-photos-disk.ts — zapis {file, thumb, caption} (prej {dataUrl, thumb, caption}); POST/PATCH shranita na disk (PATCH zamenjava pobere stare datoteke), DELETE počisti datoteke; GET materializira (?photos=1 → polne iz diska, privzeto sličice v dataUrl — ISTI odgovor kot prej) in LENO seli legacy vnose.
+- Klient (camera-view): galerija pokaže SLIČICO (thumbUrl), odpiranje fotke in fotomontaža poberejo CELOTO posamezno po /api/photos/[id] (photoFullDataUrl, z legacy padom); shot-picker/terenski zajemi nespremenjeni (v pomnilniku).
+- Čuvajske skripte sta ulovili dve pravi težavi: portable-paths (dve /tmp literali v testih → tmpdir()) in tenancy (materializacija je po id na slepo dostopala bazo → zdaj prejme OBSEGANO vrstico). Popravljeno, preverbe zelene.
+- e2e-kamera-zmogljivosti.ts: seznam je lahkoten → preverba 32a (sličica + imageUrl namesto polnega dataUrl).
+- Preverbe: nova tests/verify/photo-store.ts (51 — resolvePhotoDir prenosljivo, decode/safe slabi vhodi, save/read/delete krog s sha256 1:1, sličica, registry ↔ disk, STATIČNO rute/shema/klient); nov HTTP tek tests/http/photos-disk.ts (39 — datoteka na disku 1:1, baza brez vsebine, seznam lahkoten, tuja fotka 404 in PREŽIVI, izgubljena datoteka iskreno 404, lena selitev, DELETE čisti disk, dnevnik celoten tok, registar ↔ disk 1:1).
+- README: razdelek "Fotografije na disku (Task 96)", števec 61 → 62; .env.example dobi PHOTO_DIR (opcijsko, komentar).
+
+Stage Summary:
+- Komit: "Task 96: fotke na disk — baza ne rasti z vsebino, sličice v seznamih, lena selitev (issue #3)"
+- Sweep: znane NAPAKE ostanejo SAMO craft-inputs-all (2, ICU, issue #1); +90 preverb (51 photo-store + 39 HTTP) vseh zelenih; portable-paths 28 OK; tenancy 50 OK
+- tsc 0 napak; eslint čist; HTTP regresije: sessions 33/33, tenancy 30/30
+- Brskalnik (agent-browser, AUTH_ENFORCED=1): POST fotke → galerija pokaže SLIČICO (data:image/jpeg) → klik → polna fotka po id → rezultatna faza z analizo; /image ruta v pravem <img> (naturalWidth 1:1); 0 napak strani
+- Ostaja odprto (iskreno): orphan datoteke (baza izbrisana, disk ostal) ne počisti se samodejno — listPhotoFiles je resnica za prihodnjo preverbo; sličice so v bazi (majhne, po načrtu issue #3)

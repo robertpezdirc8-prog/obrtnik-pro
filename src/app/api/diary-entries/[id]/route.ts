@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
 import { requireSession } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
+import { loadDiaryPhotos, storeDiaryPhotos } from '@/lib/diary-photos-disk';
+import { deletePhotoFile, resolvePhotoDir, safeFileName } from '@/lib/photo-store';
 
 // ─── PATCH /api/diary-entries/[id] — urejanje vnosa ─────────
 // Vsako polje je opcijsko (samo poslana se spreminjajo); ista
@@ -99,9 +101,31 @@ export async function PATCH(
       if (parsed.error) {
         return NextResponse.json({ error: parsed.error }, { status: 400 });
       }
-      data.photos = JSON.stringify(
-        parsed.photos.map((p) => ({ dataUrl: p.dataUrl, thumb: p.thumb, caption: p.caption })),
-      );
+      // Task 96: bajti na DISK; STARE datoteke izginejo (zamenjava
+      // celotnega polja — brez orphan datotek).
+      const dir = resolvePhotoDir();
+      const old = await db.diaryEntry.findUnique({
+        where: { id },
+        select: { photos: true },
+      });
+      try {
+        const oldParsed = JSON.parse(old?.photos ?? '[]') as unknown;
+        if (Array.isArray(oldParsed)) {
+          for (const p of oldParsed) {
+            if (typeof p === 'object' && p !== null && typeof (p as Record<string, unknown>).file === 'string') {
+              const f = (p as { file: string }).file;
+              if (safeFileName(f)) deletePhotoFile(f, dir);
+            }
+          }
+        }
+      } catch {
+        // pokvarjen JSON → ni starih datotek za brisanje
+      }
+      const { stored, error } = await storeDiaryPhotos(parsed.photos, dir);
+      if (error) {
+        return NextResponse.json({ error }, { status: 500 });
+      }
+      data.photos = JSON.stringify(stored);
     }
 
     const upd = await db.diaryEntry.updateMany({
@@ -119,22 +143,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
     }
 
-    let photos: { dataUrl: string; thumb: string | null; caption: string | null }[] = [];
-    try {
-      const parsed = JSON.parse(updated.photos) as unknown;
-      if (Array.isArray(parsed)) {
-        photos = parsed
-          .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
-          .map((p) => ({
-            dataUrl: typeof p.dataUrl === 'string' ? p.dataUrl : '',
-            thumb: typeof p.thumb === 'string' ? p.thumb : null,
-            caption: typeof p.caption === 'string' ? p.caption : null,
-          }))
-          .filter((p) => p.dataUrl !== '');
-      }
-    } catch {
-      // pokvarjen JSON → prazno
-    }
+    // Odgovor: fotke materializirane s diska (polne) — ista oblika
+    // kot prej, vsebina pa iz datotek (Task 96).
+    const { out: photos } = await loadDiaryPhotos(updated.photos, resolvePhotoDir(), true);
 
     return NextResponse.json({
       entry: {
@@ -166,9 +177,32 @@ export async function DELETE(
   try {
     const { id } = await params;
     const uid = await resolveOwner(req);
+    // Datoteke pobere PRED brisanjem vrstice (potem jih ni več v bazi).
+    const row = await db.diaryEntry.findFirst({
+      where: { id, ...ownScope(uid) },
+      select: { photos: true },
+    });
+    if (!row) {
+      return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
+    }
     const del = await db.diaryEntry.deleteMany({ where: { id, ...ownScope(uid) } });
     if (del.count === 0) {
       return NextResponse.json({ error: 'Vnos ne obstaja' }, { status: 404 });
+    }
+    // Datoteke na disku (najboljše prizadevanje — vrstica je že izbrisana).
+    const dir = resolvePhotoDir();
+    try {
+      const parsed = JSON.parse(row.photos) as unknown;
+      if (Array.isArray(parsed)) {
+        for (const p of parsed) {
+          if (typeof p === 'object' && p !== null && typeof (p as Record<string, unknown>).file === 'string') {
+            const f = (p as { file: string }).file;
+            if (safeFileName(f)) deletePhotoFile(f, dir);
+          }
+        }
+      }
+    } catch {
+      // pokvarjen JSON → ni datotek za brisanje
     }
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -3,10 +3,14 @@ import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
 import { requireSession } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
+import { loadDiaryPhotos, persistDiaryMigration, storeDiaryPhotos } from '@/lib/diary-photos-disk';
+import { resolvePhotoDir } from '@/lib/photo-store';
 
 // ─── GET /api/diary-entries — seznam dnevniških vnosov ──────
 // ?offerId=... filtrira po ponudbi; ?photos=1 vrne tudi polne
 // slike (privzeto samo male sličice — seznami ostanejo hitri).
+// Task 96: polne fotke so na DISKU — ?photos=1 jih materializira
+// iz datotek; legacy vnosi se ob branju LENO selijo na disk.
 // Vrstni red: dan padajoče, znotraj dneva createdAt padajoče.
 
 export async function GET(req: NextRequest) {
@@ -29,24 +33,22 @@ export async function GET(req: NextRequest) {
       include: { offer: { select: { number: true } } },
     });
 
-    const entries = rows.map((e) => {
-      let photos: { dataUrl: string; thumb: string | null; caption: string | null }[] = [];
-      try {
-        const parsed = JSON.parse(e.photos) as unknown;
-        if (Array.isArray(parsed)) {
-          photos = parsed
-            .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
-            .map((p) => ({
-              dataUrl: typeof p.dataUrl === 'string' ? p.dataUrl : '',
-              thumb: typeof p.thumb === 'string' ? p.thumb : null,
-              caption: typeof p.caption === 'string' ? p.caption : null,
-            }))
-            .filter((p) => p.dataUrl !== '');
-        }
-      } catch {
-        // pokvarjen JSON → kot brez fotografij (iskreno, brez crasha)
-      }
-      return {
+    const dir = resolvePhotoDir();
+    const entries: {
+      id: string;
+      day: string;
+      phase: string;
+      note: string;
+      offerId: string | null;
+      offerNumber: string | null;
+      objectLabel: string | null;
+      createdAt: string;
+      photos: { dataUrl: string; thumb: string | null; caption: string | null }[];
+    }[] = [];
+    for (const e of rows) {
+      const { out: photos, migrated } = await loadDiaryPhotos(e.photos, dir, withPhotos);
+      if (migrated) await persistDiaryMigration(e.id, migrated);
+      entries.push({
         id: e.id,
         day: e.day,
         phase: e.phase,
@@ -55,11 +57,9 @@ export async function GET(req: NextRequest) {
         offerNumber: e.offer?.number ?? null,
         objectLabel: e.objectLabel,
         createdAt: e.createdAt.toISOString(),
-        photos: withPhotos
-          ? photos
-          : photos.map((p) => ({ dataUrl: p.thumb ?? '', thumb: p.thumb, caption: p.caption })),
-      };
-    });
+        photos,
+      });
+    }
 
     return NextResponse.json({ entries });
   } catch (err) {
@@ -126,9 +126,13 @@ export async function POST(req: NextRequest) {
     if (parsed.error) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
-    const photosJson = JSON.stringify(
-      parsed.photos.map((p) => ({ dataUrl: p.dataUrl, thumb: p.thumb, caption: p.caption })),
-    );
+    // Task 96: bajti na DISK, v bazi ime datoteke + sličica.
+    const dir = resolvePhotoDir();
+    const { stored, error } = await storeDiaryPhotos(parsed.photos, dir);
+    if (error) {
+      return NextResponse.json({ error }, { status: 500 });
+    }
+    const photosJson = JSON.stringify(stored);
 
     const uid = await resolveOwner(req);
     const created = await db.diaryEntry.create({

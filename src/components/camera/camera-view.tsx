@@ -79,12 +79,32 @@ interface PhotoRecord {
   id: string;
   title: string | null;
   craftId: string | null;
-  dataUrl: string;
+  /** Task 96: seznam nosi SAMO sličico — polna fotka gre po /api/photos/[id]. */
+  thumbUrl: string | null;
+  imageUrl: string;
+  /** Legacy (pred Taskom 96) — v novem seznamu ni več. */
+  dataUrl?: string | null;
   analysis: string | null;
   measurements: string | null;
   vizState?: string | null;
   createdAt: string;
 }
+
+/** Polna fotka po ID — seznam je lahkoten (sličice), celota se pobere
+ *  posamezno, kadar jo uporabnik res odpre. Ob neuspehu pade nazaj na
+ *  legacy dataUrl iz seznama (starejši odgovori), če je sploh obstajal. */
+const photoFullDataUrl = async (id: string, legacy?: string | null): Promise<string | null> => {
+  try {
+    const res = await fetch(`/api/photos/${id}`, { cache: 'no-store' });
+    if (res.ok) {
+      const d = (await res.json()) as { photo?: { dataUrl?: string | null } };
+      if (d.photo?.dataUrl) return d.photo.dataUrl;
+    }
+  } catch {
+    /* spodaj legacy */
+  }
+  return legacy ?? null;
+};
 
 type CameraTab = 'analiza' | 'ar' | 'viz' | 'fotomontaza' | 'vecpogled' | 'model' | 'orodja';
 
@@ -496,7 +516,7 @@ export function CameraView() {
     }
   };
 
-  const reopenPhoto = (rec: PhotoRecord) => {
+  const reopenPhoto = async (rec: PhotoRecord) => {
     let parsed: AnalyzeResponse | null = null;
     try {
       if (rec.analysis) {
@@ -508,7 +528,12 @@ export function CameraView() {
       }
     } catch { parsed = null; }
 
-    setPhotoUrl(rec.dataUrl);
+    const full = await photoFullDataUrl(rec.id, rec.dataUrl);
+    if (!full) {
+      toast({ title: 'Fotografija ni dosegljiva', description: 'Vsebina ni na voljo na disku.', variant: 'destructive' });
+      return;
+    }
+    setPhotoUrl(full);
     try {
       setMeasures(rec.measurements ? (JSON.parse(rec.measurements) as PhotoMeasure[]) : []);
     } catch {
@@ -630,7 +655,9 @@ export function CameraView() {
           existingHex: string | null;
         };
         if (!st.layers || st.layers.length === 0) continue;
-        const img = await loadImage(rec.dataUrl);
+        const full = await photoFullDataUrl(rec.id, rec.dataUrl);
+        if (!full) continue;
+        const img = await loadImage(full);
         const maxSide = 1000;
         const sc = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
         const w = Math.max(2, Math.round(img.naturalWidth * sc));
@@ -1505,7 +1532,7 @@ export function CameraView() {
                     className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label={`Odpri ${rec.title ?? 'fotografijo'}`}
                   >
-                    <img src={rec.dataUrl} alt={rec.title ?? 'Zajeta fotografija'} className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.03]" />
+                    <img src={rec.thumbUrl ?? rec.dataUrl ?? ''} alt={rec.title ?? 'Zajeta fotografija'} className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-[1.03]" />
                     <div className="p-2">
                       <p className="truncate text-xs font-semibold">{rec.title ?? 'Zajem'}</p>
                       <p className="text-[10px] text-muted-foreground">
