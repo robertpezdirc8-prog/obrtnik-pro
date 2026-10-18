@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { readSettings, settingsProblemText } from '@/lib/settings-inputs';
+import { createWithUniqueNumber } from '@/lib/numbering';
 
 interface IncomingItem {
   name: string;
@@ -86,37 +87,43 @@ export async function POST(req: NextRequest) {
     const subtotal = r2(postavke.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
     const vatAmount = r2(subtotal * (vatRate / 100));
     const total = r2(subtotal + vatAmount);
-    const number = await nextOfferNumber();
 
-    const offer = await db.offer.create({
-      data: {
-        number,
-        customerName: body.customerName.trim(),
-        customerEmail: body.customerEmail || null,
-        customerPhone: body.customerPhone || null,
-        customerAddress: body.customerAddress || null,
-        objectAddress: body.objectAddress || null,
-        note: body.note || null,
-        status: 'draft',
-        subtotal,
-        vatRate,
-        vatAmount,
-        total,
-        items: {
-          create: postavke.map((i, idx) => ({
-            name: i.name,
-            description: i.description || null,
-            quantity: i.quantity,
-            unit: i.unit || 'kos',
-            unitPrice: i.unitPrice,
-            total: r2(i.quantity * i.unitPrice),
-            sortOrder: idx,
-            productId: i.productId || null,
-          })),
-        },
-      },
-      include: { items: { orderBy: { sortOrder: 'asc' } } },
-    });
+    // Atomsko številčenje: ob P2002 (dva sočasna vnosa sta dobila isto
+    // številko) se številka izračuna ZNOVA in vnos ponovi — zahteva ne
+    // pade s 500 (glej src/lib/numbering.ts in tests/verify/numbering-retry.ts).
+    const { value: offer } = await createWithUniqueNumber(
+      () => nextOfferNumber(),
+      (number) =>
+        db.offer.create({
+          data: {
+            number,
+            customerName: body.customerName.trim(),
+            customerEmail: body.customerEmail || null,
+            customerPhone: body.customerPhone || null,
+            customerAddress: body.customerAddress || null,
+            objectAddress: body.objectAddress || null,
+            note: body.note || null,
+            status: 'draft',
+            subtotal,
+            vatRate,
+            vatAmount,
+            total,
+            items: {
+              create: postavke.map((i, idx) => ({
+                name: i.name,
+                description: i.description || null,
+                quantity: i.quantity,
+                unit: i.unit || 'kos',
+                unitPrice: i.unitPrice,
+                total: r2(i.quantity * i.unitPrice),
+                sortOrder: idx,
+                productId: i.productId || null,
+              })),
+            },
+          },
+          include: { items: { orderBy: { sortOrder: 'asc' } } },
+        }),
+    );
 
     return NextResponse.json({ offer }, { status: 201 });
   } catch (error) {

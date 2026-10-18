@@ -2726,3 +2726,70 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   trikrat vrnil istega `robertpezdirc12-design`; (2) isti endpoint vrne
   `422 "action" is not a permitted key`, če pošlješ telo `{"action":"accept"}` — ta ključ
   spada na raven organizacije, za uporabnikovo repo mora biti PATCH **brez telesa**.
+
+---
+
+## Task 92 (2026-10-18): infrastrukturna runda — CI, čiščenje .env, omejevalnik zahtev, atomsko številčenje
+
+Agent: Z.ai Code (zunanji agent; dostop prek GitHub žetona lastnika `robertpezdirc8-prog`)
+
+### Kaj je bilo narejeno in ZAKAJ
+
+1. **`.env` izvzet iz gita** (`git rm --cached .env`). Sken vseh 119 commitov: v zgodovini je
+   bil vedno SAMO `DATABASE_URL=file:...` (brez skrivnosti), zato NE pišemo zgodovine znova —
+   preprosto prenehamo slediti. Dodan `.env.example` (samo poti, nikoli skrivnosti) in
+   `!.env.example` v `.gitignore`, ker `.env*` vzorec sicer pogoltne tudi vzorec.
+2. **GitHub Actions CI** (`.github/workflows/ci.yml`): ob vsakem pushu na main pognana
+   dokazna veriga — install (frozen lockfile) → prisma generate+push → `tsc --noEmit` →
+   eslint → **celotn sweep `tests/verify-counts.ts`**. Sweep ima BAZELIN 5 napak z referenco
+   na issue #1 (ICU), da CI ne pade zaradi znane okoljske razlike, vsaka DODATNA napaka pa
+   je regresija in rdeča. README dobi CI značko.
+3. **Najdba vrnjena: 5 preverb pade na svežem stroju** — `craft-inputs-all` (2) in
+   `settings-input-guard` (3), vse trditve »zapisan z vejico, ne s piko«. Vzrok izmerjen:
+   `Intl.NumberFormat('sl-SI')` na Bun 1.3.14 za 2000.01 vrne »2.000,01« (tisočica TOČKA,
+   ki sama ustreza testnemu `/\d\.\d/`), na drugih runtime-ih pa »2000,01«. Logika je
+   pravilna, izpis je okoljsko odvisen — ista vrsta bolezni kot strojno vezane poti (Task 71).
+   Popravek NI narejen samovoljno: odprto vprašanje o ločilu tisočic je v issue #1, CI ga
+   do takrat drži kot baseline. Izmerjeno na tem stroju: Bun → »2.000,01«, Node → »2000,01«.
+4. **Omejevalnik zahtev za `/api/analyze-photo`** (nova `src/lib/rate-limit.ts`): fiksno
+   okno 30 analiz / min / klient (x-forwarded-for, prvi vnos; brez glave iskreno »local«),
+   injektirana ura, pranje izteklih ključev nad `maxKeys`, 429 z `Retry-After`. Iskreno
+   zapisano v modulu: pomnilnik procesa, po ponovnem zagonu izgubljeno, več instanc NI
+   pokritih (ni Redis) — zavestna izbira za eno-mašinsko SQLite aplikacijo. Merjeno PREJ,
+   kot stroj seže po pikslih.
+5. **Atomsko številčenje dokumentov** (nova `src/lib/numbering.ts`): `count()+1` pri dveh
+   sočasnih vnosih lahko dobi isto številko; edini čuvaj je UNIQUE v bazi (P2002). Prej je
+   zahteva padla s 500; zdaj se številka izračuna ZNOVA in vnos ponovi (največ 5 poskusov,
+   linearno spanje 20·poskus, injektirano za preverbo brez spanja). Trk se prepozna po
+   `code === 'P2002'` (duck-typing, ker prava Prisma napaka nosi ravno ta `code`); tuje
+   napake se propagirajo, ne požrejo. Povezano v `POST /api/offers` in `POST /api/invoices`
+   — odgovori ostanejo NEspremenjeni (201 + telo kot prej).
+6. **9 GitHub issues** zapisanih iz »znanih omejitev« in analize (#1 ICU oblikovanje,
+   #2 avtentikacija, #3 fotke iz baze na disk, #4 ROKSAL gradiva, #5 ROMB presek,
+   #6 izvoz »original«, #7 decimalne pike ostalih dejavnosti, #8 COLMAP-WASM, #9 E2E v CI).
+
+### Dokazi (vsi izmerjeni na tem stroju, Bun 1.3.14)
+
+- `bun tests/verify/rate-limit.ts` → **REZULTAT: 27 OK, 0 NAPAK** (nova, 38. četrta skripta
+  v sweepu; pokrite: okno/remaining/retryAfter pada s časom, ponastavitev, izolacija ključev,
+  pranje nad maxKeys z `size()`, clientKey prvi-vnos/presledki/prazna/manjkajoča, determinizem
+  niza klicev 2×, pravilo 30/min z 30. dovoljeno in 31. zavrnjeno).
+- `bun tests/verify/numbering-retry.ts` → **REZULTAT: 22 OK, 0 NAPAK** (nova; brez trka
+  1 klic generate, enkraten trk → 2. poskus uspe, uspe na 3. poskusu z spanjem 20,40,
+  trk vedno → padec z ZADNJO napako po natanko maxAttempts poskusih, tuja napaka P9999 in
+  napaka brez `code` → propagirana TAKOJ brez ponavljanja, MAX_NUMBER_ATTEMPTS = 5).
+- `bunx tsc --noEmit` → **0 napak** v celotnem repozitoriju (vključno z obema novima moduloma
+  in preurejenima rutama).
+- `eslint .` → izhod 0.
+- Poln sweep po spremembah: **3917 OK, 5 NAPAK** — delta = +49 (27 + 22), napake UNAČENE
+  (isti dve skripti, ista vrsta trditev kot pred spremembami; glej točko 3 in issue #1).
+- Varnostno sken zgodovine (vseh 119 commitov, vzorci `ghp_/gho_/glpat-/sk-/api key/password/
+  Bearer`): **0 zadetkov**; `.env` je v zgodovini vedno nosil samo `DATABASE_URL`.
+
+### Kaj je ostalo odprto (iskreno)
+
+- Formatiranje števil ostaja okoljsko odvisno dokler ne padla odločitev o tisočicah (issue #1);
+  CI to pokriva z baseline, ne z izmišljenim »vse zeleno«.
+- Rate limit je na nivoju procesa — prava več-instancna namestitev potrebuje skupno stanje
+  (issue #2 obravnava širše: avtentikacija prva, omejevalnik potem lahko ostane za zlorabe).
+- E2E skripti še vedno NE tečejo v CI (issue #9) — dokumentirano, ne skrito.

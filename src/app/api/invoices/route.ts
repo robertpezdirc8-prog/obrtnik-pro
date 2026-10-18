@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
+import { createWithUniqueNumber } from '@/lib/numbering';
 
 // ─── Računi — iz sprejete ponudbe ───────────────────────────
 // Raziskava (ambrook, projul, contractorforeman): najboljši
@@ -71,12 +72,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ponudba je brez postavk' }, { status: 400 });
     }
 
-    // Deterministično številčenje: RAC-LETO-NNN
+    // Deterministično številčenje: RAC-LETO-NNN. Izračun številke je v
+    // generate, da ga ob P2002 (dva sočasna izdajanja iz iste ponudbe)
+    // lahko jedro ponovi — zahteva ne pade s 500
+    // (glej src/lib/numbering.ts in tests/verify/numbering-retry.ts).
     const year = new Date().getFullYear();
-    const count = await db.invoice.count({
-      where: { number: { startsWith: `RAC-${year}-` } },
-    });
-    const number = `RAC-${year}-${String(count + 1).padStart(3, '0')}`;
+    const nextNumber = async (): Promise<string> => {
+      const count = await db.invoice.count({
+        where: { number: { startsWith: `RAC-${year}-` } },
+      });
+      return `RAC-${year}-${String(count + 1).padStart(3, '0')}`;
+    };
 
     // Rok plačila: SHRANJENA nastavitev, skozi ISTO okno kot račun v PDF in
     // evidenca terjatev. Prej je bil tu hardcodiran 30 dni, PDF pa je pisal
@@ -86,33 +92,35 @@ export async function POST(req: NextRequest) {
     const rok = readSettings(settingsRow ?? {}).paymentDays;
     const due = rok.problem ? null : new Date(Date.now() + rok.value * 86_400_000);
 
-    const invoice = await db.invoice.create({
-      data: {
-        number,
-        offerId: offer.id,
-        customerName: offer.customerName,
-        subtotal: r2(offer.subtotal),
-        vatRate: offer.vatRate,
-        vatAmount: r2(offer.vatAmount),
-        total: r2(offer.total),
-        dueAt: due,
-        // Snapshot postavk — pravi zgodovinski dokaz za e-račun (BR-16)
-        items: {
-          create: [...offer.items]
-            .sort((a, b) => a.sortOrder - b.sortOrder)
-            .map((it) => ({
-              name: it.name,
-              description: it.description,
-              quantity: it.quantity,
-              unit: it.unit,
-              unitPrice: it.unitPrice,
-              total: it.total,
-              sortOrder: it.sortOrder,
-            })),
+    const { value: invoice } = await createWithUniqueNumber(nextNumber, (number) =>
+      db.invoice.create({
+        data: {
+          number,
+          offerId: offer.id,
+          customerName: offer.customerName,
+          subtotal: r2(offer.subtotal),
+          vatRate: offer.vatRate,
+          vatAmount: r2(offer.vatAmount),
+          total: r2(offer.total),
+          dueAt: due,
+          // Snapshot postavk — pravi zgodovinski dokaz za e-račun (BR-16)
+          items: {
+            create: [...offer.items]
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((it) => ({
+                name: it.name,
+                description: it.description,
+                quantity: it.quantity,
+                unit: it.unit,
+                unitPrice: it.unitPrice,
+                total: it.total,
+                sortOrder: it.sortOrder,
+              })),
+          },
         },
-      },
-      include: { _count: { select: { items: true } } },
-    });
+        include: { _count: { select: { items: true } } },
+      }),
+    );
 
     return NextResponse.json({
       invoice: {

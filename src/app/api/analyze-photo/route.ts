@@ -10,10 +10,16 @@ import { db } from '@/lib/db';
 import type { PhotoAnalysis } from '@/lib/camera-types';
 import { analyzePhotoImage, type RgbaImage } from '@/lib/cv-engine';
 import type { PriceKey } from '@/lib/cenik';
+import { createRateLimiter, clientKeyFromHeaders, ANALYZE_RATE_RULE } from '@/lib/rate-limit';
 
 export const maxDuration = 60;
 
 const MAX_BASE64 = 7_500_000; // ≈ 5,5 MB slike
+
+// Omejevalnik zahtev: CV analiza je strojno draga, zanka jo lahko utruja.
+// 30 analiz / minuto / klienta lovi zanke, ne poštenega dela. Omejevalnik
+// je v pomnilniku procesa (iskreno zapisano v src/lib/rate-limit.ts).
+const ANALYZE_LIMITER = createRateLimiter(ANALYZE_RATE_RULE);
 
 async function suggestProducts(craft: PhotoAnalysis['craft']) {
   if (craft === 'drugo') return [];
@@ -46,6 +52,16 @@ async function decodeToPixels(dataUrl: string): Promise<RgbaImage> {
 
 export async function POST(req: Request) {
   try {
+    // Omejitev pogostosti PREJ, kot stroj sploh seže po pikslih.
+    const clientKey = clientKeyFromHeaders(req.headers);
+    const decision = ANALYZE_LIMITER.hit(clientKey, Date.now());
+    if (!decision.ok) {
+      return NextResponse.json(
+        { error: `Preveč analiz v kratkem času — poskusi znova čez ${decision.retryAfterSec} s.` },
+        { status: 429, headers: { 'Retry-After': String(decision.retryAfterSec) } },
+      );
+    }
+
     const body = (await req.json()) as { image?: unknown };
     const image = typeof body.image === 'string' ? body.image : '';
 
