@@ -2706,4 +2706,23 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   je ločen Task. (c) `.env` (lokalna pot do SQLite) in `prisma/dev*.db` NE sodijo v ta
   commit; namenoma ostanejo nespremenjeni v indeksu. (d) Merjenje na tablici zahteva, da
   zaslon ostane buden in Chrome v ospredju — brez tega Android zavrne kamero.
-- Nič pushano. Lokalni commit: ta.
+- **PUSH (izmerjeno 2026-10-18, dopolnilo po prvem zapisu).** `git push origin main:main` →
+  `e0d0934..88eb3eb`, nato `git fetch` in `git rev-list --count origin/main..HEAD` → **0**,
+  `git log --oneline -1 origin/main` → `88eb3eb`. Na GitHub je torej vseh **24** doslej
+  lokalnih commitov (od FAZA-8 do tega). Preklic prejšnje vrstice: tista trditev je bila
+  resnična ob pisanju, zdaj ne več — enako velja za zgodnejše vrstice »Nič pushano« v
+  Taskih 87, 88 in 90, ki so bile resnične takrat in jih ta dosežek velja za nazaj.
+- **ZAKAJ JE BILO POTREBNO TVOJE DEJSTVO, NE MOJE ORODJE.** Račun `robertpezdirc12-design`
+  (edini, ki ga ima Credential Manager) je imel na `robertpezdirc8-prog/obrtnik-pro`
+  izmerjeno `push: false`; trije poskusi pusha so vrnili
+  `403 denied to robertpezdirc12-design`. Rešitev ni token: poslati je bilo treba povabilo
+  na `settings/access` (Add people → Write → **Send invitation**), ki ga je računal
+  `robertpezdirc8-prog`. Povabilo sem nato sprejel programsko
+  (`PATCH /user/repository_invitations/{id}` **brez telesa** → `204`) in `push` je dobil
+  izmerjeno `push: true`. Nikakšen nov token ni nastal in nič ni bilo zapisano v datoteko,
+  commit ali `git config`.
+  Dve pasti, ki vredeta zapisa: (1) `git credential-manager github login` **ne vpraša za
+  račun** — prevzame privzeto sejo brskalnika, zato dva odprta zavihka nista zadoščala in je
+  trikrat vrnil istega `robertpezdirc12-design`; (2) isti endpoint vrne
+  `422 "action" is not a permitted key`, če pošlješ telo `{"action":"accept"}` — ta ključ
+  spada na raven organizacije, za uporabnikovo repo mora biti PATCH **brez telesa**.
