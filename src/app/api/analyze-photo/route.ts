@@ -11,6 +11,7 @@ import type { PhotoAnalysis } from '@/lib/camera-types';
 import { analyzePhotoImage, type RgbaImage } from '@/lib/cv-engine';
 import type { PriceKey } from '@/lib/cenik';
 import { createRateLimiter, clientKeyFromHeaders, ANALYZE_RATE_RULE } from '@/lib/rate-limit';
+import { requireSession } from '@/lib/auth-guard';
 
 export const maxDuration = 60;
 
@@ -51,6 +52,8 @@ async function decodeToPixels(dataUrl: string): Promise<RgbaImage> {
 }
 
 export async function POST(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     // Omejitev pogostosti PREJ, kot stroj sploh seže po pikslih.
     const clientKey = clientKeyFromHeaders(req.headers);

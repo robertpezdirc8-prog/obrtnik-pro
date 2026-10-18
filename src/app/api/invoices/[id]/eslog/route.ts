@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { eslogFilename, buildEslogXml, eslogMathIssues } from '@/lib/eslog';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── GET /api/invoices/[id]/eslog — e-račun XML ─────────────
 // Task 49: izvoz e-računa (EN 16931 / UBL 2.1 — e-SLOG 2.x; ZIERDED,
@@ -9,7 +10,9 @@ import { eslogFilename, buildEslogXml, eslogMathIssues } from '@/lib/eslog';
 // Iskrna vrata: račun brez postavk ali z neskladnimi zneski se NE izvozi
 // (409 z razlogom) — pokvarjenega e-računa ne izdajamo.
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
 

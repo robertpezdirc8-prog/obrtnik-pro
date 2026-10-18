@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── GET /api/diary-entries — seznam dnevniških vnosov ──────
 // ?offerId=... filtrira po ponudbi; ?photos=1 vrne tudi polne
@@ -8,6 +9,8 @@ import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
 // Vrstni red: dan padajoče, znotraj dneva createdAt padajoče.
 
 export async function GET(req: NextRequest) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const offerId = req.nextUrl.searchParams.get('offerId') ?? null;
     const withPhotos = req.nextUrl.searchParams.get('photos') === '1';
@@ -63,6 +66,8 @@ export async function GET(req: NextRequest) {
 // znana faza, opis 0–500, ponudba mora obstajati, fotke ≤ 6 dataURL.
 
 export async function POST(req: NextRequest) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const body = (await req.json()) as {
       day?: unknown;

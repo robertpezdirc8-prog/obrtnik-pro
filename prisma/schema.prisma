@@ -7,6 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Uporabniki (Task 93 — issue #2) ────────────────────────
+// Aplikacija je namenjena enemu obratu: prvi ustvarjeni račun je
+// lastnik, registracija se po njem ZAPRE (glej /api/auth/register).
+// Koliko montirjev in kakšne pravice, je prihodnja odločitev
+// lastnika — zato tu še ni vlog drug kot `owner`.
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String   @default("")
+  /// Format "scrypt$saltB64$hashB64" (N=2^14, r=8, p=1, 32 B) —
+  /// glej src/lib/auth.ts. Nikoli v odgovorih API.
+  passwordHash String
+  role         String   @default("owner")
+  createdAt    DateTime @default(now())
+}
+
 // ─── Katalog ────────────────────────────────────────────────
 
 model Category {

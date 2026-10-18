@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── GET /api/time-entries — seznam vnosov časovnice ────────
 // Vrstni red: dan padajoče, nato createdAt padajoče (najnovejši
 // vnos dneva zgoraj). Omejitev 500 vnosov (zadostno za sezname).
 
-export async function GET() {
+export async function GET(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const rows = await db.timeEntry.findMany({
       orderBy: [{ day: 'desc' }, { createdAt: 'desc' }],
@@ -36,6 +39,8 @@ export async function GET() {
 // opis 1–200 znakov, minute 1–1440, urna postavka > 0.
 
 export async function POST(req: NextRequest) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const body = (await req.json()) as {
       day?: unknown;

@@ -447,6 +447,29 @@ bun run dev
 bun run lint
 ```
 
+### Prijava (Task 93 — issue #2)
+
+Aplikacija ima temelj prijave: prvi zagon z uklopljeno zaščito odpre
+registracijo **lastnika** (edinega), po tem je registracija zaprta in
+ostane prijava. Gesla so v bazi kot scrypt (`scrypt$salt$hash`, N=2¹⁴),
+seja pa HttpOnly piškotek s HMAC-podpisanim žetonom (7 dni) — brez
+dodatnih odvisnosti, jedro je preverjeno v `tests/verify/auth.ts`
+(50 preverb z injektirano uro).
+
+Zaščita se uklopi z dvema vrsticama v `.env` (vzorec glej `.env.example`):
+
+```bash
+AUTH_SECRET="<izpis zgornjega ukaza>"   # skrivnost za podpis sej
+AUTH_ENFORCED=1                          # '1' = API zahteva prijavo
+```
+
+Brez teh vrstic (privzeto) je aplikacija odprta — lokalni razvoj, E2E
+preverbe in tablica tečejo kot prej. Iskreno zapisane omejitve temelja:
+odjava ne prekliče žetona (brezstanjska seja velja do poteka), piškotek
+nima `Secure` (aplikacija teče tudi čez http na LAN/adb reverse), podatki
+pa še niso obsegani po uporabniku (več-uporabniško obseganje ostaja
+odprto — issue #2).
+
 Produkcijski build (standalone):
 
 ```bash
@@ -456,7 +479,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (49)
+### Verifikacijske skripte (59)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):

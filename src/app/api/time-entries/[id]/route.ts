@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── PATCH /api/time-entries/[id] — popravki + žig obračuna ──
 // billedAt/billedRef beleži STREŽNIK (klient pošlje namen, strežnik
@@ -9,6 +10,8 @@ import { db } from '@/lib/db';
 // spreminja več v vsebini — najprej razveljavi žig.
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
     const existing = await db.timeEntry.findUnique({ where: { id } });
@@ -131,7 +134,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
 // ─── DELETE /api/time-entries/[id] ──────────────────────────
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
     const existing = await db.timeEntry.findUnique({ where: { id } });

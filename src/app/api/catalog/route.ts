@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
+import { requireSession } from '@/lib/auth-guard';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
     const categories = await db.category.findMany({

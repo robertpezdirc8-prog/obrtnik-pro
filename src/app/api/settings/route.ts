@@ -7,8 +7,11 @@ import {
   settingsProblemText,
   type SettingsField,
 } from '@/lib/settings-inputs';
+import { requireSession } from '@/lib/auth-guard';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
     let settings = await db.settings.findUnique({ where: { id: 'default' } });
@@ -23,6 +26,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const body = await req.json();
     const allowed = [

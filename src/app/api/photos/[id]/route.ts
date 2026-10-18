@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── PATCH /api/photos/[id] — posodobi meritve / viz-stanje ──
 
@@ -9,6 +10,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
     const body = (await req.json()) as { measurements?: unknown; vizState?: unknown };
@@ -31,9 +34,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
     await db.photo.delete({ where: { id } });

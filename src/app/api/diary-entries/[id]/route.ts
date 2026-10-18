@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── PATCH /api/diary-entries/[id] — urejanje vnosa ─────────
 // Vsako polje je opcijsko (samo poslana se spreminjajo); ista
@@ -10,6 +11,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
     const existing = await db.diaryEntry.findUnique({ where: { id }, select: { id: true } });
@@ -137,9 +140,11 @@ export async function PATCH(
 // ─── DELETE /api/diary-entries/[id] ─────────────────────────
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
     const existing = await db.diaryEntry.findUnique({ where: { id }, select: { id: true } });

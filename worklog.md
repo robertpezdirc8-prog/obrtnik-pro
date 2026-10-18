@@ -2793,3 +2793,91 @@ Agent: Z.ai Code (zunanji agent; dostop prek GitHub žetona lastnika `robertpezd
 - Rate limit je na nivoju procesa — prava več-instancna namestitev potrebuje skupno stanje
   (issue #2 obravnava širše: avtentikacija prva, omejevalnik potem lahko ostane za zlorabe).
 - E2E skripti še vedno NE tečejo v CI (issue #9) — dokumentirano, ne skrito.
+
+---
+
+## Task 93 (2026-10-18): avtentikacija — prijava lastnika, sejni piškotek, čuvaj vseh API rut (issue #2)
+
+Agent: Z.ai Code (zunanji agent; dostop prek GitHub žetona lastnika `robertpezdirc8-prog`)
+
+### Kaj je bilo narejeno in ZAKAJ
+
+1. **Čisto jedro brez odvisnosti** (`src/lib/auth.ts`): gesla z scrypt
+   (`scrypt$saltB64$hashB64`, N=2^14, r=8, p=1, 32 B), sejni žeton
+   `b64u(userId).expUnix.b64u(HMAC-SHA256)`, razčlenjevalnik glave `Cookie`
+   (vrednost sme vsebovati `=` — režemo na prvem enačaju), gradnja
+   `Set-Cookie` (HttpOnly, SameSite=Lax, Path=/, 7 dni) in
+   `resolveAuthSecret`. ZAKAJ ne next-auth: leži v odvisnostih, a je bil do
+   tukaj neuporabljen in na App Routerju Next 16 prinaša integracijsko
+   tveganje brez koristi — ~150 prebranih vrstic z 50 preverbami je manjše
+   tveganje kot okvir, ki ga nihče ni preveril na tej različici Nexta.
+2. **Stikalo AUTH_ENFORCED** (`src/lib/auth-guard.ts`): zaščita se uklopi
+   samo z `AUTH_ENFORCED=1` — uveljavljanje je odločitev namestitve, ne
+   kode. ZAKAJ stikalo: E2E preverbe in verify skripte kličejo API brez
+   seje; prisilna prijava bi jih vse utišala z 401. Brez spremembe `.env`
+   se NE spremeni NIČ (izmerjeno: `GET /api/offers` brez seje → 200 tudi
+   po spremembah).
+3. **Štiri nove rute** (`src/app/api/auth/`): `register` (odprta SAMO dokler
+   uporabnikov ni, nato 403 — prvi račun je lastnik), `login` (10 poskusov /
+   min / klient+e-pošta prek novega `AUTH_LOGIN_RATE_RULE`; ISTA napaka in
+   401 za neznan račun IN napačno geslo; neobstoječi uporabnik preveri geslo
+   proti dummy scryptu, da se obstoječnost računa ne da brati iz ure),
+   `logout` (piškotek z Max-Age=0) in `session` (vedno 200; `enforced`,
+   `authenticated`, `usersExist` vodita prijavni zaslon).
+4. **Čuvaj pred VSEH 27 handlerjev v 15 rutah** (offers, invoices, eslog,
+   photos, settings, cenik, catalog, time-entries, diary-entries,
+   analyze-photo): `const zavrnjen = await requireSession(req); if
+   (zavrnjen) return zavrnjen;` — ko zaščita ni uklopljena, je to vedno
+   prohoden prehod.
+5. **LoginGate** (`src/components/auth/login-gate.tsx`, vpet v `page.tsx`):
+   vpraša sejo; samo pri uklopljeni zaščiti pokaže prijavo ali (ob prvem
+   zagonu) registracijo lastnika; prijavljenim pusti aplikacijo in majhen
+   gumb »Odjava« (namerno nevsiljiv; pravi prostor v meniju je del
+   naslednje UI runde).
+6. **Model `User`** v shemi (email unique, scrypt zapis, vloga `owner`) —
+   `db:push` je dodajalen, obstoječi podatki nedotaknjeni.
+7. **Dokumentacija**: `.env.example` dobi `AUTH_SECRET` + `AUTH_ENFORCED`,
+   README dobi razdelek »Prijava (Task 93)« z iskrenimi omejitvami (odjava
+   ne prekliče žetona; piškotek brez `Secure`, ker aplikacija teče tudi
+   čez http na LAN/adb reverse; podatki še niso obsegani po uporabniku —
+   ostaja issue #2). Števec skript v README je popravljen 49 → 59 (bil je
+   zastarel že pred tem taskom).
+
+### Napaka, ki jo je izmeril tek (ne bralci)
+
+Prvi HTTP tek je pokazal `GET /api/offers` brez seje → **200** namesto 401:
+`offers/route.ts` je bil prebran za konvencije, a pozabljen med urejanja
+(zaščiten je bil samo `offers/[id]`). Popravljeno, nato sistematičen pregled
+`grep -c requireSession` po vseh 15 rutah → 27/27 handlerjev, tek ponovljen.
+
+### Dokazi (vsi izmerjeni na tem stroju, Bun 1.3.14)
+
+- `bun tests/verify/auth.ts` → **REZULTAT: 50 OK, 0 NAPAK** (nova skripta v
+  sweepu; gesla: zapis/roundtrip/sola/pokvarjeni zapisi brez metanja;
+  pravila vhoda; žeton: determinizem, napačna skrivnost, podtaknjen podpis
+  in payload, potek z injektirano uro, zajedljiva meja `exp*1000`; piškotki;
+  skrivnost z injektiranim rnd; pravilo prijave 10/min).
+- Poln sweep po spremembah: **3967 OK, 5 NAPAK** — delta = +50 (nova
+  skripta), napake NESPREMENJENE (isti 2 skripti, isti vzrok ICU, issue #1).
+- `bunx tsc --noEmit` → 0 napak; `eslint .` → izhod 0.
+- HTTP tek na ločeni bazi (next dev -p 3001, `AUTH_ENFORCED=1`): session ob
+  zagonu `{enforced:true, usersExist:false}`; register s slabim e-mailom →
+  400, s kratkim geslom → 400; register OK → 201 + piškotek; ponovna
+  registracija → 403; offers brez piškotka → 401, z piškotkom → 200; login
+  z napačnim geslom in neznan račun → isti 401 besedi; login z VELIKO
+  e-pošto → 200 (normalizacija); logout → offers 401; photos brez seje → 401.
+- Privzeti način (brez `AUTH_ENFORCED`): session `{enforced:false}`, offers
+  brez seje → **200** (nič se ni spremenilo), login še deluje; opozorilo o
+  manjkajoči skrivnosti je zaznano natanko ENKRAT.
+- Brskalnik (CDP): prijavni zaslon se prikaže, prijava skozi UI odpre celoten
+  AppShell, gumb »Odjava« vrne prijavni zaslon; 0 napak strani.
+
+### Kaj je ostalo odprto (iskreno)
+
+- Odjava ne prekliče žetona (brezstanjska seja velja do poteka, 7 dni) —
+  »odjavi vse naprave« bi zahtevalo seznam žetonov v bazi.
+- Podatki še niso obsegani po uporabniku: vsak prijavljen vidi vse —
+  multi-tenant obseganje (ownerId) je naslednji korak istega issue #2.
+- Piškotek brez `Secure` (namerno, LAN/http); ob pravi https namestitvi ga
+  je treba dodati.
+- Gumb »Odjava« je začasno lebdeč v kotu zaslona.

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadCenik, saveCenik } from '@/lib/cenik-store';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── Cenik (GET/PUT) ────────────────────────────────────────
 // Edini endpoint, ki piše denar. GET vrne SAMO vpisane cene — manjkajoč
 // ključ v odgovoru pomeni »cena ni vpisana«, ne »cena je 0 €.«
 
-export async function GET() {
+export async function GET(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const values = await loadCenik();
     return NextResponse.json({ values });
@@ -16,6 +19,8 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const body = await req.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) {

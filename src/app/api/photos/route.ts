@@ -2,13 +2,16 @@
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireSession } from '@/lib/auth-guard';
 
 export const maxDuration = 60;
 
 const MAX_BASE64 = 7_500_000;
 
 // GET — seznam zadnjih 24 fotografij (najnovejše naprej)
-export async function GET() {
+export async function GET(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const photos = await db.photo.findMany({
       orderBy: { createdAt: 'desc' },
@@ -23,6 +26,8 @@ export async function GET() {
 
 // POST — shrani fotografijo s samodejno analizo in merjenjem
 export async function POST(req: Request) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const body = (await req.json()) as {
       title?: unknown;

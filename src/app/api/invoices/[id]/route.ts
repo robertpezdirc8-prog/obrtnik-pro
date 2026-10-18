@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireSession } from '@/lib/auth-guard';
 
 // ─── PATCH /api/invoices/[id] — žigi plačil ─────────────────
 // dueAt in paidAt sta zabeleži STREŽNIŠKA (klient pošlje namen,
@@ -8,6 +9,8 @@ import { db } from '@/lib/db';
 // (vrne se na privzeti rok). Neveljaven datum → 400.
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const zavrnjen = await requireSession(req);
+  if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
     const existing = await db.invoice.findUnique({ where: { id } });

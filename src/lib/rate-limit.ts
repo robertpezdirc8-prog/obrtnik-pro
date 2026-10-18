@@ -87,3 +87,10 @@ export function clientKeyFromHeaders(headers: Headers): string {
  *  Meja lovi ZANKE, ne poštenega dela — 30 je več, kot monter analiza
  *  fotk utegne potrebovati v minuti. */
 export const ANALYZE_RATE_RULE: RateLimitRule = { windowMs: 60_000, max: 30 };
+
+/** Pravilo za /api/auth/login: 10 poskusov na minuto na klient+e-pošto.
+ *  Meja loči iskanje gesil (brute force), ne pozabljenega montera —
+ *  10 poskusov v minuti je več, kot rabi kdorkoli, ki je geslo vpisal
+ *  na prvi ali drugi poskus. Ključ vsebuje tudi e-pošto, zato polno
+ *  okno enega računa ne blokira prijave drugega na istem naslovu. */
+export const AUTH_LOGIN_RATE_RULE: RateLimitRule = { windowMs: 60_000, max: 10 };
