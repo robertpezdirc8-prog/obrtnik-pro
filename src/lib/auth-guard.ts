@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { parseCookies, resolveAuthSecret, SESSION_COOKIE, verifySessionToken } from '@/lib/auth';
+import { isSessionLive } from '@/lib/session-store';
 
 export function isAuthEnforced(): boolean {
   return process.env.AUTH_ENFORCED === '1';
@@ -50,22 +51,35 @@ export interface SessionUser {
 }
 
 /** null = dovoljeno naprej; NextResponse (401) = klient mora ustaviti.
- *  Ko zaščita ni uklopljena, je odgovor VEDNO null — nič se ne spremeni. */
+ *  Ko zaščita ni uklopljena, je odgovor VEDNO null — nič se ne spremeni.
+ *  Task 95: poleg podpisa se preveri tudi ŽIVOST seje (tabela Session,
+ *  src/lib/session-store.ts) — odjava prekliče žeton tudi na strežniku. */
 export async function requireSession(req: Request): Promise<NextResponse | null> {
   if (!isAuthEnforced()) return null;
   const token = tokenFromRequest(req);
   const session = token ? verifySessionToken(sessionSecret(), token, Date.now()) : null;
-  if (session) return null;
-  return NextResponse.json({ error: 'Zahtevana je prijava.' }, { status: 401 });
+  if (!token || !session) {
+    return NextResponse.json({ error: 'Zahtevana je prijava.' }, { status: 401 });
+  }
+  // Podpisan žeton brez žive vrstice = odjavljen/stari žeton: isti 401
+  // in ISTA beseda kot pri neznanem žetonu (iz odgovora ni razbrati
+  // razlike — isto pravilo kot pri prijavi).
+  if (!(await isSessionLive(token, Date.now()))) {
+    return NextResponse.json({ error: 'Zahtevana je prijava.' }, { status: 401 });
+  }
+  return null;
 }
 
 /** Uporabnik iz sejnega piškotka ali null. Za /api/auth/session in za
- *  prihodnje zvoke lastnika (multi-tenant obseganje, issue #2).
- *  Ne glede na AUTH_ENFORCED: veljaven piškotek je veljaven seans. */
+ *  zvoke lastnika (multi-tenant obseganje, issue #2).
+ *  Ne glede na AUTH_ENFORCED: veljaven piškotek je veljaven seans —
+ *  Task 95: TUDI živa vrstica v Session (stare 3-delne žetone po
+ *  selitvi vrne kot odjavljene; uporabnik se enkrat prijavi znova). */
 export async function sessionUser(req: Request): Promise<SessionUser | null> {
   const token = tokenFromRequest(req);
   const session = token ? verifySessionToken(sessionSecret(), token, Date.now()) : null;
-  if (!session) return null;
+  if (!token || !session) return null;
+  if (!(await isSessionLive(token, Date.now()))) return null;
   const user = await db.user.findUnique({
     where: { id: session.userId },
     select: { id: true, email: true, name: true, role: true },

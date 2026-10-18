@@ -6,6 +6,7 @@
 // prijavljen (sejni piškotek v odgovoru), saj je edini uporabnik.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'node:crypto';
 import { db } from '@/lib/db';
 import {
   createSessionToken,
@@ -14,9 +15,11 @@ import {
   normalizeEmail,
   passwordProblem,
   sessionCookie,
+  SESSION_TTL_SEC,
 } from '@/lib/auth';
 import { sessionSecret } from '@/lib/auth-guard';
 import { adoptOrphanedData } from '@/lib/tenancy';
+import { openSession } from '@/lib/session-store';
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,7 +56,11 @@ export async function POST(req: NextRequest) {
     // ali prevzeme VSE ali NIČ.
     await adoptOrphanedData(user.id);
 
-    const token = createSessionToken(sessionSecret(), user.id, Date.now());
+    // Task 95: registracija je tudi prijava — seja v bazi, preklicljiva.
+    const nonce = randomBytes(16).toString('base64url');
+    const nowMs = Date.now();
+    const token = createSessionToken(sessionSecret(), user.id, nowMs, SESSION_TTL_SEC, nonce);
+    await openSession(user.id, token, new Date(nowMs + SESSION_TTL_SEC * 1000));
     const res = NextResponse.json({ user }, { status: 201 });
     res.headers.append('Set-Cookie', sessionCookie(token));
     return res;

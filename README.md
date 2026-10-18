@@ -454,7 +454,7 @@ registracijo **lastnika** (edinega), po tem je registracija zaprta in
 ostane prijava. Gesla so v bazi kot scrypt (`scrypt$salt$hash`, N=2¹⁴),
 seja pa HttpOnly piškotek s HMAC-podpisanim žetonom (7 dni) — brez
 dodatnih odvisnosti, jedro je preverjeno v `tests/verify/auth.ts`
-(50 preverb z injektirano uro).
+(56 preverb z injektirano uro).
 
 Zaščita se uklopi z dvema vrsticama v `.env` (vzorec glej `.env.example`):
 
@@ -495,11 +495,34 @@ Preverbe: `bun tests/verify/tenancy.ts` (50 — čiste funkcije +
 statična pokritost vseh 13 poslovnih rut) in HTTP tek
 `tests/http/tenancy.ts` (30 meritev na ločeni bazi, `AUTH_ENFORCED=1`).
 
+### Seje v bazi (Task 95 — issue #2)
+
+Odjava prej le ni iztekla piškotka — podpisani žeton bi ostal veljaven
+še 7 dni. Od Taska 95 je vsak žeton vezan na vrstico v tabeli
+`Session` (v njej je SAMO SHA-256 žetona, nikoli surov), veljavnost pa
+= pravilen podpis **IN** živa vrstica:
+
+· **Odjava** prekliče vrstico: isti piškotek ponovljen → 401 (izmerjeno
+  v `tests/http/sessions.ts`).
+· **Odjavi vse naprave** (`POST /api/auth/logout-all`) prekliče vse
+  žive seje uporabnika — tablica v delavnici, telefon na terenu,
+  namizje. Gumb je v uporabniškem meniju v glavi (ob e-pošti).
+· **Prune**: prijava počisti iztekle in preklicane vrstice — tabela
+  ostane majhna brez cron-a.
+· **Nonce** v žetonu (`userId.exp.nonce.sig`): dve prijavi v isti
+  sekundi sta dva žetona, vsak preklicljiv posamezno. Stari 3-delni
+  žetoni (pred Taskom 95) po selitvi niso več veljavni — uporabnik se
+  enkrat prijavi znova.
+
+Preverbe: `bun tests/verify/sessions.ts` (50 — čista logika živosti +
+statična pokritost vseh stikov) in HTTP tek `tests/http/sessions.ts`
+(33 meritev na ločeni bazi, `AUTH_ENFORCED=1`).
+
 Iskreno zapisane omejitve temelja:
-odjava ne prekliče žetona (brezstanjska seja velja do poteka), piškotek
-nima `Secure` (aplikacija teče tudi čez http na LAN/adb reverse),
-vloge znotraj obrta (montir vs. lastnik) še ne obstajajo — vsak
-prijavljen račun je poln lastnik (issue #2 ostaja odprt za te).
+piškotek nima `Secure` (aplikacija teče tudi čez http na LAN/adb
+reverse), vloge znotraj obrta (montir vs. lastnik) še ne obstajajo —
+vsak prijavljen račun je poln lastnik (issue #2 ostaja odprt za te).
+Odjava od Taska 95 prekliče žeton (glej zgoraj).
 
 Produkcijski build (standalone):
 
@@ -510,7 +533,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (60)
+### Verifikacijske skripte (61)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):

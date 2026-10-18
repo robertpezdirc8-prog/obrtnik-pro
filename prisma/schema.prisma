@@ -37,6 +37,29 @@ model User {
   settings     Settings[]
   timeEntries  TimeEntry[]
   diaryEntries DiaryEntry[]
+  sessions     Session[]
+}
+
+// ─── Seje (Task 95 — preklic žetona) ────────────────────────
+// Žeton sam je brezstanjski (podpisan, 7 dni) — brez seznama v bazi
+// bi ostal veljaven tudi po odjavi. Tabela hrani SAMO SHA-256 žetona
+// (64-mestni hex, unikaten po zaslugi nonce-a v žetonu): uhaj baze
+// ne razkrije uporabnih žetonov. »Odjava« prekliče eno vrstico,
+// »Odjavi vse naprave« vse vrstice uporabnika; iztečene in preklicane
+// počisti ob naslednji prijavi (prune). Stare instalacije po selitvi
+// enkrat znova prijavijo uporabnika (stari 3-delni žetoni niso več
+// berljivi) — zavestna, zapisana cena preklicljivih sej.
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 celotnega žetona (hex) — surovega žetona NIKOLI ne shranjujemo.
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // ─── Katalog ────────────────────────────────────────────────

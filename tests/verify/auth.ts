@@ -6,10 +6,12 @@
  *  - gesla: scrypt zapis, pretvorba naprej/nazaj, nova sol ob vsakem
  *    klicu, pokvarjeni zapisi NIKOLI ne metejo (vedno false)
  *  - pravila vhoda: dolžina gesla (8–200), format e-pošte, normalizacija
- *  - sejni žeton: trije deli, determinizem, napačna skrivnost, pokvarjen
- *    podpis in pokvarjen payload, potek z injektirano uro, ZAJEDLJIVA
- *    meja poteka (točno ob exp*1000 je že potekel), slabi formati,
- *    prazen userId
+ *  - sejni žeton: ŠTIRI deli (userId.exp.nonce.sig, Task 95), determinizem
+ *    z istim nonce-om, drugi nonce → drug žeton, napačna skrivnost,
+ *    pokvarjen podpis in payload, PRAZEN in podtakanen nonce zavrnjen,
+ *    potek z injektirano uro, ZAJEDLJIVA meja poteka (točno ob exp*1000
+ *    je že potekel), slabi formati (tudi stari 3-delni žeton),
+ *    prazen userId, tokenExpiryMs
  *  - piškotki: razčlenjevanje glave Cookie (vrednost sme vsebovati `=`),
  *    gradnja Set-Cookie (HttpOnly, SameSite=Lax, Path=/, Max-Age=7 dni),
  *    iztek piškotka (Max-Age=0)
@@ -33,6 +35,7 @@ import {
   SESSION_COOKIE,
   SESSION_TTL_SEC,
   sessionCookie,
+  tokenExpiryMs,
   verifyPassword,
   verifySessionToken,
 } from '../../src/lib/auth';
@@ -89,22 +92,23 @@ function check(name: string, cond: boolean, info?: string): void {
   console.log('pravila vhoda:');
 }
 
-// ── 3. Sejni žeton (HMAC + injektirana ura) ──────────────────
+// ── 3. Sejni žeton (HMAC + nonce + injektirana ura) ─────────
 {
   const SK = 'skrivnost-zadolgo-vsaj-32-znakov!!';
-  const tok = createSessionToken(SK, 'user_abc', 1_000_000);
-  check('žeton ima tri dele', tok.split('.').length === 3);
+  const tok = createSessionToken(SK, 'user_abc', 1_000_000, SESSION_TTL_SEC, 'nonce-t95');
+  check('žeton ima ŠTIRI dele (userId.exp.nonce.sig)', tok.split('.').length === 4);
   check('veljaven žeton prepozna uporabnika', verifySessionToken(SK, tok, 1_000_000)?.userId === 'user_abc');
-  check('dva klica z istimi vnosi → isti žeton (determinizem)', createSessionToken(SK, 'user_abc', 1_000_000) === tok);
-  check('druga skrivnost → drug žeton', createSessionToken('druga-skrivnost-zadolgo-32-znakov!', 'user_abc', 1_000_000) !== tok);
+  check('isti nonce → isti žeton (determinizem)', createSessionToken(SK, 'user_abc', 1_000_000, SESSION_TTL_SEC, 'nonce-t95') === tok);
+  check('drugi nonce → drug žeton', createSessionToken(SK, 'user_abc', 1_000_000, SESSION_TTL_SEC, 'drugi') !== tok);
+  check('druga skrivnost → drug žeton', createSessionToken('druga-skrivnost-zadolgo-32-znakov!', 'user_abc', 1_000_000, SESSION_TTL_SEC, 'nonce-t95') !== tok);
   check('napačna skrivnost je zavrnjena', verifySessionToken('druga-skrivnost-zadolgo-32-znakov!', tok, 1_000_000) === null);
 
   // Potek: TTL 1 s, ura injektirana — brez spanja.
-  const kratek = createSessionToken(SK, 'user_abc', 1_000, 1);
+  const kratek = createSessionToken(SK, 'user_abc', 1_000, 1, 'n');
   check('žeton velja še v zadnji milisekundi', verifySessionToken(SK, kratek, 1_999) !== null);
   check('žeton po poteku je zavrnjen', verifySessionToken(SK, kratek, 2_000) === null);
   // Meja je zajedljiva: točno ob exp*1000 je žeton že potekel.
-  const meja = createSessionToken(SK, 'u', 4_000, 0);
+  const meja = createSessionToken(SK, 'u', 4_000, 0, 'n');
   check('točno na meji je žeton POTEKEL', verifySessionToken(SK, meja, 4_000) === null);
   check('milisekundo prej je še veljaven', verifySessionToken(SK, meja, 3_999) !== null);
 
@@ -114,9 +118,21 @@ function check(name: string, cond: boolean, info?: string): void {
   const drugPayload = `${Buffer.from('drug_uporabnik').toString('base64url')}${tok.slice(tok.indexOf('.'))}`;
   check('spremenjen payload (drugi userId) je zavrnjen', verifySessionToken(SK, drugPayload, 1_000_000) === null);
 
+  // Task 95: nonce je NUJEN — brez njega bi dve prijavi v isti sekundi
+  // delili isti tokenHash, preklic ene bi preklical obe.
+  const brezNonca = createSessionToken(SK, 'user_abc', 1_000_000);
+  check('prazen nonce je zavrnjen', verifySessionToken(SK, brezNonca, 1_000_000) === null);
+  const potkaniNonce = `${tok.split('.')[0]}.${tok.split('.')[1]}.${Buffer.from('drug').toString('base64url')}.${tok.split('.')[3]}`;
+  check('podtakanen nonce je zavrnjen (podpis pokrije nonce)', verifySessionToken(SK, potkaniNonce, 1_000_000) === null);
+
   check('slab format (brez pik) je zavrnjen', verifySessionToken(SK, 'abc', 0) === null);
   check('slab format (manjka tretji del) je zavrnjen', verifySessionToken(SK, 'a.b', 0) === null);
-  check('prazen userId je zavrnjen', verifySessionToken(SK, createSessionToken(SK, '', 1_000), 1_000) === null);
+  check('slab format (stari 3-delni žeton) je zavrnjen', verifySessionToken(SK, 'dXNlcl9hYmM.123.sig-znak', 0) === null);
+  check('prazen userId je zavrnjen', verifySessionToken(SK, createSessionToken(SK, '', 1_000, SESSION_TTL_SEC, 'n'), 1_000) === null);
+
+  // tokenExpiryMs (Task 95): potek iz žetona za zapis v Session.
+  check('tokenExpiryMs prebere potek', tokenExpiryMs(kratek) === 2_000);
+  check('tokenExpiryMs na slabem žetonu je null', tokenExpiryMs('abc') === null);
   console.log('žetoni:');
 }
 

@@ -2,8 +2,17 @@
 
 import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer, NotebookPen, Wallet } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer, NotebookPen, Wallet, LogOut, MonitorSmartphone, CircleUserRound } from 'lucide-react';
 import { useDraft, useView, useFieldMode, type AppView } from '@/lib/store';
+import { useSessionGate } from './auth/login-gate';
 import { Dashboard } from './dashboard';
 import { CalculatorsView } from './calculators-view';
 import { OfferEditor } from './offer-editor';
@@ -34,6 +43,10 @@ export function AppShell() {
   const draftCount = useDraft((s) => s.items.length);
   const fieldMode = useFieldMode((s) => s.enabled);
   const setFieldMode = useFieldMode((s) => s.set);
+  // Seja iz LoginGata (Task 95): pri uklopljeni zaščiti v glavi pokaže
+  // uporabniški meni (Odjava / Odjavi vse naprave); v privzetem načinu
+  // je null in meni sploh ne izriše — UI ostane brez prijave.
+  const sessionGate = useSessionGate();
 
   // Terenski način: razred na <html> — veliki gumbi, večja pisava, kontrast
   useEffect(() => {
@@ -61,6 +74,32 @@ export function AppShell() {
               Obrtnik<span className="text-primary">Pro</span>
             </button>
             <div className="flex items-center gap-2">
+              {sessionGate && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title={`Prijava: ${sessionGate.user.email}`}
+                    aria-label="Uporabniški meni — odjava"
+                  >
+                    <CircleUserRound className="h-5 w-5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64">
+                    <DropdownMenuLabel>
+                      <p className="truncate text-sm font-semibold">{sessionGate.user.name || 'Lastnik obrta'}</p>
+                      <p className="text-muted-foreground truncate text-xs font-normal">{sessionGate.user.email}</p>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => void sessionGate.odjava()} data-testid="menu-odjava">
+                      <LogOut className="h-4 w-4" />
+                      Odjava
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void sessionGate.odjaviVse()} data-testid="menu-odjava-vse">
+                      <MonitorSmartphone className="h-4 w-4" />
+                      Odjavi vse naprave
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <button
                 onClick={() => setFieldMode(!fieldMode)}
                 aria-pressed={fieldMode}

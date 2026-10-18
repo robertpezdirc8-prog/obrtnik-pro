@@ -2902,3 +2902,24 @@ Stage Summary:
 - Sweep: 4017 OK, 5 NAPAK (delta +50 = nova skripta; napake NESPREMENJENE — isti 2 skripti, isti vzrok ICU, issue #1)
 - tsc 0 napak; eslint čist; HTTP tek 30/30 OK; privzeti način nespremenjen
 - Ostaja odprto (iskreno): vloge znotraj obrta (montir vs. lastnik) ne obstajajo — vsak prijavljen je poln lastnik; številke dokumentov ostajajo globalno unikatne (ena instalacija = en obrat); odjava ne prekliče žetona (iz Taska 93)
+---
+Task ID: 95
+Agent: Z.ai Code (nadlagovalec)
+Task: Seje v bazi — odjava prekliče žeton, »Odjavi vse naprave«, gumb v glavi (issue #2 — zaključek ostankov iz Taret 93/94)
+
+Work Log:
+- Prisma shema: nov model Session (userId + onDelete Cascade, tokenHash @unique, expiresAt, revokedAt, @@index([userId])). V vrstici je SAMO SHA-256 celotnega žetona (64-mestni hex) — uhaj baze ne razkrije uporabnih žetonov. db:push dodalen, obstoječi podatki nedotaknjeni.
+- Žeton (src/lib/auth.ts): format iz 3 → 4 dele `userId.exp.nonce.sig`. Nonce (16 naključnih bajtov) je INJEKTIRAN klicatelju — dve prijavi v isti sekundi sta dva žetona, vsak preklicljiv posamezno (brez nonce-a bi delili tokenHash in preklic ene preklical obe). Prazen nonce je zavrnjen (podpis pokrije nonce, podtikanje je nemogoče). Novi čisti pripomočki: hashToken (SHA-256 hex), tokenExpiryMs (potek iz žetona za zapis), isLiveSessionRow (čista logika živosti — vrstica obstaja, hash ustreza, ni preklicana, ni potekla; meja poteka zajedljiva, isto pravilo kot pri žetonu).
+- Nova podatkovna plast src/lib/session-store.ts: openSession (create + P2002 rešitev), isSessionLive (findUnique po hashu + čista logika), revokeSession (updateMany po hashu), revokeAllSessions (updateMany po userId, samo žive), pruneSessions (deleteMany izteklih IN preklicanih — kliče prijava, tabela ostane majhna brez cron-a).
+- Čuvaj (auth-guard): requireSession IN sessionUser preverjata tudi živost — podpisan žeton brez žive vrstice je enakovreden neznanemu (ISTI 401, ISTA beseda, ne razkriva razlike). Zahteva +1 SQLite SELECT na zaščiteno zahtevo (~mikrosekunde lokalno, zapisano).
+- Rute: login (nonce + openSession + pruneSessions ob prijavi), register (openSession — registracija je prijava), logout (revokeSession + piškotek Max-Age=0; IDEMPOTENTEN, preživi padec baze — preklic je najboljše prizadevanje, piškotek VSEENO izteče), NOVA logout-all (sessionUser → 401 brez seje; revokeAllSessions; odgovor pove, koliko je preklicanih; izteče piškotek te naprave).
+- UI (zaključek omenjene „naslednje UI runde“ iz Taret 93): lebdeči gumb v kotu je IZGINIL. LoginGate izvozi kontekst seje (SessionGate: user + odjava + odjaviVse) — en sam klic /api/auth/session je vir resnice; izven ponudnika (privzeti način, E2E) je null in AppShell menija sploh ne izriše. AppShell v glavi prikaže CircleUserRound sprožilec + DropdownMenu (ime/e-pošta, Odjava, Odjavi vse naprave).
+- Selitev (iskreno zapisana): stari 3-delni žetoni (pred Taskom 95) niso več berljivi — uporabnik se po namestitvi enkrat prijavi znova. README razdelek »Seje v bazi (Task 95)« to zapiše, omejitev »odjava ne prekliče žetona« je IZBRISANA iz iskrenih omejitev.
+- Preverbe: nova tests/verify/sessions.ts (50 — hashToken, isLiveSessionRow z mejami, STATIČNO: shema/store/guard/rute/UI) + posodobljen tests/verify/auth.ts (56 — 4-delni format, nonce determinizem/različnost, prazen in podtakanen nonce, stari 3-delni žeton zavrnjen, tokenExpiryMs). Nov HTTP tek tests/http/sessions.ts (33 meritev na ločeni bazi, port 3001, AUTH_ENFORCED=1, stalna skrivnost za kovanje žetonov).
+
+Stage Summary:
+- Komit: „Task 95: seje v bazi — odjava prekliče žeton, »Odjavi vse naprave«, gumb v glavi (issue #2)“
+- Sweep: isti vzorec kot pred spremembami — edini NAPAKI ostajata craft-inputs-all (2) + settings-input-guard (3), vzrok ICU/okolje, issue #1 (delta +106 preverb = 50 sessions + 56 auth-posodobitev, vse zelene)
+- tsc 0 napak; eslint čist; HTTP: sessions 33/33 OK, tenancy regresija 30/30 OK
+- Brskalnik (agent-browser, AUTH_ENFORCED=1, port 3001): prijavni zaslon → registracija skozi UI → AppShell z menijem v glavi → meni pokaže ime/e-pošto + obe akciji → odjava skozi UI vrne prijavni zaslon → ponovna prijava deluje → privzeti način (brez AUTH_ENFORCED): aplikacija se odpre brez prijave, menija NI, offers brez seje → 200 (nič se ni spremenilo); 0 napak strani
+- Ostaja odprto (iskreno): piškotek brez `Secure` (http na LAN); vloge znotraj obrta še ne obstajajo; številke dokumentov globalno unikatne (ena instalacija = en obrat)

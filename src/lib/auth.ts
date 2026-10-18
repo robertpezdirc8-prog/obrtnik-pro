@@ -17,7 +17,7 @@
 //  - nenevarne privzete vrednosti so GLASNE: brez AUTH_SECRET se
 //    seje ne preživijo ponovnega zagona in auth-guard to opozori.
 
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 /** Ime sejnega piškotka. */
 export const SESSION_COOKIE = 'obrtnik_sessija';
@@ -82,18 +82,25 @@ export function verifyPassword(password: string, stored: string): boolean {
   return timingSafeEqual(actual, expected);
 }
 
-// ─── Sejni žeton: payload + HMAC-SHA256 ──────────────────────
-// Format: `b64u(userId).expUnix.b64u(hmac)`. Brez knjižnic, brez
+// ─── Sejni žeton: payload + nonce + HMAC-SHA256 ──────────────
+// Format (Task 95): `b64u(userId).expUnix.b64u(nonce).b64u(hmac)`.
+// Nonce (16 naključnih bajtov) je INJEKTIRAN klicatelju — zato dve
+// prijavi v isti sekundi NE oddata istega žetona in vsak žeton dobi
+// svojo vrstico v bazi (Session.tokenHash). Brez knjižnic, brez
 // šifriranja (vsebina ni občutljiva), samo nepodtavržen podpis.
 // Ura je INJEKTIRANA (`nowMs`), potek je preverljiv brez čakanja.
+// Sprememba formata (3 → 4 deli) pomeni, da žetoni iz različice
+// pred Taskom 95 niso več berljivi — uporabnik se enkrat prijavi
+// znova; to je zavestna, zapisana posledica preklicljivih sej.
 
 export function createSessionToken(
   secret: string,
   userId: string,
   nowMs: number,
   ttlSec: number = SESSION_TTL_SEC,
+  nonce: string = '',
 ): string {
-  const payload = `${toB64u(userId)}.${Math.floor(nowMs / 1000) + ttlSec}`;
+  const payload = `${toB64u(userId)}.${Math.floor(nowMs / 1000) + ttlSec}.${toB64u(nonce)}`;
   const sig = createHmac('sha256', secret).update(payload).digest('base64url');
   return `${payload}.${sig}`;
 }
@@ -104,10 +111,10 @@ export function verifySessionToken(
   nowMs: number,
 ): { userId: string } | null {
   const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  const [userIdB64, expStr, sig] = parts;
+  if (parts.length !== 4) return null;
+  const [userIdB64, expStr, nonceB64, sig] = parts;
   const expected = createHmac('sha256', secret)
-    .update(`${userIdB64}.${expStr}`)
+    .update(`${userIdB64}.${expStr}.${nonceB64}`)
     .digest('base64url');
   const sigBuf = Buffer.from(sig, 'base64url');
   const expBuf = Buffer.from(expected, 'base64url');
@@ -119,7 +126,52 @@ export function verifySessionToken(
   if (!Number.isInteger(exp) || exp * 1000 <= nowMs) return null;
   const userId = fromB64u(userIdB64);
   if (!userId) return null;
+  // Nonce je nujen: brez njega bi dve prijavi v isti sekundi delili
+  // isti žeton (in isti tokenHash v bazi) — preklic enega bi preklical
+  // oba. Prazen nonce je torej pokvarjen žeton, ne dopustna oblika.
+  const nonce = fromB64u(nonceB64);
+  if (!nonce) return null;
   return { userId };
+}
+
+/** Potek žetona kot milisekunda (exp Unix sekund × 1000) ali null,
+ *  če žetona ni mogoče prebrati — Session zapis ga shrani ob odprtju. */
+export function tokenExpiryMs(token: string): number | null {
+  const parts = token.split('.');
+  if (parts.length !== 4) return null;
+  const exp = Number(parts[1]);
+  return Number.isInteger(exp) && exp > 0 ? exp * 1000 : null;
+}
+
+// ─── Seje v bazi (Task 95): čista plast ──────────────────────
+// V bazi shranjujemo SAMO SHA-256 žetona (hex), nikoli surovega —
+// uhaj baze ne razkrije uporabnih žetonov. Žeton je veljaven, kadar
+// je podpis ustrezen (auth-guard) IN obstaja živa vrstica: ni
+// preklicana in še ni potekla.
+
+/** SHA-256 celotnega žetona kot 64-mestni hex — ključ v tabeli Session. */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/** Najmanjša oblika vrstice, ki jo čista logika potrebuje (baza ali preverba jo poda). */
+export interface SessionRowLike {
+  tokenHash: string;
+  expiresAt: Date | { getTime(): number };
+  revokedAt: Date | { getTime(): number } | null;
+}
+
+/** Je vrstica seje ŽIVA? Čista funkcija — preverljiva brez baze.
+ *  Meja poteka je zajedljiva (isto pravilo kot pri žetonu). */
+export function isLiveSessionRow(
+  row: SessionRowLike | null | undefined,
+  token: string,
+  nowMs: number,
+): boolean {
+  if (!row) return false;
+  if (row.tokenHash !== hashToken(token)) return false;
+  if (row.revokedAt !== null && row.revokedAt !== undefined) return false;
+  return row.expiresAt.getTime() > nowMs;
 }
 
 // ─── Piškotki ────────────────────────────────────────────────

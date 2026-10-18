@@ -4,13 +4,14 @@
 // Vpraša /api/auth/session in odloči:
 //  - zaščita ni uklopljena (AUTH_ENFORCED≠1) → aplikacija takoj,
 //    brez utripanja prijave (privzeto stanje razvoja in E2E);
-//  - prijavljen → aplikacija + majhen gumb za odjavo;
+//  - prijavljen → aplikacija + kontekst seje (Task 95): AppShell v
+//    glavi pokaže uporabniški meni (Odjava, Odjavi vse naprave);
 //  - uveljavljeno in neprijavljen → prijava ali (ob prvem zagonu,
 //    ko uporabnikov še ni) registracija lastnika.
 // Dokler stanja ne vemo, ne bliskamo prijave — prikaže se isto
 // »Nalagam Obrtnik Pro…« stojalo, ki ga rabi že dinamični uvoz.
 
-import { useCallback, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -27,6 +28,27 @@ interface SessionInfo {
   authenticated: boolean;
   usersExist: boolean;
   user?: { email: string; name: string; role: string };
+}
+
+// ─── Kontekst seje (Task 95) ─────────────────────────────────
+// LoginGate JE edini vir resnice o seji (en klic /api/auth/session);
+// AppShell prek konteksta prikaže meni in kliče odjavo brez svojega
+// iskanja. Izven ponudnika (privzeti način, E2E) je null → UI gumba
+// ne izriše, pravilno: tam prijava sploh ne obstaja.
+export interface SessionGate {
+  user: { email: string; name: string; role: string };
+  /** Odjavi TA napravo (prekliče žeton v bazi + izteče piškotek). */
+  odjava: () => Promise<void>;
+  /** Odjavi VSE naprave (prekliče vse žive seje uporabnika). */
+  odjaviVse: () => Promise<void>;
+}
+
+const SessionGateContext = createContext<SessionGate | null>(null);
+
+/** Vrne sejo iz LoginGata ali null — klicatelj (AppShell) samo utiša
+ *  uporabniški meni, ko prijava ni uklopljena. */
+export function useSessionGate(): SessionGate | null {
+  return useContext(SessionGateContext);
 }
 
 export function LoginGate({ children }: { children: React.ReactNode }) {
@@ -85,25 +107,27 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const odjaviVse = async (): Promise<void> => {
+    try {
+      await fetch('/api/auth/logout-all', { method: 'POST' });
+    } finally {
+      setStatus(null);
+      await nalozi();
+    }
+  };
+
   if (!status || !status.enforced) return <>{children}</>;
 
-  if (status.authenticated) {
+  if (status.authenticated && status.user) {
+    const gate: SessionGate = {
+      user: status.user,
+      odjava,
+      odjaviVse,
+    };
     return (
-      <>
+      <SessionGateContext.Provider value={gate}>
         {children}
-        {/* Namenoma nevsiljiv gumb za odjavo (Task 93): pravi prostor
-            v uporabniškem meniju je del naslednje UI runde, tu je samo,
-            da odjava sploh obstaja brez curl-a. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void odjava()}
-          className="fixed bottom-2 right-2 z-50 h-9 opacity-30 transition-opacity hover:opacity-100"
-          title={`Odjava${status.user ? ` (${status.user.email})` : ''}`}
-        >
-          Odjava
-        </Button>
-      </>
+      </SessionGateContext.Provider>
     );
   }
 

@@ -6,16 +6,19 @@
 // obstoječnost računa razbrala iz časa odgovora, ne iz besedila.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'node:crypto';
 import { db } from '@/lib/db';
 import {
   createSessionToken,
   hashPassword,
   normalizeEmail,
   sessionCookie,
+  SESSION_TTL_SEC,
   verifyPassword,
 } from '@/lib/auth';
 import { AUTH_LOGIN_RATE_RULE, clientKeyFromHeaders, createRateLimiter } from '@/lib/rate-limit';
 import { sessionSecret } from '@/lib/auth-guard';
+import { openSession, pruneSessions } from '@/lib/session-store';
 
 const limiter = createRateLimiter(AUTH_LOGIN_RATE_RULE);
 
@@ -49,7 +52,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'E-pošta ali geslo ni pravilna.' }, { status: 401 });
     }
 
-    const token = createSessionToken(sessionSecret(), user.id, Date.now());
+    // Task 95: nonce (16 naključnih bajtov) pomeni, da sta dve prijavi
+    // v isti sekundi dva različna žetona — vsak dobi svojo vrstico v
+    // bazi in je preklicljiv posamezno. Ob prijavi tudi počistimo
+    // iztečene in preklicane seje — tabela ostane majhna brez cron-a.
+    const nonce = randomBytes(16).toString('base64url');
+    const token = createSessionToken(sessionSecret(), user.id, Date.now(), SESSION_TTL_SEC, nonce);
+    const nowMs = Date.now();
+    await openSession(user.id, token, new Date(nowMs + SESSION_TTL_SEC * 1000));
+    await pruneSessions(nowMs);
     const res = NextResponse.json({
       user: { email: user.email, name: user.name, role: user.role },
     });
