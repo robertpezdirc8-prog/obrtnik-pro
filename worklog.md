@@ -2477,3 +2477,82 @@ Naslednji korak po terasi: ista napaka je bila pri balkonskih ograjah, tam v huj
   `cenik-fixture.ts`, ki sam nima trditev); `tsc` 0; `eslint` 0 zapisov.
 - Posnetka dokazov: `cenik-01-prazen-zacetek.png` (54 praznih polj, nič »0,00 €«) in
   `cenik-08-izbris-spet-zapre.png` (izbrisana montaža → dokument spet zaprt, količine ostale).
+
+## Task 89 — KAJ KAMERA ZMORE: zmogljivost modula izmerjena v brskalniku (2026-10-18)
+
+- **KAJ JE BILO NAREJENO.** Za kamero je doslej skrbelo 29 skriptov v `tests/verify`
+  (izmerjeno danes: **1874 trditev, 0 NAPAK** od skupnih 3873) — vsi dokazujejo, da so
+  ALGORITMI pravilni: fotomontaža 391, večpogled 362, merilni list, razmiki, glasovni
+  vnos. V brskalniku je kamero doslej odprlo pet E2E testov, a vsi v eni podpoti:
+  fotomontaža (2×), 3D model, razpored stebrov, dvotapni predlog. Živi zajem
+  (`getUserMedia`) ni v nobenem od njih — merjeno z `grep`: 0 zadetkov. Novi
+  `tests/e2e-kamera-zmogljivosti.ts` meri drugo plat — kaj monter DEJANSKO dobi, ko
+  odpre kamero: 105 meritev v živem Chromiumu (headless, z lažno kamero), vseh sedem
+  načinov odprtih in posnetih, živi zajem → analiza → galerija → baza, ročni izmer iz
+  laserja, denarna vrata iz Taska 88, padla kamera, padla analiza, ponovni zagon.
+  `src/` NI spremenjen: ta Task je izvedba in meritev, ne popravek.
+- **TEST POVE TUDI, KAJ NI.** Dva izhoda, ne eden: `check` = zmožnost, ki danes
+  deluje; `gap` = zmožnost, ki je IZMERJENO ni. Manjki se izpišejo kot `! MANJKO` in
+  NISO šteti med napake, da številka ne laže v nobeno smer. Ko izdelek zmožnost
+  dobi, se vrstica sama preobrne v ✓ brez posega v test. Sedaj: **98 OK, 0 NAPAK,
+  7 IZMERJENIH MANJKOV**, izhod 0, štirje zaporedni zagoni identično (pred in po
+  urejanju besedila).
+- **P0, KI GA UJAME PRVI KLIK: ŽIVI ZAJEM VRNI PRAZNO SLIKO.** Monter stisne
+  sprožilec, aplikacija pokaže predogled in oceno kakovosti — v predogledu pa je
+  `data:,` (6 bajtov, 0 pikslov), analiza živega kadra pa dobi **HTTP 400** z
+  odgovorom »Manjka veljavna fotografija (dataURL).«. Razlog je vrstni red v
+  `src/components/camera/photo-capture.tsx:153-158`: `captureFrame()` pokliče
+  `stopStream()` (ta na :121 nastavi `video.srcObject = null`) PRED
+  `compressVideo(video)`. Merjeno v brskalniku z enkratno sondo (zdaj izbrisano):
+  samoustavitev tokov pusti `videoWidth` pri 1920×1440, odklop `srcObject` pa ga
+  zniža na 0×0 → platno 0×0 → `toDataURL` vrne `data:,`. Popravek je vrstni red:
+  kader ZAJEMI pred ustavitvijo, natanko kot to že počne `live-ar.tsx`
+  (`compressElement(video, video.videoWidth, video.videoHeight)`).
+  Pot z nalaganjem (monter izbere fotko iz galerije telefona) DELUJE v celoti: analiza
+  do rezultata, fotka v bazi z analizo in svojim seznamom meritev, galerija, projekt,
+  merilni list.
+- **MONTER NE IZVE, ZAKAJ JE NIČ.** Trije izmerjeni manjki so isti boleč vzorec:
+  aplikacija ve, zakaj je kaj spodletelo, in tega ne izpiše. Razlog, da kamera
+  ni zažela, se shrani v `camError` (76), razlog zavrnitve analize v `error` (80),
+  izbira fotke pa se ob padcu počisti (81) — vsa tri sporočila živijo v JS stanju,
+  prikazana pa so samo znotraj pogoja `tab === 'analiza' && phase === 'result' &&
+  result && photoUrl` (`camera-view.tsx:868`), ki ga prazen kader nikoli ne doseže.
+  Monter je vržen na čist zaslon za zajem (to je prav) brez besede o tem, kaj je
+  narobe (to ni prav).
+- **MERE IZ LASERJA IZGINEJO OB IZHODU IZ MODULA.** Korak 36 doda mero 800 cm, korak
+  63 jo vidi; po obisku Cenika in vrnitvi je na seznamu samo še mera iz tega
+  obiska (`Dodane meritve (1) … Laser 1 3,50 m`). Stanje je lokalni `useState` v
+  `camera-view.tsx:116` (`auxMeasures`), fotke pa živijo v bazi — monter, ki na
+  gradbišču zapre modul, izgubi mere, fotke pa mu ostanejo.
+- **SLOVENŠČINA, KI JO VIDI MONTER: NESKLONJENE MNOŽINE.** `Dodane meritve (1)`,
+  `Skupaj 1 meritev`, `1 preskočenih`, `1 postavk` (`camera-view.tsx:1303`, `:1366`,
+  `:1403`, `:1457`) — medtem ko isti zaslon na `:1408` že uporablja `plural()` z
+  vključeno dvojino. Za denar smo to zaklenili v Tasku 88; denarne poti kamera nima,
+  ima pa mersko.
+- **ZMOŽNOSTI, KI IH BRKALNIK NI DAL PREIZKUSITI.** Web Bluetooth (60, 61, 68), Web
+  Speech (69, 70) in pravi AR (71) so v tem brskalniku onemogočeni — test je moral
+  meriti ravno to, kaj aplikacija REČE, ko jih NI, in aplikacija v vseh treh primerih
+  pove, katera ročna pot ostane. Enako je izmerjena odsotna libela (15): senzorja ni
+  in aplikacija to pove. To ni slabost testa: namizni brskalnik je najslabši primer,
+  ki ga monter lahko dobi.
+- **Ugotovitev, ki je test ni pokazala: CV NE VERJAME IMENAM DATOTEK.** Aplikacija
+  sama streže `public/crafts/*.jpg`. Merjeno: `keramika.jpg` → prepoznana kot
+  **ograje** (zaupanje 89), `ograje.jpg` → **drugo**, `stopnice.jpg` → **wpc-terasa**.
+  Test zato uporablja `keramika.jpg` (dejavnost je za projekt vseeno dokazana), imena
+  pa ostanejo zavajajoča za vsakršno trditev o natančnosti prepoznavanja.
+- **KAMERA JE OSTALA NA ZADNJI NOGI VNOSNIH OKEN.** Merjeno: 22 od 28
+  `type="number"` polj v CELI aplikaciji živi v kameri (11 datotek), nekatera imajo
+  DOM `min`/`max` (`viz-panel.tsx:1466-1467` 30–5000, `post-layout-panel.tsx:323-324`
+  30–300, `photo-canvas.tsx:863`/`:915`/`:925`, `room-sketch.tsx:162`/`:235`,
+  `laser-panel.tsx:561`) — isti tihi usek, ki sta ga Taska 84 in 85 prepovedala v
+  kalkulatorjih in ga `settings-input-guard.ts` zdaj varuje. Kamera v tisto varovanje
+  ni bila vključena, zato ga ta Task samo našteje in ne popravlja.
+- IZMERJENO: `tests/e2e-kamera-zmogljivosti.ts` **98 OK / 0 NAPAK / 7 IZMERJENIH
+  MANJKOV**, exit 0, štirim zagonom zapored enako; 14 dokaznih posnetkov preverjenih po
+  velikosti NA DISKU (153 kB–390 kB, `kamera-00-zajem.png` …
+  `kamera-13-prazni-zivi-kader.png`); **0 konzolnih izjem** v celotnem zagonu;
+  kamerški podrazred `tests/verify` **1874 OK / 0 NAPAK** v 29 skriptih; sweep
+  **3873 OK / 0 NAPAK** v 48/56 skriptih; `tsc` 0; `eslint` 0 zapisov.
+- V `src/` ni spremenjena nobena vrstica, nič pushano, nič pobrisano. Predlogi
+  popravkov (P0 vrstni red kadra, prikaz razloga v fazi zajema, obstanek mer, skloni
+  množin) so napisani in čakajo na odločitev. Lokalni commit: ta.
