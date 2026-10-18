@@ -25,12 +25,18 @@ import {
   type PipelineOffer,
 } from '@/lib/offer-pipeline';
 import { CraftImage } from './craft-image';
+import { useSessionGate } from './auth/login-gate';
+import { normalizeRole } from '@/lib/permissions';
 import type { InvoiceDTO, OfferDTO } from '@/lib/types';
 
 export function Dashboard() {
   const setView = useView((s) => s.setView);
   const setActiveCraft = useView((s) => s.setActiveCraft);
   const draftCount = useDraft((s) => s.items.length);
+  // Vloga (Task 97): montir vidi ponudbe (GET), NE pa računov in
+  // lastniških akcij. Brez seje (privzeti način) = lastnik, kot do zdaj.
+  const sessionGate = useSessionGate();
+  const isMontir = normalizeRole(sessionGate?.user.role) === 'montir';
   const [offers, setOffers] = useState<OfferDTO[] | null>(null);
   const [invoices, setInvoices] = useState<InvoiceDTO[] | null>(null);
 
@@ -39,11 +45,15 @@ export function Dashboard() {
       .then((r) => r.json())
       .then((d) => setOffers(d.offers ?? []))
       .catch(() => setOffers([]));
-    fetch('/api/invoices')
-      .then((r) => r.json())
-      .then((d) => setInvoices(d.invoices ?? []))
-      .catch(() => setInvoices([]));
-  }, []);
+    // Montir: računov ne sprašuj (403 je garancija, ne napaka) —
+    // odsek Terjatve je zanj skrit, stanje ostane null (nič ne izmišljujem).
+    if (!isMontir) {
+      fetch('/api/invoices')
+        .then((r) => r.json())
+        .then((d) => setInvoices(d.invoices ?? []))
+        .catch(() => setInvoices([]));
+    }
+  }, [isMontir]);
 
   useEffect(() => {
     load();
@@ -101,12 +111,14 @@ export function Dashboard() {
               <ScanSearch className="mr-2 h-5 w-5" />
               Fotografiraj — samodejna analiza
             </Button>
-            <Button size="lg" variant="outline" className="min-h-12" onClick={() => { setActiveCraft(null); setView('kalkulatorji'); }}>
-              <ClipboardList className="mr-2 h-5 w-5" />
-              Ročni izračun
-            </Button>
+            {!isMontir && (
+              <Button size="lg" variant="outline" className="min-h-12" onClick={() => { setActiveCraft(null); setView('kalkulatorji'); }}>
+                <ClipboardList className="mr-2 h-5 w-5" />
+                Ročni izračun
+              </Button>
+            )}
           </div>
-          {draftCount > 0 && (
+          {draftCount > 0 && !isMontir && (
             <button
               onClick={() => { setActiveCraft(null); setView('kalkulatorji'); }}
               className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
@@ -220,22 +232,26 @@ export function Dashboard() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {o.status === 'draft' && (
+                        {!isMontir && o.status === 'draft' && (
                           <Button size="sm" variant="outline" className="min-h-9 h-9" onClick={() => patchOffer(o.id, { status: 'sent' })}>
                             Poslana
                           </Button>
                         )}
-                        <Button size="sm" variant="outline" className="min-h-9 h-9 border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300" onClick={() => patchOffer(o.id, { status: 'accepted' })}>
-                          <Check className="mr-1 h-3.5 w-3.5" />
-                          Sprejeta
-                        </Button>
-                        <Button size="sm" variant="outline" className="min-h-9 h-9 border-red-600/30 text-red-700 hover:bg-red-50 dark:text-red-300" onClick={() => patchOffer(o.id, { status: 'rejected' })}>
-                          <X className="mr-1 h-3.5 w-3.5" />
-                          Zavrnjena
-                        </Button>
-                        <Button size="sm" variant="ghost" className="min-h-9 h-9 text-xs" onClick={() => patchOffer(o.id, { followUpAt: suggestIso(3) })}>
-                          +3 dni
-                        </Button>
+                        {!isMontir && (
+                          <>
+                            <Button size="sm" variant="outline" className="min-h-9 h-9 border-emerald-600/40 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300" onClick={() => patchOffer(o.id, { status: 'accepted' })}>
+                              <Check className="mr-1 h-3.5 w-3.5" />
+                              Sprejeta
+                            </Button>
+                            <Button size="sm" variant="outline" className="min-h-9 h-9 border-red-600/30 text-red-700 hover:bg-red-50 dark:text-red-300" onClick={() => patchOffer(o.id, { status: 'rejected' })}>
+                              <X className="mr-1 h-3.5 w-3.5" />
+                              Zavrnjena
+                            </Button>
+                            <Button size="sm" variant="ghost" className="min-h-9 h-9 text-xs" onClick={() => patchOffer(o.id, { followUpAt: suggestIso(3) })}>
+                              +3 dni
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </li>
                   ))}
@@ -246,7 +262,9 @@ export function Dashboard() {
         )}
       </section>
 
-      {/* Terjatve — odprto/zapadlo/ta mesec + opomniki plačil (Mahnwesen) */}
+      {/* Terjatve — samo LASTNIK (montir računov ne vidi: 403 je
+          garancija, tu pa jih sploh ne izrišemo) */}
+      {!isMontir && (
       <section aria-label="Terjatve" className="rounded-2xl border bg-card">
         <div className="flex flex-col gap-1 p-4 pb-3 sm:flex-row sm:items-center sm:justify-between sm:p-6 sm:pb-4">
           <div>
@@ -379,8 +397,11 @@ export function Dashboard() {
           </div>
         )}
       </section>
+      )}
 
-      {/* Dejavnosti */}
+      {/* Dejavnosti — montažna navodila in odmerek so lastniško orodje
+          za odmero ponudbe; montir delo vidi v ponudbah */}
+      {!isMontir && (
       <section>
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -411,6 +432,7 @@ export function Dashboard() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Zadnje ponudbe */}
       <section>
@@ -422,9 +444,11 @@ export function Dashboard() {
         ) : offers.length === 0 ? (
           <div className="rounded-xl border border-dashed p-8 text-center">
             <p className="text-sm text-muted-foreground mb-3">
-              Še ni ponudb — prvo ustvari z kalkulatorjem odmerka.
+              {isMontir
+                ? 'Še ni ponudb — lastnik jih ustvari s kalkulatorjem odmerka.'
+                : 'Še ni ponudb — prvo ustvari z kalkulatorjem odmerka.'}
             </p>
-            <Button onClick={() => setView('kalkulatorji')}>Začni</Button>
+            {!isMontir && <Button onClick={() => setView('kalkulatorji')}>Začni</Button>}
           </div>
         ) : (
           <div className="space-y-2">

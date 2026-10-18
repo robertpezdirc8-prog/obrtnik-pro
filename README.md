@@ -549,11 +549,47 @@ injektirano mapo + statična pokritost) in HTTP tek
 v `/tmp` — merjene prave datoteke, bajti 1:1 po sha256, regist ↔ disk
 1:1 na koncu).
 
+### Vloge znotraj obrta (Task 97 — issue #2)
+
+Do zdaj je bil vsak prijavljen račun POLN lastnik. Od Taska 97:
+
+· **Dve vlogi**: `owner` (lastnik obrta) in `montir` (delavec na terenu).
+  Montir se najprej registrira ali pa mu račun ustvari lastnik; OBSEG
+  pa dobi šele, ko ga lastnik doda v svoj obrt (tabela `Member`,
+  Nastavitve → Ekipa, dodajanje po e-pošti).
+· **Matrika dovoljenj** (`src/lib/permissions.ts` — enoten vir, deny-by-
+  default): montir SME brati ponudbe/fotke, PIŠE ure, dnevnik in fotke
+  (na terenu), uporablja analizo fotk; NE VIDI računov, cenika,
+  kataloga, nastavitev in ekipe. Vsaka izjema bi morala biti izrecna —
+  nepoznana ruta je za montirja ZAVRJENA.
+· **Montir brez obrta je zavrnjen ŽE pri branju** (403 z jasnim
+  sporočilom o povabilu). Zakaj ne "prazni seznami": legacy obseg brez
+  seje ne filtrira (E2E potrebuje), prijavljen človek pa bi tak videl
+  TUJE podatke — varneje je zavreti.
+· **Ekipa rute** (`/api/team`, `/api/team/[id]`): ALWAYS zaščiteni s
+  sejo (brez prijave 401). Lastnik montirja DODA po e-pošti — če račun
+  še ne obstaja, ga ustvari z začasnim geslom (registracija ostane
+  ZAPRTA, ena namestitev = en obrt); če obstaja (montir brez obrta),
+  ga samo poveže. Odstranitev = takojšnja izguba obsega; zgodovina
+  montirjevega dela (ure, dnevnik, fotke) OSTANE v obrtu.
+· **UI po vlogi**: montir vidi le Domov/Kamera/Ponudbe/Časovnica/
+  Dnevnik, meni v glavi pokaže "Vloga: montir", dashboard brez računov
+  in kalkulatorjev; lastnik v Nastavitvah vodi ekipo. API je pravilo
+  (403), UI le priročnik.
+
+Preverbe: `bun tests/verify/permissions.ts` (49 — točna matrika,
+normalizacija vlog, STATIČNO: vseh 29 poslovnih handlerjev kliče
+`requireAccess` z resursom+metodo, shema, ekipa rute, UI) in HTTP tek
+`tests/http/team.ts` (59 meritev: dodajanje/povezava/odstranjevanje,
+401/403/404, obseg po članstvu, ownerId na montirjevih zapisih,
+zgodovina ostane).
+
 Iskreno zapisane omejitve temelja:
 piškotek nima `Secure` (aplikacija teče tudi čez http na LAN/adb
-reverse), vloge znotraj obrta (montir vs. lastnik) še ne obstajajo —
-vsak prijavljen račun je poln lastnik (issue #2 ostaja odprt za te).
-Odjava od Taska 95 prekliče žeton (glej zgoraj).
+reverse); montir je v v1 največ v enem obrtu in uporabnika z vlogo
+"owner" ni mogoče dodati kot montirja; številke dokumentov ostajajo
+GLOBALNO unikatne (ena instalacija = en obrt). Odjava od Taska 95
+prekliče žeton (glej zgoraj).
 
 Produkcijski build (standalone):
 
@@ -564,7 +600,7 @@ bun run start   # .next/standalone/server.js
 
 ## Testi in dokazi
 
-### Verifikacijske skripte (62)
+### Verifikacijske skripte (64)
 
 Stoje v `tests/verify/` in se poganjajo posamezno z Bunom (sintetične slike,
 brez brskalnika):

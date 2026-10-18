@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── PATCH /api/invoices/[id] — žigi plačil ─────────────────
@@ -10,7 +10,7 @@ import { ownScope, resolveOwner } from '@/lib/tenancy';
 // (vrne se na privzeti rok). Neveljaven datum → 400.
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'invoices', 'PATCH');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;

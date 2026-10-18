@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadCenik, saveCenik } from '@/lib/cenik-store';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { resolveOwner } from '@/lib/tenancy';
 
 // ─── Cenik (GET/PUT) ────────────────────────────────────────
@@ -8,7 +8,7 @@ import { resolveOwner } from '@/lib/tenancy';
 // ključ v odgovoru pomeni »cena ni vpisana«, ne »cena je 0 €.«
 
 export async function GET(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'cenik', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     // Cenik je denar obrta (Task 94): prijavljen vidi svoje cene;
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 }
 
 export async function PUT(req: NextRequest) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'cenik', 'PUT');
   if (zavrnjen) return zavrnjen;
   try {
     const body = await req.json();

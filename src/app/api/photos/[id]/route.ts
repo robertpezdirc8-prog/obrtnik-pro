@@ -8,7 +8,7 @@
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 import {
   deletePhotoFile,
@@ -55,7 +55,7 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'photos', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
@@ -111,7 +111,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'photos', 'PATCH');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
@@ -143,7 +143,7 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'photos', 'DELETE');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;

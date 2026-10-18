@@ -9,9 +9,11 @@ datasource db {
 
 // ─── Uporabniki (Task 93 — issue #2) ────────────────────────
 // Aplikacija je namenjena enemu obratu: prvi ustvarjeni račun je
-// lastnik, registracija se po njem ZAPRE (glej /api/auth/register).
-// Koliko montirjev in kakšne pravice, je prihodnja odločitev
-// lastnika — zato tu še ni vlog drug kot `owner`.
+// lastnik. Task 97 (vloge): poleg lastnika (`owner`) obstaja tudi
+// `montir` — registrira se sam, OBSEG pa dobi šele, ko ga lastnik
+// doda v svoj obrt (tabela Member). Pravice so v matriki
+// src/lib/permissions.ts — enoten vir resnice, testiran v
+// tests/verify/permissions.ts.
 //
 // Task 94 (obseganje): vsi poslovni podatki (ponudbe, računi,
 // fotografije, cenik, nastavitve, časovnica, dnevnik) nosijo
@@ -38,6 +40,34 @@ model User {
   timeEntries  TimeEntry[]
   diaryEntries DiaryEntry[]
   sessions     Session[]
+
+  /// Task 97: članstva — obrti, v katerih ta uporabnik dela kot montir.
+  memberships Member[] @relation("MemberUser")
+  /// Task 97: člani njegovega obrta (samo za role "owner").
+  teamMembers Member[] @relation("OwnerMembers")
+}
+
+// ─── Članstva (Task 97 — vloge znotraj obrta) ───────────────
+// Montir je uporabnik z role "montir", ki mu lastnik da obseg
+// svojih podatkov z vrstico Member (dodajanje po e-pošti prek
+// /api/team). Brez članstva montir vidi PRAZNE sezname (ničesar
+// ne podeduje, ničesar ne prevzame). Izbris članstva = takojšen
+// izgubobsega (naslednja zahteva je prazna/403 kot obvelja).
+// V1 omejitvi, iskreno: montir je lahko v največ enem obrtu
+// (findFirst po userId) in uporabnika z role "owner" ni mogoče
+// dodati kot montirja (lastnik ostane lastnik svojih podatkov).
+model Member {
+  id        String   @id @default(cuid())
+  /// Lastnik obrta, ki je člana dodal.
+  ownerId   String
+  owner     User     @relation("OwnerMembers", fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Montir — uporabnik z role "montir".
+  userId    String
+  user      User     @relation("MemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([ownerId, userId])
+  @@index([userId])
 }
 
 // ─── Seje (Task 95 — preklic žetona) ────────────────────────

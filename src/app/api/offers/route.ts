@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { readSettings, settingsProblemText } from '@/lib/settings-inputs';
 import { createWithUniqueNumber } from '@/lib/numbering';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 interface IncomingItem {
@@ -27,7 +27,7 @@ async function nextOfferNumber(): Promise<string> {
 }
 
 export async function GET(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'offers', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     const uid = await resolveOwner(req);
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: NextRequest) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'offers', 'POST');
   if (zavrnjen) return zavrnjen;
   try {
     const body = await req.json();

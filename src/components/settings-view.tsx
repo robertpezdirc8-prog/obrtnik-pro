@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Save, Building, HardHat } from 'lucide-react';
+import { Loader2, Save, Building, HardHat, Users, UserPlus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useFieldMode } from '@/lib/store';
-import { formatNum } from '@/lib/format';
+import { useSessionGate } from './auth/login-gate';
+import { normalizeRole } from '@/lib/permissions';
+import { formatDate, formatNum } from '@/lib/format';
 import type { SettingsDTO } from '@/lib/types';
 import {
   numberProblemSentence,
@@ -33,6 +35,10 @@ export function SettingsView() {
   const [saving, setSaving] = useState(false);
   const fieldMode = useFieldMode((s) => s.enabled);
   const setFieldMode = useFieldMode((s) => s.set);
+  // Ekipa (Task 97): kartica je vidna SAMO prijavljenemu lastniku —
+  // v privzetem načinu (brez seje) ni ekipe, ker ni komu pripisati.
+  const sessionGate = useSessionGate();
+  const isOwnerSession = sessionGate !== null && normalizeRole(sessionGate.user.role) === 'owner';
 
   useEffect(() => {
     fetch('/api/settings')
@@ -157,7 +163,6 @@ export function SettingsView() {
           Ti podatki se izpišejo na PDF ponudbah.
         </p>
       </div>
-
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -211,6 +216,8 @@ export function SettingsView() {
         </CardContent>
       </Card>
 
+      {isOwnerSession && <TeamCard />}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -242,5 +249,201 @@ export function SettingsView() {
         Shrani nastavitve
       </Button>
     </div>
+  );
+}
+
+// ─── Ekipa (Task 97): montirji mojega obrta ──────────────────
+// Lastnik dodaja montirja po e-pošti; če račun še ne obstaja, mu
+// ustvari začasno geslo. Odstranitev članstva = takojšnja izguba
+// obsega na strežniku (Member vrstica); zgodovina montirjevega
+// dela ostane. UI je le priročnik — API je pravilo (401/403).
+interface TeamMemberDTO {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  createdAt: string;
+}
+
+function TeamCard() {
+  const { toast } = useToast();
+  const [members, setMembers] = useState<TeamMemberDTO[] | null>(null);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const nalozi = useCallback(async () => {
+    try {
+      const res = await fetch('/api/team', { cache: 'no-store' });
+      if (!res.ok) {
+        setMembers([]);
+        return;
+      }
+      const d = (await res.json()) as { members?: TeamMemberDTO[] };
+      setMembers(d.members ?? []);
+    } catch {
+      setMembers([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void nalozi();
+  }, [nalozi]);
+
+  const dodaj = async () => {
+    setBusy(true);
+    setFormError(null);
+    try {
+      const res = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, password: password || undefined }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string; member?: TeamMemberDTO };
+      if (!res.ok || !d.member) {
+        setFormError(typeof d.error === 'string' ? d.error : 'Dodajanje ni uspelo.');
+        return;
+      }
+      setEmail('');
+      setName('');
+      setPassword('');
+      await nalozi();
+      toast({
+        title: 'Montir dodan ✓',
+        description: password
+          ? `Račun za ${d.member.email} je ustvarjen — geslo mu povej osebno (prijava, potem meni v glavi).`
+          : `${d.member.email} je zdaj v tvojem obrtu.`,
+      });
+    } catch {
+      setFormError('Strežnik ni dosegljiv.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const odstrani = async (m: TeamMemberDTO) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/team/${m.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        toast({ title: 'Napaka', description: d.error ?? 'Odstranitev ni uspela.', variant: 'destructive' });
+        return;
+      }
+      await nalozi();
+      toast({ title: 'Montir odstranjen', description: `${m.email} ne vidi več podatkov obrta. Njegovi vnosi (ure, dnevnik, fotke) ostanejo.` });
+    } catch {
+      toast({ title: 'Napaka', description: 'Strežnik ni dosegljiv.', variant: 'destructive' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card data-testid="team-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Users className="h-4 w-4 text-primary" />
+          Ekipa obrta
+        </CardTitle>
+        <CardDescription>
+          Montir se prijavi s svojim računom in vidi tvoje ponudbe, fotke, časovnico in dnevnik —
+          cene, račune in nastavitve vidi SAMO lastnik.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {/* Seznam članov */}
+        <div className="space-y-2" data-testid="team-list">
+          {members === null ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Nalagam ekipo…
+            </div>
+          ) : members.length === 0 ? (
+            <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-3">
+              Ekipa je prazna — montirja dodaš spodaj (račun ustvariš ti, geslo mu povej osebno).
+            </p>
+          ) : (
+            members.map((m) => (
+              <div
+                key={m.id}
+                className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5"
+                data-testid="team-member-row"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {m.name || m.email}
+                    {m.name && <span className="ml-2 text-xs font-normal text-muted-foreground">{m.email}</span>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">montir · od {formatDate(m.createdAt)}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="min-h-9 h-9 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                  onClick={() => void odstrani(m)}
+                  disabled={busy}
+                  aria-label={`Odstrani ${m.email} iz ekipe`}
+                  data-testid={`team-remove-${m.email}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Obrazec za dodajanje */}
+        <div className="grid gap-3 rounded-lg border bg-secondary/30 p-3 sm:grid-cols-[1fr_1fr_auto]">
+          <div className="space-y-1.5">
+            <Label htmlFor="team-email">E-pošta montirja</Label>
+            <Input
+              id="team-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="montir@e-pohta.si"
+              autoComplete="email"
+              data-testid="team-email-input"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="team-name">Ime (neobvezno)</Label>
+            <Input
+              id="team-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={120}
+              autoComplete="off"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="team-password">Geslo (samo nov račun)</Label>
+            <Input
+              id="team-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="min. 8 znakov"
+              autoComplete="new-password"
+              data-testid="team-password-input"
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <Button className="min-h-10 w-full sm:w-auto" onClick={() => void dodaj()} disabled={busy || email.trim() === ''} data-testid="team-add">
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+              Dodaj montirja
+            </Button>
+            {formError && (
+              <p role="alert" aria-live="polite" className="mt-2 text-sm text-destructive" data-testid="team-error">
+                {formError}
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -15,13 +15,13 @@ import { createWithUniqueNumber } from '@/lib/numbering';
 // (BR-16) in zgodovina računa ne sme slediti poznejšim spremembam ponudbe.
 
 import { readSettings } from '@/lib/settings-inputs';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner, settingsWhere } from '@/lib/tenancy';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function GET(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'invoices', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
@@ -59,7 +59,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: NextRequest) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'invoices', 'POST');
   if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();

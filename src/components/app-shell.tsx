@@ -10,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer, NotebookPen, Wallet, LogOut, MonitorSmartphone, CircleUserRound } from 'lucide-react';
+import { ClipboardList, FileText, Home, LayoutGrid, Settings, Hammer, ScanSearch, HardHat, Timer, NotebookPen, Wallet, LogOut, MonitorSmartphone, CircleUserRound, UserCog } from 'lucide-react';
 import { useDraft, useView, useFieldMode, type AppView } from '@/lib/store';
+import { normalizeRole, MONTIR_LABEL } from '@/lib/permissions';
 import { useSessionGate } from './auth/login-gate';
 import { Dashboard } from './dashboard';
 import { CalculatorsView } from './calculators-view';
@@ -36,6 +37,11 @@ const NAV: { id: AppView; label: string; icon: React.ElementType }[] = [
   { id: 'nastavitve', label: 'Nastavitve', icon: Settings },
 ];
 
+/** Pogledi, ki jih MONTIR vidi (Task 97) — matrika dovoljenj je na
+ *  strežniku (permissions.ts); tu je le priročnik: menije, ki bi
+ *  vodili v 403, sploh ne izrišemo. API ostane zadnja črta. */
+const MONTIR_VIEWS: readonly AppView[] = ['domov', 'kamera', 'ponudbe', 'časovnica', 'dnevnik'];
+
 export function AppShell() {
   const view = useView((s) => s.view);
   const setView = useView((s) => s.setView);
@@ -47,6 +53,16 @@ export function AppShell() {
   // uporabniški meni (Odjava / Odjavi vse naprave); v privzetem načinu
   // je null in meni sploh ne izriše — UI ostane brez prijave.
   const sessionGate = useSessionGate();
+  // Vloga (Task 97): brez seje (privzeti način, E2E) = lastnik —
+  // točno tako, kot je obseg (ownScope) brez seje ne filtrira.
+  const isMontir = normalizeRole(sessionGate?.user.role) === 'montir';
+  const navItems = isMontir ? NAV.filter((n) => MONTIR_VIEWS.includes(n.id)) : NAV;
+
+  // Če je shranjen pogled, ki ga vloga ne vidi (npr. montir na
+  // Ceniku), vrne ga na domov — ne pusti prazne vsebine.
+  useEffect(() => {
+    if (isMontir && !MONTIR_VIEWS.includes(view)) setView('domov');
+  }, [isMontir, view, setView]);
 
   // Terenski način: razred na <html> — veliki gumbi, večja pisava, kontrast
   useEffect(() => {
@@ -87,6 +103,12 @@ export function AppShell() {
                     <DropdownMenuLabel>
                       <p className="truncate text-sm font-semibold">{sessionGate.user.name || 'Lastnik obrta'}</p>
                       <p className="text-muted-foreground truncate text-xs font-normal">{sessionGate.user.email}</p>
+                      {isMontir && (
+                        <p className="mt-1 flex items-center gap-1 text-xs font-normal text-amber-700 dark:text-amber-400">
+                          <UserCog className="h-3 w-3" />
+                          Vloga: {MONTIR_LABEL}
+                        </p>
+                      )}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => void sessionGate.odjava()} data-testid="menu-odjava">
@@ -121,7 +143,7 @@ export function AppShell() {
           </div>
           {/* Navigacija — na mobilnem se pomika po strani */}
           <nav className="flex gap-1 overflow-x-auto scroll-area -mx-1 px-1 pb-1.5" aria-label="Glavna navigacija">
-            {NAV.map((n) => {
+            {navItems.map((n) => {
               const active = view === n.id;
               return (
                 <button

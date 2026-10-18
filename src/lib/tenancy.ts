@@ -28,13 +28,26 @@
 
 import { sessionUser } from '@/lib/auth-guard';
 import { db } from '@/lib/db';
+import { normalizeRole } from '@/lib/permissions';
 
 /** ownerId prijavljenega uporabnika ali null (brez seje / lokalni način).
  *  Za razliko od `requireSession` NE odgovarja z 401 — obseg ni čuvaj,
- *  ampak filter; čuvaj ostane ločen (koda čuva, namestitev odloča). */
+ *  ampak filter; čuvaj ostane ločen (koda čuva, namestitev odloča).
+ *  Task 97: MONTIR ne dobi svojega id-ja, ampak obrt, v kateri je
+ *  član (vrstica Member, dodajanje prek /api/team). Brez članstva →
+ *  null = prazni seznami: montir NE podeduje ničesar — svoje delo
+ *  (ure, dnevnik, fotke) zapisuje v obrt, ki ga je vzel med člane. */
 export async function resolveOwner(req: Request): Promise<string | null> {
   const user = await sessionUser(req);
-  return user?.id ?? null;
+  if (!user) return null;
+  if (normalizeRole(user.role) === 'montir') {
+    const m = await db.member.findFirst({
+      where: { userId: user.id },
+      select: { ownerId: true },
+    });
+    return m?.ownerId ?? null;
+  }
+  return user.id;
 }
 
 /** Where fragment za sezname in iskanje po ID-ju:

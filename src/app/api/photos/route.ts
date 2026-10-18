@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 import { resolvePhotoDir, savePhoto } from '@/lib/photo-store';
 
@@ -20,7 +20,7 @@ const MAX_BASE64 = 7_500_000;
 // še z dataUrl v bazi) imajo sličico null — seznam ostane lahkoten,
 // selitev se zgodi ob prvem odpiranju fotke.
 export async function GET(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'photos', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     const uid = await resolveOwner(req);
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
 // Vnosni pogodba NEspremenjena (dataUrl v JSON), spremeni se shramba:
 // bajti na disk, v bazi filePath + thumbUrl, dataUrl ostane null.
 export async function POST(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'photos', 'POST');
   if (zavrnjen) return zavrnjen;
   try {
     const body = (await req.json()) as {

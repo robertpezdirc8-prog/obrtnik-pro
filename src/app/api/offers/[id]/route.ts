@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { nextStatusData } from '@/lib/offer-pipeline';
 import type { OfferStatus } from '@/lib/types';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 const VALID_STATUS = ['draft', 'sent', 'accepted', 'rejected'];
@@ -15,7 +15,7 @@ const toDateOrNull = (v: unknown): Date | null | undefined => {
 };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'offers', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'offers', 'PATCH');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'offers', 'DELETE');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;

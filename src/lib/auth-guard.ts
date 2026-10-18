@@ -10,6 +10,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { parseCookies, resolveAuthSecret, SESSION_COOKIE, verifySessionToken } from '@/lib/auth';
 import { isSessionLive } from '@/lib/session-store';
+import { canAccess, MONTIR_FORBIDDEN_MESSAGE, MONTIR_NO_OBRT_MESSAGE, normalizeRole } from '@/lib/permissions';
+import type { Method, Resource } from '@/lib/permissions';
 
 export function isAuthEnforced(): boolean {
   return process.env.AUTH_ENFORCED === '1';
@@ -85,4 +87,45 @@ export async function sessionUser(req: Request): Promise<SessionUser | null> {
     select: { id: true, email: true, name: true, role: true },
   });
   return user ?? null;
+}
+
+// ─── Vloge znotraj obrta (Task 97) ──────────────────────────
+
+/** Čuvaj poslovnih rut: seja + vloga V ENEM prehodu (sessionUser enkrat,
+ *  ne dvakrat — vsak klic je en SELECT). Vrne:
+ *  · null — naprej (lastnik, montir z dovoljenjem ali zaščita ni uklopljena);
+ *  · 401 — brez veljavne seje (ISTA beseda kot requireSession);
+ *  · 403 — prijavljen montir brez dovoljenja (besedilo iz matrike)
+ *          ali brez članstva v obrtu (MONTIR_NO_OBRT_MESSAGE).
+ *  Ko zaščita NI uklopljena (AUTH_ENFORCED≠1): VEDNO null — lokalni
+ *  način ostane odprt, kot do zdaj (koda čuva, namestitev odloča).
+ *  Matrika dovoljenj je v src/lib/permissions.ts (deny-by-default). */
+export async function requireAccess(
+  req: Request,
+  resource: Resource,
+  method: Method,
+): Promise<NextResponse | null> {
+  if (!isAuthEnforced()) return null;
+  const user = await sessionUser(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Zahtevana je prijava.' }, { status: 401 });
+  }
+  const role = normalizeRole(user.role);
+  if (!canAccess(resource, method, role)) {
+    return NextResponse.json({ error: MONTIR_FORBIDDEN_MESSAGE }, { status: 403 });
+  }
+  // Montir brez članstva (Task 97): zavrnjen ŽE pri branju. Zakaj ne
+  // "prazni seznami": obseg je filter, ne čuvaj — brez članstva ni
+  // ownerId, legacy vedenje obsega pa ne-filtrira ({}) in bi montir
+  // videl TUJE podatke. Varneje je zavreti z jasnimi besedami.
+  if (role === 'montir') {
+    const m = await db.member.findFirst({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!m) {
+      return NextResponse.json({ error: MONTIR_NO_OBRT_MESSAGE }, { status: 403 });
+    }
+  }
+  return null;
 }

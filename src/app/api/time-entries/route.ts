@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── GET /api/time-entries — seznam vnosov časovnice ────────
@@ -8,7 +8,7 @@ import { ownScope, resolveOwner } from '@/lib/tenancy';
 // vnos dneva zgoraj). Omejitev 500 vnosov (zadostno za sezname).
 
 export async function GET(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'time-entries', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     const uid = await resolveOwner(req);
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 // opis 1–200 znakov, minute 1–1440, urna postavka > 0.
 
 export async function POST(req: NextRequest) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'time-entries', 'POST');
   if (zavrnjen) return zavrnjen;
   try {
     const uid = await resolveOwner(req);

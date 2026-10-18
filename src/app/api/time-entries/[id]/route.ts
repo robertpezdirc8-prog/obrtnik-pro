@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 
 // ─── PATCH /api/time-entries/[id] — popravki + žig obračuna ──
@@ -11,7 +11,7 @@ import { ownScope, resolveOwner } from '@/lib/tenancy';
 // spreminja več v vsebini — najprej razveljavi žig.
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'time-entries', 'PATCH');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;
@@ -150,7 +150,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 // ─── DELETE /api/time-entries/[id] ──────────────────────────
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'time-entries', 'DELETE');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;

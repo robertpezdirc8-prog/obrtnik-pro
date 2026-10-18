@@ -139,7 +139,7 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
           <CardTitle className="text-xl">Obrtnik Pro</CardTitle>
           <CardDescription>
             {registracija
-              ? 'Ustvari račun lastnika — edinega. Nadaljnji računi so odločitev lastnika.'
+              ? 'Ustvari račun lastnika — edinega. Nadaljnje račune (montirje) doda lastnik v Nastavitvah → Ekipa.'
               : 'Prijava v delavnico.'}
           </CardDescription>
         </CardHeader>

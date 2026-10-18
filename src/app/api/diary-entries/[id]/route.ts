@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 import { loadDiaryPhotos, storeDiaryPhotos } from '@/lib/diary-photos-disk';
 import { deletePhotoFile, resolvePhotoDir, safeFileName } from '@/lib/photo-store';
@@ -14,7 +14,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'diary-entries', 'PATCH');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;
@@ -172,7 +172,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'diary-entries', 'DELETE');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await params;

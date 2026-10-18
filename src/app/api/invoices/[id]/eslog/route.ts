@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { eslogFilename, buildEslogXml, eslogMathIssues } from '@/lib/eslog';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner, settingsWhere } from '@/lib/tenancy';
 
 // ─── GET /api/invoices/[id]/eslog — e-račun XML ─────────────
@@ -12,7 +12,7 @@ import { ownScope, resolveOwner, settingsWhere } from '@/lib/tenancy';
 // (409 z razlogom) — pokvarjenega e-računa ne izdajamo.
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'invoices', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     const { id } = await ctx.params;

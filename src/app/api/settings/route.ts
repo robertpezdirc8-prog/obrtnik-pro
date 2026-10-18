@@ -7,11 +7,11 @@ import {
   settingsProblemText,
   type SettingsField,
 } from '@/lib/settings-inputs';
-import { requireSession } from '@/lib/auth-guard';
+import { requireAccess } from '@/lib/auth-guard';
 import { resolveOwner, settingsWhere } from '@/lib/tenancy';
 
 export async function GET(req: Request) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'settings', 'GET');
   if (zavrnjen) return zavrnjen;
   try {
     await ensureSeeded();
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
 }
 
 export async function PUT(req: NextRequest) {
-  const zavrnjen = await requireSession(req);
+  const zavrnjen = await requireAccess(req, 'settings', 'PUT');
   if (zavrnjen) return zavrnjen;
   try {
     const body = await req.json();

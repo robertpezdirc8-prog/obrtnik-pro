@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { useSessionGate } from './auth/login-gate';
+import { normalizeRole } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -105,6 +107,9 @@ ${ownerName || companyName}${companyName ? `, ${companyName}` : ''}`;
 
 export function OffersList() {
   const { toast } = useToast();
+  // Vloga (Task 97): montir ponudbe VIDI, ustvarja pa jih lastnik —
+  // prazno stanje zato ne svetuje kalkulatorja, ki bi se končal z 403.
+  const isMontir = normalizeRole(useSessionGate()?.user.role) === 'montir';
   const [offers, setOffers] = useState<OfferDTO[]>([]);
   const [settings, setSettings] = useState<SettingsDTO | null>(null);
   const [loading, setLoading] = useState(true);
@@ -409,7 +414,7 @@ export function OffersList() {
           <CardContent className="py-16 text-center">
             <Inbox className="mx-auto h-10 w-10 text-muted-foreground/50 mb-3" />
             <p className="text-sm text-muted-foreground">
-              {query ? 'Ni zadetkov iskanja.' : 'Še ni shranjenih ponudb. Ustvari prvo z kalkulatorjem.'}
+              {query ? 'Ni zadetkov iskanja.' : isMontir ? 'Še ni shranjenih ponudb — lastnik jih ustvari s kalkulatorjem odmerka.' : 'Še ni shranjenih ponudb. Ustvari prvo z kalkulatorjem.'}
             </p>
           </CardContent>
         </Card>
