@@ -289,7 +289,7 @@ async function main(): Promise<void> {
     // ── 2) ročno označena oglišča balkonske ograje + mere ──
     check('prava fotka: orodje Oglišča', (await clickTestid('fr-tool-corners')) === 'OK', 'klik');
     await sleep(300);
-    for (const [xp, yp] of [[57.5, 47], [87, 45.5], [87, 55], [57.5, 56.5]] as [number, number][]) {
+    for (const [xp, yp] of [[57.5, 50.5], [87, 45.5], [87, 52.5], [57.5, 57]] as [number, number][]) {
       await tapStage(xp, yp);
       await sleep(350);
     }
@@ -327,6 +327,17 @@ async function main(): Promise<void> {
     await sleep(5000);
     check('prava fotka: rezultat nastane (platno)', await exists('fr-result-canvas'), 'fr-result-canvas');
     await shot('e2e-real-05-rezultat.png');
+    // Dokaz, da je izris RES nastal: posnetek SAMO platna (brez UI), da se vidi
+    // zamenjana ograja. Klip iz rect-a elementa — enako, kot bi monter videl v koraku 7.
+    const rect = (await evaluate(`(() => { const e = document.querySelector('[data-testid="fr-result-canvas"]'); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.x + window.scrollX, y: b.y + window.scrollY, w: b.width, h: b.height }; })()`)) as { x: number; y: number; w: number; h: number } | null;
+    if (rect && rect.w > 50 && rect.h > 50) {
+      const r2 = (await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: rect.x, y: rect.y, width: rect.w, height: rect.h, scale: 1 } })) as { data?: string };
+      if (r2.data) {
+        const p = join(process.cwd(), 'tests', 'e2e-real-06-izris.png');
+        writeFileSync(p, Buffer.from(r2.data, 'base64'));
+        check('posnetek napisan: e2e-real-06-izris.png', statSync(p).size > 5000, `bajtov ${statSync(p).size}`);
+      }
+    }
 
     // ── 7) montažni list (novi panel) na PRAVIH merah ──
     check('prava fotka: panel montažnega lista', await exists('fr-installer-sheet'), 'fr-installer-sheet');
