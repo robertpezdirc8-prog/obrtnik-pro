@@ -15,9 +15,10 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 const require = createRequire('/workspace/');
 const sharp = require('sharp');
-const ort = await import('/tmp/hf/node_modules/onnxruntime-node/dist/index.js');
-const { extractFeatures } = await import('/workspace/src/lib/cv-engine.ts');
-const { suggestBand } = await import('/workspace/src/lib/band-suggest.ts');
+const ORT_PATH = process.env.ORT_PATH ?? '/tmp/hf/node_modules/onnxruntime-node/dist/index.js';
+const ort = await import(/* @vite-ignore */ ORT_PATH);
+const { extractFeatures } = await import('../src/lib/cv-engine');
+const { suggestBand } = await import('../src/lib/band-suggest');
 
 const MODEL = '/tmp/hf/model_quantized.onnx';
 const S = 518;
