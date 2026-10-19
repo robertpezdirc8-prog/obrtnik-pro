@@ -5,6 +5,7 @@ import { persist } from 'zustand/middleware';
 import type { DraftItem } from './types';
 import type { CenikValues, PriceKey } from './cenik';
 import type { CameraPrefill } from './camera-types';
+import type { StoredMontage } from './offer-sheet';
 
 // ─── Osnutek ponudbe (traja tudi po osvežitvi) ──────────────
 
@@ -16,11 +17,15 @@ interface DraftState {
   customerAddress: string;
   objectAddress: string;
   note: string;
+  /// Metapodatki fotomontaže, iz katere je osnutek ponudbe — vir
+  /// montažnega lista. Null = osnutek ni iz fotomontaže.
+  montage: StoredMontage | null;
   addItem: (item: DraftItem) => void;
   addItems: (items: DraftItem[]) => void;
   removeItem: (key: string) => void;
   updateItem: (key: string, patch: Partial<DraftItem>) => void;
   setCustomer: (patch: Partial<Pick<DraftState, 'customerName' | 'customerEmail' | 'customerPhone' | 'customerAddress' | 'objectAddress' | 'note'>>) => void;
+  setMontage: (m: StoredMontage | null) => void;
   clearDraft: () => void;
 }
 
@@ -34,6 +39,7 @@ export const useDraft = create<DraftState>()(
       customerAddress: '',
       objectAddress: '',
       note: '',
+      montage: null,
       addItem: (item) =>
         set((s) => ({
           items: [...s.items.filter((i) => i.key !== item.key), item],
@@ -50,6 +56,7 @@ export const useDraft = create<DraftState>()(
           items: s.items.map((i) => (i.key === key ? { ...i, ...patch } : i)),
         })),
       setCustomer: (patch) => set((s) => ({ ...s, ...patch })),
+      setMontage: (m) => set(() => ({ montage: m })),
       clearDraft: () =>
         set((s) => ({
           items: [],
@@ -59,6 +66,7 @@ export const useDraft = create<DraftState>()(
           customerAddress: '',
           objectAddress: '',
           note: '',
+          montage: null,
         })),
     }),
     { name: 'obrtnik-draft' },

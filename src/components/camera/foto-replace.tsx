@@ -259,6 +259,7 @@ function thumbDataUrl(c: HTMLCanvasElement, maxW: number): string {
 export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   const { toast } = useToast();
   const addDraftItems = useDraft((s) => s.addItems);
+  const setMontage = useDraft((s) => s.setMontage);
   const setView = useView((s) => s.setView);
   const setActiveCraft = useView((s) => s.setActiveCraft);
 
@@ -1252,6 +1253,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       return;
     }
     addDraftItems(bom.items);
+    // Metapodatki fotomontaže se shranijo skupaj z osnutkom ponudbe —
+    // od tod je pozneje mogoč natisniti MONTAŽNI LIST za monterja.
+    setMontage({ meta: result.meta });
     toast({
       title: `Material v ponudbo: ${bom.items.length} ${plural(bom.items.length, ['postavka', 'postavki', 'postavke', 'postavk'])} ✓`,
       description:

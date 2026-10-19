@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { readSettings, settingsProblemText } from '@/lib/settings-inputs';
 import { createWithUniqueNumber } from '@/lib/numbering';
+import { parseMontageJson, serializeMontage } from '@/lib/offer-sheet';
 import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 
@@ -36,7 +37,11 @@ export async function GET(req: Request) {
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     });
-    return NextResponse.json({ offers });
+    // DTO brez celotnega JSON-a metapodatkov: odjemalcu rabi le DEJANSKO
+    // vprašanje »ali je montažni list mogoč« (hasMontage), ne vsebine.
+    return NextResponse.json({
+      offers: offers.map((o) => ({ ...o, montageJson: undefined, hasMontage: !!o.montageJson })),
+    });
   } catch (error) {
     console.error('offers GET error', error);
     return NextResponse.json({ error: 'Napaka pri nalaganju ponudb' }, { status: 500 });
@@ -56,6 +61,11 @@ export async function POST(req: NextRequest) {
     if (items.length === 0) {
       return NextResponse.json({ error: 'Ponudba mora imeti vsaj eno postavko' }, { status: 400 });
     }
+
+    // Fotomontaza (ce je bila): shrani se ob ponudbi, da je pozneje mogoce
+    // natisniti MONTAZNI LIST za monterja. Neveljavni metapodatki se tiho
+    // preskocijo (ponudba ostane veljavna) — lista ni, ampak ni lazi.
+    const montage = parseMontageJson(body.montage);
 
     const uid = await resolveOwner(req);
 
@@ -116,6 +126,7 @@ export async function POST(req: NextRequest) {
             customerAddress: body.customerAddress || null,
             objectAddress: body.objectAddress || null,
             note: body.note || null,
+            montageJson: serializeMontage(montage),
             status: 'draft',
             subtotal,
             vatRate,
