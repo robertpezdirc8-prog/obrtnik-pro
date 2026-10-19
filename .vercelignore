@@ -1,0 +1,20 @@
+# ─── Kaj se NE pošilja na Vercel ───────────────────────────────────────────
+# Razlog: `vercel deploy` je prvič padel z »Request body too large. Limit: 10mb«,
+# ker je CLI poslal tudi razvojne odvisnosti in cache (skupaj 4,8 GB), medtem ko
+# zgrajeni artefakt potrebuje le izvorno kodo + public + prisma.
+.cline-home
+node_modules
+.next
+.next-*
+db
+prisma/db
+download
+worklog.md
+tests
+examples
+mini-services
+*.log
+dev.log
+server.log
+.env*
+!.env.example

@@ -1,0 +1,364 @@
+// ─── PRODUKCIJSKA SHEMA (Postgres) ───────────────────────────────────────
+// Zakaj ločena datoteka: razvoj in vseh 63 verifikacijskih skriptov teče na
+// SQLite (file:../db/custom.db). Vercel je serverless: datotečni sistem je
+// samo za branje, zato je prvi produkcijski deploy vračal
+//   P2021: The table `main.Offer` does not exist in the current database.
+//
+// Rešitev BREZ dveh odvisnosti: `scripts/vercel-build.sh` med gradnjo na
+// Vercelu prekopira TO datoteko čez `prisma/schema.prisma` (razlika je ena
+// vrstica: provider) in požene `prisma db push` na Postgres. Lokalni SQLite
+// razvoj in testi se ne spremenijo — v repozitoriju ostane izvirna shema.
+//
+// Vzdrževanje: vsaka sprememba modelov se vpiše v `schema.prisma`; ta
+// datoteka se obnovi z:
+//   sed "s/provider = "sqlite"/provider = "postgresql"/" prisma/schema.prisma > prisma/schema.postgres.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Uporabniki (Task 93 — issue #2) ────────────────────────
+// Aplikacija je namenjena enemu obratu: prvi ustvarjeni račun je
+// lastnik. Task 97 (vloge): poleg lastnika (`owner`) obstaja tudi
+// `montir` — registrira se sam, OBSEG pa dobi šele, ko ga lastnik
+// doda v svoj obrt (tabela Member). Pravice so v matriki
+// src/lib/permissions.ts — enoten vir resnice, testiran v
+// tests/verify/permissions.ts.
+//
+// Task 94 (obseganje): vsi poslovni podatki (ponudbe, računi,
+// fotografije, cenik, nastavitve, časovnica, dnevnik) nosijo
+// `ownerId`. Pri registraciji prvega uporabnika se vsi zapisi
+// brez lastnika (lokalno/E2E zgodovina) PREVZAMEJO — glej
+// src/lib/tenancy.ts. Katalog (Category/Product) ostane SKUPEN:
+// to je aplikacijski register (KAJ je), ne podatek obrta.
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String   @default("")
+  /// Format "scrypt$saltB64$hashB64" (N=2^14, r=8, p=1, 32 B) —
+  /// glej src/lib/auth.ts. Nikoli v odgovorih API.
+  passwordHash String
+  role         String   @default("owner")
+  createdAt    DateTime @default(now())
+
+  offers       Offer[]
+  invoices     Invoice[]
+  photos       Photo[]
+  cenikPrices  CenikPrice[]
+  settings     Settings[]
+  timeEntries  TimeEntry[]
+  diaryEntries DiaryEntry[]
+  sessions     Session[]
+
+  /// Task 97: članstva — obrti, v katerih ta uporabnik dela kot montir.
+  memberships Member[] @relation("MemberUser")
+  /// Task 97: člani njegovega obrta (samo za role "owner").
+  teamMembers Member[] @relation("OwnerMembers")
+}
+
+// ─── Članstva (Task 97 — vloge znotraj obrta) ───────────────
+// Montir je uporabnik z role "montir", ki mu lastnik da obseg
+// svojih podatkov z vrstico Member (dodajanje po e-pošti prek
+// /api/team). Brez članstva montir vidi PRAZNE sezname (ničesar
+// ne podeduje, ničesar ne prevzame). Izbris članstva = takojšen
+// izgubobsega (naslednja zahteva je prazna/403 kot obvelja).
+// V1 omejitvi, iskreno: montir je lahko v največ enem obrtu
+// (findFirst po userId) in uporabnika z role "owner" ni mogoče
+// dodati kot montirja (lastnik ostane lastnik svojih podatkov).
+model Member {
+  id        String   @id @default(cuid())
+  /// Lastnik obrta, ki je člana dodal.
+  ownerId   String
+  owner     User     @relation("OwnerMembers", fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Montir — uporabnik z role "montir".
+  userId    String
+  user      User     @relation("MemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([ownerId, userId])
+  @@index([userId])
+}
+
+// ─── Seje (Task 95 — preklic žetona) ────────────────────────
+// Žeton sam je brezstanjski (podpisan, 7 dni) — brez seznama v bazi
+// bi ostal veljaven tudi po odjavi. Tabela hrani SAMO SHA-256 žetona
+// (64-mestni hex, unikaten po zaslugi nonce-a v žetonu): uhaj baze
+// ne razkrije uporabnih žetonov. »Odjava« prekliče eno vrstico,
+// »Odjavi vse naprave« vse vrstice uporabnika; iztečene in preklicane
+// počisti ob naslednji prijavi (prune). Stare instalacije po selitvi
+// enkrat znova prijavijo uporabnika (stari 3-delni žetoni niso več
+// berljivi) — zavestna, zapisana cena preklicljivih sej.
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 celotnega žetona (hex) — surovega žetona NIKOLI ne shranjujemo.
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ─── Katalog ────────────────────────────────────────────────
+
+model Category {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  icon        String    @default("hammer")
+  sortOrder   Int       @default(0)
+  products    Product[]
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  unit        String      @default("kos")
+  /// Cena v katalogu NI: katalog pove, KAJ je (naziv, mera, enota), ceno pa
+  /// vedno vpiše obrtnik v Ceniku (Task 88 — `CenikPrice`). Prejšnja različica
+  /// je imela tu 50 izmišljenih številk, ki so tekle po ponudbah.
+  sku         String?
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  offerItems  OfferItem[]
+}
+
+// ─── Cenik (edini vir denarja) ──────────────────────────────
+//
+// Ključ je `PriceKey` iz `src/lib/cenik.ts` — register, ki ve, KAJ je mogoče
+// oceniti. `unitPrice` je null, dokler obrtnik cene ni vpisal: prazno polje ni
+// ničla in ni prejšnja vrednost. Iz teh vrstic pride denar v ponudbo samo
+// prek `applyCenik` (`src/lib/cenik.ts`), nikoli iz kode.
+
+model CenikPrice {
+  /// Surrogatni PK: `key` je unikaten samo V OKVIRU lastnika
+  /// (@@unique), ker sta dva obrta dva cenika. Starejše vrstice
+  /// (brez ownerId) pripadajo lokalnemu načinu in jih prevzame
+  /// prvi lastnik ob registraciji.
+  id        Int      @id @default(autoincrement())
+  key       String
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  unitPrice Float?
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, ownerId])
+}
+
+// ─── Ponudbe ────────────────────────────────────────────────
+
+model Offer {
+  id              String      @id @default(cuid())
+  number          String      @unique
+  /// Lastnik obrta (Task 94) — null pomeni: ustvarjeno brez seje
+  /// (lokalni način/E2E); prvi registrirani lastnik to prevzame.
+  ownerId         String?
+  owner           User?       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerAddress String?
+  objectAddress   String?
+  note            String?
+  status          String      @default("draft")
+  /// Kdaj je ponudba označena za poslano (časovni žig za iskren win-rate).
+  sentAt          DateTime?
+  /// Kdaj je stranka odločila (sprejeto/zavrnjeno) — izhodišče konverzije.
+  decidedAt       DateTime?
+  /// Wiedervorlage — datum, ko obrtnik sam sebi zastavi opomnik za follow-up.
+  followUpAt      DateTime?
+  subtotal        Float
+  /// DDV je PODATK NA dokumentu, ne privzetek aplikacije: ob ustvarjanju
+  /// ponudbe ga piše pot, ki je prebrala Nastavitve. `@default(22)` je bil
+  /// izmišljena davčna odločitev.
+  vatRate         Float
+  vatAmount       Float
+  total           Float
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OfferItem[]
+  invoices        Invoice[]
+  timeEntries     TimeEntry[]
+  diaryEntries    DiaryEntry[]
+}
+
+// ─── Računi (iz sprejete ponudbe) ───────────────────────
+
+model Invoice {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  /// Lastnik obrta (Task 94) — kot pri ponudbi.
+  ownerId      String?
+  owner        User?         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  offerId      String
+  offer        Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  customerName String
+  subtotal     Float
+  vatRate      Float
+  vatAmount    Float
+  total        Float
+  /// Rok plačila — null pomeni privzeti rok 30 dni od izdaje (izračuna knjižnica).
+  dueAt        DateTime?
+  /// Kdaj je račun plačan — null = neplačan (izhodišče za terjatve + Mahnwesen).
+  paidAt       DateTime?
+  createdAt    DateTime      @default(now())
+  /// Snapshot postavk ob izdaji — e-račun (EN 16931) zahteva vsaj eno vrstico (BR-16).
+  items        InvoiceItem[]
+}
+
+// ─── Postavke računa (snapshot iz ponudbe ob izdaji) ────
+// Raziskava 2026 (ZIERDED — Državni zbor 23. 11. 2025): B2B e-račun
+// (e-SLOG / EN 16931, UBL 2.1) obvezen od 1. 1. 2028, za javni sektor
+// že zdaj prek UJP. Račun MORA imeti vrstice (BR-16) — zato se ob
+// izdaji računa postavke ponudbe ZAPIEJEJO tu (pravi snapshot:
+// poznejše spremembe ponudbe ne prepišejo zgodovine računa).
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quantity    Float
+  unit        String
+  unitPrice   Float
+  total       Float
+  sortOrder   Int     @default(0)
+}
+
+model OfferItem {
+  id          String   @id @default(cuid())
+  offerId     String
+  offer       Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  name        String
+  description String?
+  quantity    Float
+  unit        String
+  unitPrice   Float
+  total       Float
+  sortOrder   Int      @default(0)
+}
+
+// ─── Nastavitve podjetja ────────────────────────────────────
+
+// ─── Pametna kamera ─────────────────────────────────────────
+
+model Photo {
+  id           String   @id @default(cuid())
+  /// Lastnik obrta (Task 94) — fotografije so poslovni podatek.
+  ownerId      String?
+  owner        User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title        String?
+  craftId      String?
+  /// Task 96 (issue #3): polna vsebina je na DISKU (db/photos), tukaj
+  /// je samo ime datoteke ("<id>.jpg" — brez poti, brez podmap).
+  filePath     String?
+  /// Sličica (256 px JPEG) kot dataURL za sezname — seznami ne vlečejo
+  /// več celotne fotke.
+  thumbUrl     String?
+  /// LEGATA (pred Taskom 96): celoten base64 dataURL. Nova zapisa ga
+  /// ne pišejo (null); vrstice z vsebino se leno selijo na disk ob
+  /// prvem branju (GET /api/photos/[id]) — selitev je idempotentna.
+  dataUrl      String?
+  analysis     String?
+  measurements String?
+  vizState     String?
+  createdAt    DateTime @default(now())
+}
+
+model Settings {
+  /// `cuid` (ne "default"): nastavitve so na obrta. Legacy vrstica
+  /// z id "default" (ownerId=null) je lokalni način; prvi lastnik jo
+  /// prevzame ob registraciji (Task 94).
+  id              String  @id @default(cuid())
+  /// Lastnik obrta — UNIQUE, en obrat ima eno vrstico nastavitev.
+  ownerId         String? @unique
+  owner           User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  companyName     String  @default("Moj Obrt s.p.")
+  ownerName       String  @default("")
+  address         String  @default("")
+  phone           String  @default("")
+  email           String  @default("")
+  taxNumber       String  @default("")
+  iban            String  @default("")
+  /// DENAR IN ROKI BREZ PRIVZETKOV. `@default(22)`, `@default(35)` in
+  /// `@default(30)` so aplikacijo zagnala s številkami, ki jih obrtnik ni
+  /// vpisal — prazna vrednost je zato null, `readSettings` jo javi kot
+  /// »številka ni vpisana« in dokument vrsto izpusti z razlogom (Task 86, 88).
+  vatRate         Float?
+  laborRate       Float?
+  quoteValidDays  Int?
+  depositPercent  Float?
+  paymentDays     Int?
+  logoUrl         String?
+}
+
+// ─── Časovnica (Zeiterfassung) ──────────────────────────────
+
+model TimeEntry {
+  id           String    @id @default(cuid())
+  /// Lastnik obrta (Task 94).
+  ownerId      String?
+  owner        User?     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Delovni dan "YYYY-MM-DD" (niz brez časovnih pasov — iskreno in deterministično).
+  day          String
+  /// Opis opravila (npr. "Montaža ograje — balkon").
+  description  String
+  /// Oddelane minute (celo število ≥ 1).
+  minutes      Int
+  /// Urna postavka v času vnosa (€/h) — kasnejše spremembe nastavitev ne prepišejo zgodovine.
+  hourlyRate   Float
+  /// Stranka (iz ponudbe ali prosti vnos).
+  customerName String?
+  /// Povezava na ponudbo (opcijsko).
+  offerId      String?
+  offer        Offer?    @relation(fields: [offerId], references: [id])
+  /// Dejavnost (craftId ali null za "drugo").
+  craftId      String?
+  /// Kdaj je vnos označen kot obračunan (žig nastavlja strežnik prek PATCH).
+  billedAt     DateTime?
+  /// Referenca obračuna (št. ponudbe ali kratek opis).
+  billedRef    String?
+  createdAt    DateTime  @default(now())
+}
+
+// ─── Terenski dnevnik (Baustellendokumentation) ────────────
+// Raziskava 2026 (qonto top-11, fuer-gruender 13: baustellendoku)
+// dokazuje: zapisi z datumom + fotke so dokaz izvedenega dela
+// (spori, garancija, Wandelanträge). Vnosi so vezani na dan,
+// ne na točen čas — na objektu se zapisuje po opravljenem delu.
+
+model DiaryEntry {
+  id        String   @id @default(cuid())
+  /// Lastnik obrta (Task 94).
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Delovni dan "YYYY-MM-DD" (niz brez časovnih pasov — kot pri časovnici).
+  day       String
+  /// Faza dela: priprava / demontaza / montaza / zakljucek / ostalo.
+  phase     String   @default("ostalo")
+  /// Opis opravljenega dela (0–500 znakov).
+  note      String
+  /// Povezava na ponudbo (opcijsko — ure se pošteva po nalogu).
+  offerId   String?
+  offer     Offer?   @relation(fields: [offerId], references: [id])
+  /// Prosta oznaka objekta, kadar vnos ni vezan na ponudbo.
+  objectLabel String?
+  /// Fotografije: JSON niz [{ dataUrl, thumb, caption }].
+  photos    String   @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

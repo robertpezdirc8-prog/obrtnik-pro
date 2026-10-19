@@ -491,6 +491,28 @@ async function main(): Promise<void> {
     check('korak 7: gumb pred/po para obstaja', await exists('fr-compare-export'), 'fr-compare-export');
     check('korak 7: kosovnica (Material v ponudbo) je omogočena', (await disabledOf('fr-bom')) === false, 'fr-bom');
 
+    // ── MONTAŽNI LIST ZA MONTERJA (photo-install-sheet) ──
+    // Vrata: brez izmerjene širine lista ni; z razmakom stebrov pa se izračuna
+    // točno to, kar ROKSAL zahteva za ponudbo (lege stebrov + rez na stebru).
+    check('montažni list: panel obstaja', await exists('fr-installer-sheet'), 'fr-installer-sheet');
+    check('montažni list: vnos razmaka stebrov', (await setInput('fr-sheet-bay', '150')) === 'OK', 'setInput');
+    await sleep(150);
+    check('montažni list: klik “Izmerjeno”', (await clickTestid('fr-sheet-measured')) === 'OK', 'klik');
+    await sleep(400);
+    const kpi = await textOf('fr-sheet-kpi');
+    // Konstruirana ravnina tega E2E je 200 × 150, razmak 150 → 3 stebri, 2 celoti;
+    // deka 140 (vodoravno) da floor((150+0,4)/14,4) = 10 desk na celoto → 20 desk.
+    check('montažni list: KPI izračunan (stebri 3, celoti 2, 20 desk)', /Stebrov\s*3/.test(kpi) && /Celot\s*2/.test(kpi) && /Desk\s*20/.test(kpi), kpi);
+    check('montažni list: opozorila so vidna', (await textOf('fr-sheet-warnings')).includes('nabavna dolžina'), 'warnings');
+    check('montažni list: gumb za tisk je omogočen', (await disabledOf('fr-sheet-print')) === false, 'print');
+    // razmak 0 → list NE izmišljuje številk, pokaže blokade
+    await setInput('fr-sheet-bay', '0');
+    await sleep(350);
+    check('montažni list: brez razmaka → BLOKADE', (await textOf('fr-sheet-blockers')).includes('RAZMAK STEBROV NI VNESEN'), 'blockers');
+    check('montažni list: brez razmaka → tisk onemogočen', (await disabledOf('fr-sheet-print')) === true, 'print');
+    await setInput('fr-sheet-bay', '150');
+    await sleep(350);
+
     // ── KORAK 7: PRAVILA DATOTEKA (brskalnikov download, ne naš stub) ──
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT, eventsEnabled: true }).catch(async () => {
       await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT });

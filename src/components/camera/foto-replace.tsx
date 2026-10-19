@@ -60,6 +60,7 @@ import {
 } from '@/lib/viz';
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
+import { InstallerSheetPanel } from './installer-sheet-panel';
 import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
 import { suggestBandQuadPct, type BandSuggestion } from '@/lib/band-suggest';
@@ -2232,6 +2233,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-2.5 text-xs text-destructive" data-testid="fr-export-blocked">
               {exportBlocked}
             </p>
+          )}
+
+          {result && (
+            <InstallerSheetPanel meta={result.meta} imageDataUrl={result.dataUrl} />
           )}
 
           {result && (
