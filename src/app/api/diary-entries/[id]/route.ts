@@ -4,7 +4,7 @@ import { isDiaryPhase, parseDiaryPhotos } from '@/lib/site-diary';
 import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
 import { loadDiaryPhotos, storeDiaryPhotos } from '@/lib/diary-photos-disk';
-import { deletePhotoFile, resolvePhotoDir, safeFileName } from '@/lib/photo-store';
+import { deletePhotoFile, deletePhotoFileAsync, resolvePhotoDir, safeFileName } from '@/lib/photo-store';
 
 // ─── PATCH /api/diary-entries/[id] — urejanje vnosa ─────────
 // Vsako polje je opcijsko (samo poslana se spreminjajo); ista
@@ -114,7 +114,7 @@ export async function PATCH(
           for (const p of oldParsed) {
             if (typeof p === 'object' && p !== null && typeof (p as Record<string, unknown>).file === 'string') {
               const f = (p as { file: string }).file;
-              if (safeFileName(f)) deletePhotoFile(f, dir);
+              if (safeFileName(f)) await deletePhotoFileAsync(f, dir);
             }
           }
         }
@@ -197,7 +197,7 @@ export async function DELETE(
         for (const p of parsed) {
           if (typeof p === 'object' && p !== null && typeof (p as Record<string, unknown>).file === 'string') {
             const f = (p as { file: string }).file;
-            if (safeFileName(f)) deletePhotoFile(f, dir);
+            if (safeFileName(f)) await deletePhotoFileAsync(f, dir);
           }
         }
       }

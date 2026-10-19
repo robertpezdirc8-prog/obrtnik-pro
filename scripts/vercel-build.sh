@@ -17,13 +17,15 @@ set -euo pipefail
 if [ -n "${DATABASE_URL_DIRECT:-}" ]; then
   echo "▸ Produkcijska shema: Postgres"
   cp prisma/schema.postgres.prisma prisma/schema.prisma
-  DATABASE_URL="$DATABASE_URL_DIRECT" npx prisma db push --accept-data-loss --skip-generate
+  # Lokalni binarni, NE `npx`: npx bi med gradnjo prenašal pakete (minuti in
+  # odvisnost od omrežja) — `bun install` je na Vercelu že namestil prisma.
+  DATABASE_URL="$DATABASE_URL_DIRECT" ./node_modules/.bin/prisma db push --accept-data-loss --skip-generate
 else
   echo "▸ DATABASE_URL_DIRECT ni nastavljen — gradnja po izvirni (SQLite) shemi"
 fi
 
-npx prisma generate
-npx next build
+./node_modules/.bin/prisma generate
+./node_modules/.bin/next build
 # Enako kot `bun run build` v package.json (standalone izhod).
 cp -r .next/static .next/standalone/.next/ 2>/dev/null || true
 cp -r public .next/standalone/ 2>/dev/null || true

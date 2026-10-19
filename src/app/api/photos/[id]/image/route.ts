@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
-import { mimeOfFileName, readPhotoBytes, resolvePhotoDir } from '@/lib/photo-store';
+import { mimeOfFileName, readPhotoBytes, readPhotoBytesAsync, resolvePhotoDir } from '@/lib/photo-store';
 
 export async function GET(
   req: Request,
@@ -26,7 +26,7 @@ export async function GET(
     if (!row?.filePath) {
       return NextResponse.json({ error: 'Fotografija ne obstaja.' }, { status: 404 });
     }
-    const bytes = readPhotoBytes(row.filePath, resolvePhotoDir());
+    const bytes = await readPhotoBytesAsync(row.filePath, resolvePhotoDir());
     if (!bytes) {
       return NextResponse.json({ error: 'Vsebina fotografije manjka.' }, { status: 404 });
     }

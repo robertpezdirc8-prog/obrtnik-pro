@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import sharp from 'sharp';
+import { deleteRemote, getRemote, photoRemoteConfigured, putRemote } from './photo-remote';
 
 /** Znane končnice (samo te smejo biti na disku). */
 const EXT_BY_MIME: Record<string, string> = {
@@ -160,10 +161,16 @@ export interface SavedPhoto {
   /** Sličica kot dataURL (ali null, če sharpa ni uspel). */
   thumb: string | null;
   sha256: string;
+  /** Ali je bila vsebina naložena TUDI v trajno shrambo (Supabase Storage). */
+  remote?: boolean;
+  /** Razlog, kadar trajna shramba ni uspela — klicatelj sme opozoriti. */
+  remoteError?: string;
 }
 
 /** Shrani vsebino na disk pod `<id><ext>` in vrne ime + sličico.
- *  Mapa se po potrebi ustvari (mkdirSync recursive). */
+ *  Mapa se po potrebi ustvari (mkdirSync recursive).
+ *  Če je nastavljena trajna shramba (Supabase Storage), se ista vsebina
+ *  naloži še tja (write-through) — disk ostane hitri predpomnilnik. */
 export async function savePhoto(
   dataUrl: string,
   id: string,
@@ -176,7 +183,14 @@ export async function savePhoto(
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, fileName), decoded.bytes);
   const thumb = await makeThumb(decoded.bytes);
-  return { fileName, thumb, sha256: decoded.sha256 };
+  let remote: boolean | undefined;
+  let remoteError: string | undefined;
+  if (photoRemoteConfigured()) {
+    const up = await putRemote(fileName, decoded.bytes, decoded.mime);
+    remote = up.ok;
+    if (!up.ok) remoteError = up.error ?? 'neznana napaka shrambe';
+  }
+  return { fileName, thumb, sha256: decoded.sha256, remote, remoteError };
 }
 
 /** Preberi datoteko nazaj kot dataURL. Vrne null, če datoteka
@@ -203,6 +217,41 @@ export function readPhotoBytes(fileName: string, dir: string): Buffer | null {
   } catch {
     return null;
   }
+}
+
+// ─── Asinhrone različice: disk → trajna shramba ───────────────────────────
+// Zakaj ločeni imeni in ne sprememba obstoječih: sinhroni klici (npr. v
+// preverbah) morajo ostati sinhroni. Poti v API-jih so asinhrone, zato
+// uporabljajo te — najprej disk (hiter predpomnilnik), nato Supabase.
+
+/** Preberi kot dataURL: disk, nato trajna shramba. */
+export async function readPhotoAsDataUrlAsync(fileName: string, dir: string): Promise<string | null> {
+  const local = readPhotoAsDataUrl(fileName, dir);
+  if (local !== null) return local;
+  const safe = safeFileName(fileName);
+  if (!safe) return null;
+  const mime = mimeOfFileName(safe);
+  if (!mime) return null;
+  const bytes = await getRemote(safe);
+  if (!bytes) return null;
+  return `data:${mime};base64,${bytes.toString('base64')}`;
+}
+
+/** Preberi surove bajte: disk, nato trajna shramba. */
+export async function readPhotoBytesAsync(fileName: string, dir: string): Promise<Buffer | null> {
+  const local = readPhotoBytes(fileName, dir);
+  if (local !== null) return local;
+  const safe = safeFileName(fileName);
+  if (!safe) return null;
+  return getRemote(safe);
+}
+
+/** Izbriši: disk IN trajna shramba (obe najboljše prizadevanje). */
+export async function deletePhotoFileAsync(fileName: string, dir: string): Promise<boolean> {
+  const local = deletePhotoFile(fileName, dir);
+  const safe = safeFileName(fileName);
+  const remote = safe ? await deleteRemote(safe) : false;
+  return local || remote;
 }
 
 /** Izbriši datoteko (najboljše prizadevanje): ENOENT je tiho OK —

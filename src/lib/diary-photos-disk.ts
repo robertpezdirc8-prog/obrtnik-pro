@@ -10,12 +10,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { db } from '@/lib/db';
-import {
-  readPhotoAsDataUrl,
-  safeFileName,
-  savePhoto,
-  type SavedPhoto,
-} from '@/lib/photo-store';
+import { readPhotoAsDataUrl, readPhotoAsDataUrlAsync, safeFileName, savePhoto, type SavedPhoto } from '@/lib/photo-store';
 import type { DiaryPhoto } from '@/lib/site-diary';
 
 /** Oblika zapisa v bazi (Task 96). */
@@ -85,7 +80,7 @@ export async function loadDiaryPhotos(
 
     // NOVA oblika: file na disku
     if (typeof p.file === 'string' && safeFileName(p.file) !== null) {
-      const full = withPhotos ? readPhotoAsDataUrl(p.file, dir) ?? '' : '';
+      const full = withPhotos ? await readPhotoAsDataUrlAsync(p.file, dir) ?? '' : '';
       migrated.push({ file: p.file, thumb, caption });
       // Isti odgovor kot doslej: privzeti seznam nosi SLIČICO v dataUrl
       // (klient pokaže, kar ima), ?photos=1 pa polno fotko.

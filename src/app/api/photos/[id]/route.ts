@@ -10,12 +10,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAccess } from '@/lib/auth-guard';
 import { ownScope, resolveOwner } from '@/lib/tenancy';
-import {
-  deletePhotoFile,
-  readPhotoAsDataUrl,
-  resolvePhotoDir,
-  savePhoto,
-} from '@/lib/photo-store';
+import { deletePhotoFile, deletePhotoFileAsync, readPhotoAsDataUrl, readPhotoAsDataUrlAsync, resolvePhotoDir, savePhoto } from '@/lib/photo-store';
 
 /** Materializiraj polno fotko iz OBSEGANE vrstice (vrstico je GET že
  *  prebral z ownScope — tukaj se nikoli ne dostopa po id na slepo):
@@ -26,7 +21,7 @@ async function materializeDataUrl(
 ): Promise<{ dataUrl: string; thumbUrl: string | null } | null> {
   const dir = resolvePhotoDir();
   if (row.filePath) {
-    const dataUrl = readPhotoAsDataUrl(row.filePath, dir);
+    const dataUrl = await readPhotoAsDataUrlAsync(row.filePath, dir);
     if (dataUrl) return { dataUrl, thumbUrl: row.thumbUrl };
     // Datoteka manjka, legacy vsebina pa je morda še v bazi — poskusi.
     if (row.dataUrl) return { dataUrl: row.dataUrl, thumbUrl: row.thumbUrl };
@@ -157,7 +152,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Brisanje ni uspelo (fotografija morda že ne obstaja).' }, { status: 404 });
     }
     await db.photo.delete({ where: { id: row.id } });
-    if (row.filePath) deletePhotoFile(row.filePath, resolvePhotoDir());
+    if (row.filePath) await deletePhotoFileAsync(row.filePath, resolvePhotoDir());
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: 'Brisanje ni uspelo (fotografija morda že ne obstaja).' }, { status: 404 });
