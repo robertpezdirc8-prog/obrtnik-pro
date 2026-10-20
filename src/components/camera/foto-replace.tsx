@@ -528,6 +528,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   // Razmak stebrov (cm) — vnos monterja. null = brez modeliranih stebrov
   // (takrat render nima stebrov in spoja, kar je iskreno zapisano v opombah).
   const [postEveryInput, setPostEveryInput] = useState('');
+  // ── AI fotomontaža (generativna zamenjava ograje) ──
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiResult, setAiResult] = useState<{ dataUrl: string; label: string; note: string; model: string } | null>(null);
   const postEveryCm = useMemo<number | null>(() => {
     const v = Number(postEveryInput.replace(',', '.'));
     return Number.isFinite(v) && v >= 20 && v <= 400 ? v : null;
@@ -1134,6 +1138,60 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
         },
         dataUrl,
       };
+    }
+  };
+
+  // AI fotomontaža: generativna zamenjava ograje (Gemini/OpenAI). Ključ je na
+  // strežniku; od tod gre samo fotka + navodilo + referenca ROKSAL ograje.
+  const onAiPhotomontage = async () => {
+    const work = workCanvasRef.current;
+    if (!work) return;
+    setAiBusy(true);
+    setAiResult(null);
+    try {
+      const imageDataUrl = work.toDataURL('image/jpeg', 0.9);
+      // Referenca: uradna fotografija vgrajene ROKSAL ograje (»naredi tako«).
+      let referenceDataUrl: string | null = null;
+      try {
+        const ref = await fetch('/roksal/ograje/polna-100/vgradnja-polna-amazon.jpg');
+        if (ref.ok) {
+          const blob = await ref.blob();
+          referenceDataUrl = await new Promise<string>((res) => {
+            const fr = new FileReader();
+            fr.onload = () => res(String(fr.result));
+            fr.readAsDataURL(blob);
+          });
+        }
+      } catch {
+        referenceDataUrl = null; // referenca je priročna, ne blokira
+      }
+      const xs = (quadPct ?? []).map(([x]) => x);
+      const ys = (quadPct ?? []).map(([, y]) => y);
+      const regionHint = xs.length
+        ? `x ${Math.round(Math.min(...xs))}–${Math.round(Math.max(...xs))} %, y ${Math.round(Math.min(...ys))}–${Math.round(Math.max(...ys))} %`
+        : '';
+      const res = await fetch('/api/ai-photomontage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageDataUrl,
+          referenceDataUrl,
+          profileLabel: selProfile?.label ?? 'ROKSAL WPC ograja',
+          colourLabel: null,
+          instruction: aiInstruction,
+          regionHint,
+        }),
+      });
+      const d = (await res.json()) as { dataUrl?: string; label?: string; note?: string; model?: string; error?: string };
+      if (!res.ok || !d.dataUrl) {
+        toast({ title: 'AI fotomontaža ni uspela', description: d.error ?? 'Neznano napaka.', variant: 'destructive' });
+        return;
+      }
+      setAiResult({ dataUrl: d.dataUrl, label: d.label ?? '', note: d.note ?? '', model: d.model ?? '' });
+    } catch (e) {
+      toast({ title: 'AI fotomontaža ni uspela', description: e instanceof Error ? e.message : String(e), variant: 'destructive' });
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -2134,6 +2192,49 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                   {busyCompare ? 'Primerjam profile…' : 'Primerjaj profile na tej fotki'}
                 </Button>
                 <span className="text-xs text-muted-foreground">Ista ravnina + ista maska → vse omogočene barve/materiali za izbiro stranke.</span>
+              </div>
+
+              {/* ── AI fotomontaža (generativna zamenjava ograje) ── */}
+              <div className="rounded-lg border border-dashed bg-muted/20 p-3 space-y-2" data-testid="fr-ai-box">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold">AI zamenjaj ograjo</span>
+                  <Badge variant="outline" className="text-[10px]">generativno — slika ni načrt</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Model (Gemini ali OpenAI) dobi tvojo fotko, območje ograje in referenčno fotografijo ROKSAL ograje ter vrne
+                  zamenjano sliko. Fotografija odpotuje ponudniku modela. <b>Meritve se ne spremenijo</b> — ostanejo iz
+                  umerjene ravnine in razmaka stebrov.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-[11px] text-muted-foreground">
+                    Navodilo (npr. svetlo siva, alu stebri)
+                    <input
+                      value={aiInstruction}
+                      onChange={(e) => setAiInstruction(e.target.value)}
+                      placeholder="npr. amazon, temno sivi, alu stebri"
+                      className="mt-1 h-8 w-64 rounded-md border bg-background px-2 text-sm"
+                      data-testid="fr-ai-instruction"
+                    />
+                  </label>
+                  <Button
+                    variant="outline"
+                    onClick={() => void onAiPhotomontage()}
+                    disabled={aiBusy}
+                    data-testid="fr-ai-run"
+                  >
+                    {aiBusy ? 'Generiram…' : 'Generiraj zamenjavo'}
+                  </Button>
+                </div>
+                {aiResult && (
+                  <div className="space-y-2" data-testid="fr-ai-result">
+                    <img src={aiResult.dataUrl} alt="AI fotomontaža" className="w-full rounded-lg border" />
+                    <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                      {aiResult.label}
+                      {aiResult.model ? ` (model: ${aiResult.model})` : ''}
+                    </p>
+                    {aiResult.note && <p className="text-[11px] text-muted-foreground">{aiResult.note}</p>}
+                  </div>
+                )}
               </div>
             </div>
           )}
