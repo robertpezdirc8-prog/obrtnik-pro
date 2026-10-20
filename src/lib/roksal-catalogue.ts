@@ -249,3 +249,31 @@ export function referencesForColour(colour: string | null): RoksalReference[] {
   if (!colour) return [];
   return ROKSAL_REFERENCES.filter((r) => r.colour.toLowerCase() === colour.toLowerCase());
 }
+
+/**
+ * URADNA LINIJA PROFILOV (roksal.com):
+ *  - »Za pokončne pregrade imamo na voljo 5 različnih profilov Woodcore desk:
+ *    POLNA DESKA-57/32, POLNA DESKA-100, POLNA DESKA-128, ROMB DESKA-67,
+ *    KUBO-80/42« (stran »Pokončne deske«),
+ *  - »Za prečne pregradne stene imamo na voljo 3 različne profile«:
+ *    ROMB DESKA-67, POLNA DESKA-128, DESKA-150 (stran »Prečne deske«).
+ *
+ * To pomeni, da v ROKSALOVI liniji NI profilov 133/140/145 mm — številki
+ * 133–140 sta RAZMAK MED STEBRI pri vodoravni postavitvi (pravilo
+ * »Stebrički za vodoravno postavitev desk morajo biti na maksimalni razdalji
+ * 133 – 140 cm«), ne širina profila.
+ */
+export const OFFICIAL_VERTICAL_PROFILES = [
+  'polna-57-32', 'polna-100', 'polna-128', 'romb-67', 'kubo-80-42',
+] as const;
+
+export const OFFICIAL_HORIZONTAL_PROFILES = ['romb-67', 'polna-128', 'terasna-150'] as const;
+
+export const PROFILE_LINEUP_QUOTES = {
+  vertical:
+    'Za pokončne pregrade imamo na voljo 5 različnih profilov Woodcore desk: – profil POLNA DESKA – 57/32 – profil POLNA DESKA – 100 – profil POLNA DESKA – 128 – profil ROMB DESKA – 67 – profil KUBO – 80/42',
+  horizontal:
+    'Za prečne pregradne stene imamo na voljo 3 različne profile Woodcore desk: – profil ROMB DESKA – 67 – profil POLNA DESKA – 128 – profil DESKA – 150',
+  postSpacingHorizontal:
+    'Stebrički za vodoravno postavitev desk morajo biti na maksimalni razdalji 133 – 140 cm.',
+} as const;

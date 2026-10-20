@@ -8,6 +8,10 @@ preveril na treh mestih — in izmeril, kateri je uporaben.
 ostra slika odtenka z resnično zrnatostjo in pravilno barvo. Izrezi so
 deterministični (`tests/make-ograje-tiles.ts`).
 
+## 1b) Uradni posnetki PROFILOV (»profil-deske«) — **IZMERJENO, ZAVRNJENO**
+Tudi posnetek profila (celoten objekt v kadru, 2307×1668) ima desko široko le
+**14–20 px**. Nobena objavljena fotografija ROKSALA ne posega bližje.
+
 ## 2) Uradne fotografije vgrajenih ograj (galerija + referenčni objekti) — **IZMERJENO, ZAVRNJENO**
 `tests/make-galerija-tiles.ts` sam poišče desko (temna šprinja → korak) in
 izmeri, kako velika je v resnici:
@@ -34,6 +38,13 @@ izmerjenim merilom. Pripravljeno je:
 - `tests/make-monter-tiles.ts` — skript, ki sam poišče desko, odreže eno desko in
   jo shrani kot tile 256 × 256 z **pravim merilom** (`realCm` = realna širina
   deske: POLNA-100 = 10 cm).
+
+**ZAKLJUČEK MERITVE:** ROKSAL objavlja **nobenega bližnjega posnetka deske** —
+niti galerija, niti referenčni objekti, niti posnetki profila (povsod je deska
+9–20 px). Najboljši objavljeni vir je torej **barvna lestvica** (256 px na
+odtenek) in to uporabljam. Ostre tile-e lahko da samo bližnji posnetek
+(fotografija od monterja ali slika z mobilnega telefona, ena deska zapolni
+sliko).
 
 Ko so fotografije v mapi, je delo: spusti slike → `bun tests/make-monter-tiles.ts`
 → tile-i v `public/roksal/ograje/<profil>/mont-<odtenek>.png` → registracija v

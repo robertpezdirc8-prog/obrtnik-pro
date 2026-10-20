@@ -582,6 +582,25 @@ export function buildPatternCanvas(
     }
     case 'vertikalne': {
       baseFill(0); // prozorno ozadje (vidi se scena skozi reže)
+      // … nato pa temna notranjost + nosilna letva (risana na vrhu prozornega)
+      const dark2 = ctx.createLinearGradient(0, 0, 0, H);
+      dark2.addColorStop(0, 'rgb(44,46,48)');
+      dark2.addColorStop(1, 'rgb(26,27,29)');
+      ctx.fillStyle = dark2;
+      ctx.fillRect(0, 0, W, H);
+      const railCm1 = params.railSpacingCm ?? 0;
+      if (railCm1 > 0 && (params.quadHeightCm ?? 0) > 0) {
+        const railH1 = Math.max(1, 0.6 * pxPerCm);
+        for (let y = (params.quadHeightCm as number) * pxPerCm - 4 * pxPerCm; y > 0; y -= railCm1 * pxPerCm) {
+          const yTop1 = Math.max(0, Math.min(H - railH1, y));
+          const g3 = ctx.createLinearGradient(0, yTop1, 0, yTop1 + railH1);
+          g3.addColorStop(0, 'rgb(132,134,136)');
+          g3.addColorStop(0.5, 'rgb(96,98,100)');
+          g3.addColorStop(1, 'rgb(58,60,62)');
+          ctx.fillStyle = g3;
+          ctx.fillRect(0, yTop1, W, railH1);
+        }
+      }
       const gap = Math.max(2, params.spacingCm * pxPerCm);
       const w = Math.max(1, params.elementCm * pxPerCm);
       // Ton po deski: vsaka deska je iz drugega zložka, zato je malce

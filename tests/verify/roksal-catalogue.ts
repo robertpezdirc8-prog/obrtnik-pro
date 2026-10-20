@@ -6,7 +6,7 @@
 //   2) Širina deske v registru je enaka uradni širini profila.
 //   3) Vsak kataloški vnos ima dobesedni citat in vir.
 // Zagon: bun tests/verify/roksal-catalogue.ts
-import { ROKSAL_CATALOGUE, catalogueFor, RUSTIC_NOTE, COLOUR_BATCH_NOTE, COLOUR_BATCH_NOTE_PAGE, ROKSAL_REFERENCES, REFERENCE_COLOURS } from '../../src/lib/roksal-catalogue';
+import { ROKSAL_CATALOGUE, catalogueFor, RUSTIC_NOTE, COLOUR_BATCH_NOTE, COLOUR_BATCH_NOTE_PAGE, ROKSAL_REFERENCES, REFERENCE_COLOURS, OFFICIAL_VERTICAL_PROFILES, OFFICIAL_HORIZONTAL_PROFILES, PROFILE_LINEUP_QUOTES } from '../../src/lib/roksal-catalogue';
 import { ROKSAL_PROFILES } from '../../src/lib/roksal-assets';
 
 let pass = 0, fail = 0;
@@ -102,7 +102,21 @@ console.log('Uradni katalog ROKSAL — barve, mere, citati (roksal.com)\n');
   check('terasna družina uporablja vsa 7 uradnih imen (brez White)', dekaMissing.length === 0, dekaMissing);
 }
 
-// ── 6) Katalog za družino ─────────────────────────────────────────
+// ── 6) Uradna linija profilov ────────────────────────────────────
+{
+  check('pokončna/pregradna linija: 5 profilov', OFFICIAL_VERTICAL_PROFILES.length === 5);
+  check('prečna linija: 3 profili', OFFICIAL_HORIZONTAL_PROFILES.length === 3);
+  // Vsi uradni profili morajo biti v katalogu aplikacije
+  const missingV = OFFICIAL_VERTICAL_PROFILES.filter((id) => !ROKSAL_CATALOGUE[id]);
+  check('vsi uradni pokončni profili so v katalogu', missingV.length === 0, missingV);
+  const missingH = OFFICIAL_HORIZONTAL_PROFILES.filter((id) => !ROKSAL_CATALOGUE[id]);
+  check('vsi uradni prečni profili so v katalogu', missingH.length === 0, missingH);
+  // 133–140 je RAZMAK med stebri, ne širina profila
+  check('133–140 je razmak med stebri (ne širina profila)', PROFILE_LINEUP_QUOTES.postSpacingHorizontal.includes('133 – 140 cm'));
+  check('v katalogu ni profila 133/140/145', !Object.keys(ROKSAL_CATALOGUE).some((k) => k.includes('133') || k.includes('145')));
+}
+
+// ── 7) Katalog za družino ─────────────────────────────────────────
 {
   check('catalogueFor polna-100 → POLNA DESKA-100', catalogueFor('polna-100')?.officialName === 'POLNA DESKA-100');
   check('catalogueFor polna-100-dekor-3 → POLNA DESKA-100', catalogueFor('polna-100-dekor-3')?.officialName === 'POLNA DESKA-100');
