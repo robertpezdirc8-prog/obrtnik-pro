@@ -525,6 +525,14 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     }
   }, [measurePlane, dims, measurePts]);
 
+  // Razmak stebrov (cm) — vnos monterja. null = brez modeliranih stebrov
+  // (takrat render nima stebrov in spoja, kar je iskreno zapisano v opombah).
+  const [postEveryInput, setPostEveryInput] = useState('');
+  const postEveryCm = useMemo<number | null>(() => {
+    const v = Number(postEveryInput.replace(',', '.'));
+    return Number.isFinite(v) && v >= 20 && v <= 400 ? v : null;
+  }, [postEveryInput]);
+
   const layoutInfo = useMemo<{ layout: LayoutResult | null; error: string | null }>(() => {
     if (!quadPct || !planeCm || !dims) return { layout: null, error: null };
     const p = selProfile ?? ROKSAL_PROFILES[0];
@@ -537,7 +545,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
         gapCm: p.gapCm,
         orientation: p.orientation,
         postCm: p.postCm,
-        postEveryCm: null, // vmesni stebri v tej različici niso modelirani (iskreno v opombah)
+        postEveryCm, // vneseni razmak stebrov (ali null = brez stebrov)
       });
       return { layout, error: null };
     } catch (e) {
@@ -953,6 +961,11 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           // privzete širine (defaultQuadWidthCm), ne iz izmišljene mere te ograje.
           quadWidthCm: pc.wCm ?? 0,
           quadHeightCm: pc.hCm, // prava višina ravnine → pravo število elementov navpično (skladno s postavitvijo po homografiji)
+          // Realizem prave ROKSAL ograje: ton po deski (vsaka iz drugega
+          // zložka) in podložna letva spodaj. VRHNJE letve ne rišemo, ker
+          // njena višina ni objavljena — ne izmišljamo konstrukcije.
+          boardToneJitter: profile.pattern === 'vertikalne' ? 0.05 : 0,
+          railBottomCm: profile.pattern === 'vertikalne' ? 4 : 0,
         },
       };
 
@@ -963,6 +976,27 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       const octx = off.getContext('2d', { willReadFrequently: true })!;
       octx.drawImage(work, 0, 0);
       drawLayersOnQuad(octx, work, [fenceLayer], craft);
+
+      // Stebri: aluminijski profili (postCm) na mestih, kjer se deske spajajo.
+      // Risani so PRED ambientnim ujemanjem, zato dobijo enako svetlobo kot
+      // deske. Brez vnesenega razmaka jih ni (null → layout.posts je prazen).
+      for (const post of layout.posts) {
+        const pq = post.quad;
+        octx.save();
+        octx.beginPath();
+        octx.moveTo(pq.tl.x, pq.tl.y);
+        octx.lineTo(pq.tr.x, pq.tr.y);
+        octx.lineTo(pq.br.x, pq.br.y);
+        octx.lineTo(pq.bl.x, pq.bl.y);
+        octx.closePath();
+        const g = octx.createLinearGradient(pq.tl.x, pq.tl.y, pq.tr.x, pq.tr.y);
+        g.addColorStop(0, 'rgb(154,156,158)');
+        g.addColorStop(0.45, 'rgb(120,122,124)');
+        g.addColorStop(1, 'rgb(88,90,92)');
+        octx.fillStyle = g;
+        octx.fill();
+        octx.restore();
+      }
 
       // 3) ambientno ujemanje: faktor iz obroča okoli štirikotnika ORIGINALNE (delovne) fotke,
       //    pomnožijo se SAMO opačni piksli novih elementov (masa desk + stebrov iz postavitve)
@@ -1146,7 +1180,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           layout = computePlankLayouts({
             quadPct: qp, imgSize: d, planeCm: pc,
             plankCm: p.plankCm, gapCm: p.gapCm, orientation: p.orientation,
-            postCm: p.postCm, postEveryCm: null, // iskreno: vmesni stebri niso modelirani
+            postCm: p.postCm, postEveryCm, // vneseni razmak stebrov (ali null)
           });
         } catch (e) { cards.push(blocked(e instanceof Error ? e.message : String(e))); continue; }
         try {
@@ -2042,6 +2076,24 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                 </button>
               );
             })}
+          </div>
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-2.5">
+            <label className="text-[11px] text-muted-foreground">
+              Razmak stebrov (cm)
+              <input
+                value={postEveryInput}
+                onChange={(e) => setPostEveryInput(e.target.value)}
+                inputMode="numeric"
+                placeholder="npr. 150"
+                className="mt-1 h-8 w-24 rounded-md border bg-background px-2 text-sm"
+                data-testid="fr-post-every"
+              />
+            </label>
+            <p className="max-w-md text-[11px] text-muted-foreground">
+              {postEveryCm === null
+                ? 'Brez razmaka stebrov render nima stebrov in spoja — deske so skozi celotno ravnino. Vpiši izmerjen razmak, da se deske spajajo na stebru.'
+                : `Strebri na vsakih ${postEveryCm} cm; deske se spajajo na stebru. Razmak je tvoj vnos — če ni izmerjen, ga na listu označi kot PREDLOG.`}
+            </p>
           </div>
           <p className="text-xs text-muted-foreground">
             Izvoznik izda NARAVNO fotografijo materiala, kjer original ROKSAL posnetek manjka — izvoz z oznako original je dokler gradivo manjka blokiran (iskrenost registra).

@@ -317,10 +317,13 @@ async function main(): Promise<void> {
     check('prava fotka: obnova vrne ENO iskreno vej (ok ali ročno)', inp.includes('Ozadje obnovljeno') || inp.includes('ročni'), inp.slice(0, 200));
     await shot('e2e-real-04-obnova.png');
 
-    // ── 5) profil + 6) izris ──
+    // ── 5) profil + razmak stebrov + 6) izris ──
     const pid = 'fr-profile-polna-100';
     check('prava fotka: profil polna-100 na voljo', await exists(pid), pid);
     check('prava fotka: klik profila', (await clickTestid(pid)) === 'OK', 'klik');
+    await sleep(500);
+    // Razmak stebrov: vnesen → stebri in spoj na stebru v renderju
+    check('prava fotka: vnos razmaka stebrov', (await setInput('fr-post-every', '150')) === 'OK', 'vnos');
     await sleep(700);
     check('prava fotka: gumb Upodobi obstaja', await exists('fr-render'), 'fr-render');
     check('prava fotka: klik Upodobi', (await clickTestid('fr-render')) === 'OK', 'klik');

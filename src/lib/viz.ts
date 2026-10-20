@@ -237,6 +237,12 @@ export interface VizParams {
   quadHeightCm?: number;
   /** fasadna obloga: navpična smer lamel (privzeto vodoravno) */
   oblogaVert?: boolean;
+  /** Letvi ograje: nosilna zgoraj in podložna spodaj (cm). 0 = brez letve.
+   *  Uporablja ju le fotomontaža ograje (RokSAL profil), ne vizualizer. */
+  railTopCm?: number;
+  railBottomCm?: number;
+  /** Odstopanje tona po deski (0 = vse deske enako). 0.05 = ±5 %. */
+  boardToneJitter?: number;
 }
 
 export const DEFAULT_VIZ_PARAMS: VizParams = {
@@ -570,15 +576,43 @@ export function buildPatternCanvas(
       baseFill(0); // prozorno ozadje (vidi se scena skozi reže)
       const gap = Math.max(2, params.spacingCm * pxPerCm);
       const w = Math.max(1, params.elementCm * pxPerCm);
+      // Ton po deski: vsaka deska je iz drugega zložka, zato je malce
+      // svetlejša ali temnejša. Odstopanje je DETERMINISTIČNO (od indeksa),
+      // zato isti vhodi → isti izris.
+      const jitter = params.boardToneJitter ?? 0;
+      let bi = 0;
       for (let x = 0; x < W; x += gap + w) {
         // palica s cilindričnim sencenjem (svetel sredinski pas)
         const g = ctx.createLinearGradient(x, 0, x + w, 0);
-        g.addColorStop(0, shade(rgb, 0.72));
-        g.addColorStop(0.45, shade(rgb, 1.12));
-        g.addColorStop(1, shade(rgb, 0.62));
+        const t = jitter > 0 ? 1 + (((bi * 2654435761) % 1000) / 1000 - 0.5) * 2 * jitter : 1;
+        g.addColorStop(0, shade(rgb, 0.72 * t));
+        g.addColorStop(0.45, shade(rgb, 1.12 * t));
+        g.addColorStop(1, shade(rgb, 0.62 * t));
         ctx.fillStyle = g;
         ctx.fillRect(x, 0, w, H);
         mark(x, 0, w, H);
+        bi += 1;
+      }
+      // Letvi (nosilna zgoraj, podložna spodaj) — del prave ROKSAL ograje.
+      // Risani so ČEZ deske (so pred njimi) in so kovinske, ne lesene.
+      const railTopCm = params.railTopCm ?? 0;
+      const railBottomCm = params.railBottomCm ?? 0;
+      if (railTopCm > 0 || railBottomCm > 0) {
+        const metal = 'rgb(126,128,130)';
+        const rail = (yTop: number, hPx: number): void => {
+          if (hPx <= 0.5) return;
+          const g = ctx.createLinearGradient(0, yTop, 0, yTop + hPx);
+          g.addColorStop(0, 'rgb(158,160,162)');
+          g.addColorStop(0.5, metal);
+          g.addColorStop(1, 'rgb(92,94,96)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, yTop, W, hPx);
+          // spodnji rob temnejši (kontaktna senca na deske)
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.fillRect(0, yTop + hPx - 1, W, 1);
+        };
+        if (railTopCm > 0) rail(0, (railTopCm * pxPerCm));
+        if (railBottomCm > 0) rail(H - railBottomCm * pxPerCm, railBottomCm * pxPerCm);
       }
       break;
     }
