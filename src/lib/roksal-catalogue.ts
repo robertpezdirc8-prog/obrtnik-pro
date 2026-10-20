@@ -211,3 +211,23 @@ export const ROKSAL_REFERENCES: RoksalReference[] = [
 
 /** Vsa uradna imena odtenkov, ki se pojavljajo v ROKSALOVIH referencah. */
 export const REFERENCE_COLOURS: string[] = [...new Set(ROKSAL_REFERENCES.map((r) => r.colour))];
+
+/** Vsa uradna imena odtenkov (kot jih uporablja ROKSAL). */
+export const OFFICIAL_COLOURS = [
+  'Amazon wood', 'Ash wood', 'Golden teak', 'Burma teak', 'Oak wood', 'White', 'Rustic oak', 'Rustic walnut',
+] as const;
+
+/** Iz oznake profila prebere uradno ime odtenka (ali null). */
+export function officialColourOf(label: string): string | null {
+  const l = (label ?? '').toLowerCase();
+  for (const c of OFFICIAL_COLOURS) {
+    if (l.includes(c.toLowerCase())) return c;
+  }
+  return null;
+}
+
+/** Referenčni objekti ROKSAL v danem odtenku. */
+export function referencesForColour(colour: string | null): RoksalReference[] {
+  if (!colour) return [];
+  return ROKSAL_REFERENCES.filter((r) => r.colour.toLowerCase() === colour.toLowerCase());
+}

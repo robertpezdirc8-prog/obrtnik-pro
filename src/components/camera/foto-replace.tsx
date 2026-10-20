@@ -62,6 +62,7 @@ import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
 import { InstallerSheetPanel } from './installer-sheet-panel';
 import { fasteningSpec, maxPostSpacingCm } from '@/lib/roksal-fastening';
+import { officialColourOf, referencesForColour } from '@/lib/roksal-catalogue';
 import { profileKindForCatalog } from '@/lib/roksal-span-rules';
 import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
@@ -2123,6 +2124,16 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                         {!r.canRender && (
                           <span className="mt-1 block text-[10px] text-destructive">{r.honestyLabel}</span>
                         )}
+                        {(() => {
+                          const refs = referencesForColour(officialColourOf(s.profile.label));
+                          if (refs.length === 0) return null;
+                          return (
+                            <span className="mt-1 block text-[10px] text-muted-foreground">
+                              ROKSAL v tem odtenku že: {refs[0].place} ({refs[0].what}, {refs[0].year})
+                              {refs.length > 1 ? ` in ${refs.length - 1} drugih` : ''}
+                            </span>
+                          );
+                        })()}
                       </button>
                     );
                   })}
