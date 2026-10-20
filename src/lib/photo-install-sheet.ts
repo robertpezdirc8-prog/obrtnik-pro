@@ -83,6 +83,19 @@ export interface SpanCheck {
   source: string | null;
 }
 
+/** Rezalni načrt, pripravljen za žago: katere deske (številke) so katere dolžine. */
+export interface CutListRow {
+  /** celota (1..n) */
+  bay: number;
+  /** številke desk v tej celoti (1-based, vodoravno po ograji) */
+  boardFrom: number;
+  boardTo: number;
+  /** dolžina reza te deske v cm */
+  cutLenCm: number;
+  /** oznaka za delavnico: »12–13: 190 cm« */
+  label: string;
+}
+
 export interface InstallerSheet {
   version: string;
   profileId: string;
@@ -111,6 +124,8 @@ export interface InstallerSheet {
   };
   /** dodatni odpad v cm, ki ga prinese spajanje na stebrih (lahko negativen) */
   extraWasteCm: number;
+  /** rezalni načrt po deskah (za žago) */
+  cutList: CutListRow[];
   span: SpanCheck;
   /** list NI narejen — monter mora najprej izmeriti/odločiti */
   blockers: string[];
@@ -225,6 +240,7 @@ export function buildInstallerSheet(input: InstallerSheetInput): InstallerSheet 
     stocks: [],
     singleRun: { boards: 0, cutLenCm: 0, totalMeters: 0, stocks: [] },
     extraWasteCm: 0,
+    cutList: [],
     span: { maxSpanCm: 0, status: 'unknown', quote: null, source: null },
     blockers,
     warnings,
@@ -362,8 +378,27 @@ export function buildInstallerSheet(input: InstallerSheetInput): InstallerSheet 
     }
   }
 
+  // Rezalni načrt za žago: deske po celotah, z zaporednimi številkami.
+  let boardNo = 0;
+  const cutList: CutListRow[] = bays.map((b) => {
+    const from = boardNo + 1;
+    boardNo += b.plankCount;
+    const to = boardNo;
+    return {
+      bay: b.index,
+      boardFrom: from,
+      boardTo: to,
+      cutLenCm: b.cutLenCm,
+      label:
+        b.plankCount === 1
+          ? `deska ${from}: ${b.cutLenCm.toFixed(0)} cm`
+          : `deske ${from}–${to}: ${b.cutLenCm.toFixed(0)} cm`,
+    };
+  });
+
   return {
     ...base,
+    cutList,
     postPositionsCm: positions,
     postCount: positions.length,
     bays,
@@ -482,7 +517,8 @@ ${ready ? `
 <section><h2>3. Celote in deske</h2>
 <table><thead><tr><th>Celota</th><th>Od – do</th><th>Širina</th><th>Desk</th><th>Rez deske</th></tr></thead><tbody>${rowsBays}</tbody></table></section>
 
-<section><h2>4. Rezalni načrt (uradne nabavne dolžine)</h2>
+<section><h2>4. Rezalni načrt (za žago) in nabavni kosi</h2>
+${sheet.cutList.length > 0 ? `<table><thead><tr><th>Deske (številke po ograji)</th><th>Celota</th><th>Dolžina reza</th></tr></thead><tbody>${sheet.cutList.map((c) => `<tr><td>${esc(c.label)}</td><td>${c.bay}</td><td>${cm(c.cutLenCm)}</td></tr>`).join('')}</tbody></table>` : ''}
 ${sheet.stocks.length ? `<table><thead><tr><th>Rez</th><th>Nabavnih kosov</th><th>Nabavna dolžina</th><th>Rezov na kos</th><th>Odpad</th></tr></thead><tbody>${rowsStock}</tbody></table>` : '<p class="muted">Rezalni načrt ni nastavljen (glej opozorila).</p>'}
 <p class="muted">Primerjava z eno samo ravnino brez vmesnih stebrov: ${sheet.singleRun.boards} desk, ${sheet.singleRun.totalMeters.toFixed(2).replace('.', ',')} m —
 razlika v odpadku: <b>${sheet.extraWasteCm > 0 ? '+' : ''}${cm(sheet.extraWasteCm)}</b>.</p></section>

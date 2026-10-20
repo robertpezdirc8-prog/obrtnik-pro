@@ -55,6 +55,12 @@ export function buildInstallerSheetMessage(input: InstallerMessageInput): string
       );
     }
   }
+  if (s.cutList.length > 0) {
+    const poCelotah = s.cutList
+      .map((c) => `celota ${c.bay}: ${c.boardTo - c.boardFrom + 1} × ${c.cutLenCm.toFixed(0)} cm`)
+      .join(' · ');
+    lines.push(`Rezalni načrt (za žago): ${poCelotah}.`);
+  }
   if (s.span.status === 'unknown') {
     lines.push('Meje razmika stebrov ROKSAL za ta profil ne objavlja — razmak potrdi monter.');
   }

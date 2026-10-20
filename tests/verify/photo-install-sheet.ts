@@ -20,6 +20,7 @@ import {
   PHOTO_INSTALL_SHEET_VERSION,
 } from '../../src/lib/photo-install-sheet';
 import { maxAllowedSpan } from '../../src/lib/roksal-span-rules';
+import { buildInstallerSheetMessage } from '../../src/lib/install-sheet-message';
 
 let pass = 0, fail = 0;
 const check = (name: string, cond: boolean, info?: unknown) => {
@@ -187,6 +188,9 @@ console.log('Montažni list za monterja (photo-install-sheet) — deterministič
   const htmlBlocked = buildInstallerSheetHtml(blocked, {});
   check('HTML: blokiran list to pove', htmlBlocked.includes('LIST NI NATISLJIV'), 'ni opozorila');
   check('HTML: blokiran list nima tabele stebrov', !htmlBlocked.includes('Lega stebrov'), 'tabela je');
+  const cutHtml = buildInstallerSheetHtml(a, {});
+  check('HTML: rezalni načrt je v listu', cutHtml.includes('Rezalni načrt (za žago)') && cutHtml.includes('deske 1–12: 190'), 'izrez');
+  check('HTML: rezalni načrt je v sporočilu', buildInstallerSheetMessage({ sheet: a }).includes('Rezalni načrt (za žago)'), 'sporočilo');
   check('opozorila so unikatna (React key + ni ponavljanja)', new Set(a.warnings).size === a.warnings.length, a.warnings);
 }
 
