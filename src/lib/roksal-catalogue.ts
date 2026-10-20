@@ -13,6 +13,10 @@ export interface CatalogueFamily {
   id: string;
   /** družina v registru profilov (lahko se razlikuje od id) */
   registryFamily: string;
+  /** Ali so te barve ponujene kot LASTNI profili v registru. Fasadni profili
+   *  (ROMB / POLNA-100 za fasado) uporabljajo barve obstoječih družin, zato
+   *  se ne štejejo posebej. */
+  offeredAsProfiles?: boolean;
   /** uradno ime profila (ROKSAL) */
   officialName: string;
   /** širina deske v cm */
@@ -95,6 +99,39 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     coloursQuote: 'Pri deskah s profilom KUBO lahko izbirate med spodnjimi štirimi barvami:',
     surfaces: [],
     source: `${SRC_COLOUR}`,
+  },
+  'fasada-romb': {
+    id: 'fasada-romb',
+    registryFamily: 'fasadna-obloga-8',
+    offeredAsProfiles: false,
+    officialName: 'ROMB (fasada) — profil 6,7 cm z alu cevjo',
+    boardWidthCm: 6.7,
+    boardThicknessCm: 2.6,
+    boardLengthM: null,
+    colours: 7,
+    coloursQuote: 'Pri deskah s profilom ROMB lahko izbirate med spodnjimi sedmimi barvami:',
+    surfaces: [],
+    surfacesQuote:
+      'Za fasado se naredi najprej izolacija, na njo se privijači podložna letev debeline 4 cm, širine 6 cm iz macesna v razmakih 70 – 80 cm. ' +
+      'Na njo se pritrdi romb debeline 2,6 cm + debelina pritrdilnega sistema je 0,5 cm. Skupna debelina na izolaciji je 7,1 cm.',
+    source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/wpc-deske-za-fasado/`,
+  },
+  'fasada-polna-100': {
+    id: 'fasada-polna-100',
+    registryFamily: 'polna-100',
+    offeredAsProfiles: false,
+    officialName: 'POLNA DESKA-100 (fasada) — horizontalno ali vertikalno',
+    boardWidthCm: 10,
+    boardThicknessCm: 1.2,
+    boardLengthM: 5.8,
+    colours: 8,
+    coloursQuote: 'Pri deskah s polnim profilom lahko izbirate med spodnjimi osmimi barvami:',
+    surfaces: [],
+    surfacesQuote:
+      'Polne deske se lahko montirajo horizontalno ali vertikalno na pripravljeno izolacijo … ' +
+      'Na izolacijo se v razmakih 70–80 cm pritrdijo macesnove letve dimenzije 4 × 7 cm … ' +
+      'Pri vertikalni postavitvi desk se dodatno montira še horizontalne letve 2 × 7 cm v razmaku do 50cm.',
+    source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/wpc-deske-za-fasado/`,
   },
   'terasna-150': {
     id: 'terasna-150',

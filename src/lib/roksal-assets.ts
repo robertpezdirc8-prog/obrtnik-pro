@@ -160,7 +160,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
     grain: 'vertical',
-    note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 7, z leve) iz URADNE ROKSAL barvne lestvice terasnih desk (BARVNA_LESTVICA_1-terasa4.png, 2560×680) + zasuk 90° (žira/rebra na lestvici vodoravna; konvencija tlakov v viz.ts je NAVPIČNA žira — vodoravne deke renderer zasuka sam) → ENOJNI NEPREKINJEN IZREZ 256×256 (tests/make-deka-tiles.ts, deterministično; 0 skoraj-črnih pikslov; brez notranjega zrcaljenja; rebra preverjena kot periodična — avtentična površina KLASIK deske). Imena dekorjev niso objavljena → oznaka po POLOŽAJU (1/7); "temno sivi, rebra" je opisno, NE trgovsko ime. Povprečje RGB(97,100,104). Merilo NI objavljeno → realCm 45 privzetek.',
+    note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 7, z leve) iz URADNE ROKSAL barvne lestvice terasnih desk (BARVNA_LESTVICA_1-terasa4.png, 2560×680). IMENA odtenkov terasnega profila so v lestvici (belo besedilo), a jih po barvi ne morem zanesljivo ločiti — površina rebra svetli, zato so imena v tej družini še opisna; barve pa so resnične. + zasuk 90° (žira/rebra na lestvici vodoravna; konvencija tlakov v viz.ts je NAVPIČNA žira — vodoravne deke renderer zasuka sam) → ENOJNI NEPREKINJEN IZREZ 256×256 (tests/make-deka-tiles.ts, deterministično; 0 skoraj-črnih pikslov; brez notranjega zrcaljenja; rebra preverjena kot periodična — avtentična površina KLASIK deske). Imena dekorjev niso objavljena → oznaka po POLOŽAJU (1/7); "temno sivi, rebra" je opisno, NE trgovsko ime. Povprečje RGB(97,100,104). Merilo NI objavljeno → realCm 45 privzetek.',
   },
   {
     id: 'tex-roksal-deka-dekor-2', kind: 'texture', label: 'DEKA dekor 2/7 — svetlo sivi, rebra (uradna lestvica)',
@@ -753,7 +753,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     textureId: 'tex-hrast',
     postCm: 6,
     pattern: 'horizontalne',
-    note: 'Mere iz privzetkov vizualizerja (obloga: letve 8 cm, reža 2 cm).',
+    note: 'Mere iz privzetkov vizualizerja (obloga: letve 8 cm, reža 2 cm). URADNE ROKSALOVE možnosti za fasado (roksal.com/wpc-deske-za-fasado/): profil ROMB 6,7 cm z alu cevjo (podložna letev 4 × 6 cm na macesnu v razmakih 70 – 80 cm; skupna debelina na izolaciji 7,1 cm), profil KUBO na alu cev 20 × 60 × 2 mm (podlaga črna, vijaki nevidni) ter POLNA DESKA-100 (macesnove letve 4 × 7 cm na 70 – 80 cm; pri vertikalni postavitvi še horizontalne letve 2 × 7 cm na do 50 cm; vijaki vidni z lica). — Ta profil v vizualizerju ostane splošna obloga; pravi ROKSAL fasadni profili so v katalogu (src/lib/roksal-catalogue.ts).',
   },
   {
     id: 'piketna-18',

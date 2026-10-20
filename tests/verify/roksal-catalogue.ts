@@ -28,6 +28,7 @@ console.log('Uradni katalog ROKSAL — barve, mere, citati (roksal.com)\n');
     countByFamily.set(f, (countByFamily.get(f) ?? 0) + 1);
   }
   for (const cat of Object.values(ROKSAL_CATALOGUE)) {
+    if (cat.offeredAsProfiles === false) continue; // fasadni profili ne uvajajo svojih barv
     const n = countByFamily.get(cat.registryFamily) ?? 0;
     check(
       `${cat.officialName}: aplikacija ponuja ${n} barv, ROKSAL jih ponuja ${cat.colours}`,

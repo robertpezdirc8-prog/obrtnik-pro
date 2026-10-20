@@ -88,6 +88,18 @@ export const FASTENING_SPECS: Record<string, FasteningSpec> = {
     quotePosts: 'Maksimalna razdalja med stebrički z L-kotniki je 145 cm je možna samo v primeru ko je kotnik na stebru levo in desno.',
     source: `${SOURCE_FASTENING} · ${SOURCE_VERTICAL}`,
   },
+  'fasada-romb': {
+    kind: 'polna-100',
+    railSpacingCmMax: 80,
+    postSpacingCmMax: null,
+    postSpacingCmMaxHighFence: null,
+    screwsVisible: false,
+    screwEdgeMinCm: 3,
+    screwEdgeMaxCm: 15,
+    quote: 'podložna letev debeline 4 cm, širine 6 cm iz macesna v razmakih 70 – 80 cm',
+    quotePosts: 'Skupna debelina na izolaciji je 7,1 cm.',
+    source: 'roksal.com/woodcore-wpc-deske/wpc-deske-za-fasado/',
+  },
 };
 
 /** Odmik vijaka od roba reza — dobesedno z ROKSALove strani. */
