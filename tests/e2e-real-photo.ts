@@ -363,7 +363,11 @@ async function main(): Promise<void> {
     // ── MERILNI IZPIS (za terensko preverjanje z metrom) ──
     // Te številke primerjaj z metrom in zapiši odstopanje v
     // tests/fixtures/meritve-gt.json (oblika je tam opisana).
-    console.log(`  MERILNI IZPIS: ${kpi.replace(/\s+/g, ' ')}`);    check('prava fotka: gumb za sporočilo monterju je', (await disabledOf('fr-sheet-message')) === false, 'fr-sheet-message');
+    console.log(`  MERILNI IZPIS: ${kpi.replace(/\s+/g, ' ')}`);
+    check('prava fotka: gumb za sporočilo monterju je', (await disabledOf('fr-sheet-message')) === false, 'fr-sheet-message');
+    // Referenčna fotografija barve (P3)
+    const refAlt = await evaluate(`(() => { const e = document.querySelector('[data-testid="fr-sheet-colour-ref"] img'); return e ? e.getAttribute('alt') : '__MISSING__'; })()`);
+    check('montažni list: referenčna fotografija barve je prikazana', String(refAlt).toLowerCase().includes('vgrajena ograja'), refAlt);
     check('prava fotka: gumb za prenos HTML je', (await disabledOf('fr-sheet-download')) === false, 'fr-sheet-download');
     // Posnetek panela z listom (za dokumentacijo v PR-ju)
     await evaluate(`(() => { const e = document.querySelector('[data-testid="fr-installer-sheet"]'); if (e) e.scrollIntoView({ block: 'center' }); return 'OK'; })()`);

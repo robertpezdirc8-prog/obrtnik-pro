@@ -23,6 +23,7 @@ import {
   type InstallerSheet,
 } from '@/lib/photo-install-sheet';
 import { buildInstallerSheetMessage } from '@/lib/install-sheet-message';
+import { colourReferenceFor } from '@/lib/roksal-colour-refs';
 import { formatNum } from '@/lib/format';
 
 interface InstallerSheetPanelProps {
@@ -190,6 +191,19 @@ export function InstallerSheetPanel({ meta, imageDataUrl, datum, obrtnik }: Inst
           razlika v odpadku <b>{sheet.extraWasteCm > 0 ? '+' : ''}{formatNum(sheet.extraWasteCm)} cm</b>.
         </p>
       )}
+
+      {(() => {
+        const ref = colourReferenceFor(meta.profileId);
+        if (!ref) return null;
+        return (
+          <figure className="rounded border bg-muted/20 p-2" data-testid="fr-sheet-colour-ref">
+            <img src={ref.src} alt={`Vgrajena ograja v barvi ${ref.colour}`} className="h-32 w-full rounded object-cover" />
+            <figcaption className="mt-1 text-[10px] text-muted-foreground">
+              Referenca ROKSAL: vgrajena ograja v barvi <b>{ref.colour}</b> ({ref.surface}) — uradna fotografija.
+            </figcaption>
+          </figure>
+        );
+      })()}
 
       {typeof meta.params?.measureCheck === 'string' && meta.params.measureCheck && (
         <p
