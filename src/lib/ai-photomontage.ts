@@ -173,3 +173,36 @@ export function readAiConfig(env: NodeJS.ProcessEnv = process.env): AiConfig | n
   return { provider: p, apiKey, model };
 }
 
+/**
+ * Objektivno merilo: koliko je model SPREMENIL zunaj območja ograje.
+ * Primerjava je piksna (mean |AI − prvotna| na kanalih) samo tam, kjer maska
+ * dovoljuje spremembo. 0 = model ni spremenil okolice (varen odgovor),
+ * blizu 1 = model je preuredil hišo (neuporabno za predstavitev).
+ */
+export function computeOutsideDrift(args: {
+  original: Uint8ClampedArray;
+  ai: Uint8ClampedArray;
+  /** maska: 255 = tam sme model spremeniti, 0 = tam mora ostati prvotno */
+  mask: Uint8ClampedArray | null;
+  width: number;
+  height: number;
+}): { drift: number; changedPct: number } {
+  const { original, ai, mask, width, height } = args;
+  let sum = 0;
+  let n = 0;
+  let changed = 0;
+  for (let i = 0; i < width * height; i++) {
+    if (mask && mask[i * 4] > 127) continue; // zunaj območja: ne sme biti spremembe
+    const o = i * 4;
+    const d =
+      (Math.abs(original[o] - ai[o]) + Math.abs(original[o + 1] - ai[o + 1]) + Math.abs(original[o + 2] - ai[o + 2])) / 3;
+    sum += d;
+    n += 1;
+    if (d > 24) changed += 1;
+  }
+  if (n === 0) return { drift: 0, changedPct: 0 };
+  return {
+    drift: Math.round((sum / n / 255) * 1000) / 1000,
+    changedPct: Math.round((changed / n) * 1000) / 10,
+  };
+}

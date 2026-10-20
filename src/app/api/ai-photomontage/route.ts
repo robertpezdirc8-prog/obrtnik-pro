@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAccess } from '@/lib/auth-guard';
+import sharp from 'sharp';
 import {
   AI_RESULT_LABEL,
+  computeOutsideDrift,
   buildAiPrompt,
   buildGeminiRequest,
   parseDataUrl,
@@ -23,6 +25,38 @@ import {
  *  - odgovor VEDNO vsebuje oznako AI_RESULT_LABEL: generirana slika ni
  *    potrjen načrt, meritve pa so iz determinističnega jedra.
  */
+
+/** Preveri, koliko je model spremenil zunaj območja ograje (objektivno). */
+async function outsideDrift(
+  originalDataUrl: string,
+  aiDataUrl: string,
+  maskData: Buffer | null,
+): Promise<{ drift: number; changedPct: number } | null> {
+  if (!maskData) return null;
+  try {
+    const orig = await sharp(Buffer.from(parseDataUrl(originalDataUrl)!.base64, 'base64'))
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const aiImg = await sharp(Buffer.from(parseDataUrl(aiDataUrl)!.base64, 'base64'))
+      .resize(orig.info.width, orig.info.height, { fit: 'fill' })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const mask = await sharp(maskData).resize(orig.info.width, orig.info.height, { fit: 'fill' })
+      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return computeOutsideDrift({
+      original: new Uint8ClampedArray(orig.data),
+      ai: new Uint8ClampedArray(aiImg.data),
+      mask: new Uint8ClampedArray(mask.data),
+      width: orig.info.width,
+      height: orig.info.height,
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const zavrnjen = await requireAccess(req, 'photos', 'POST');
   if (zavrnjen) return zavrnjen;
@@ -46,6 +80,7 @@ export async function POST(req: NextRequest) {
     profileLabel?: unknown;
     colourLabel?: unknown;
     instruction?: unknown;
+    regionHint?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -65,7 +100,19 @@ export async function POST(req: NextRequest) {
   const referenceDataUrl = typeof body.referenceDataUrl === 'string' ? body.referenceDataUrl : null;
   const maskDataUrl = typeof body.maskDataUrl === 'string' ? body.maskDataUrl : null;
 
-  const prompt = buildAiPrompt({ imageDataUrl, profileLabel, colourLabel, instruction, referenceDataUrl });
+  const prompt = buildAiPrompt({
+    imageDataUrl, profileLabel, colourLabel, instruction, referenceDataUrl,
+    regionHint: typeof body.regionHint === 'string' ? body.regionHint : null,
+  });
+
+  // Maska (območje ograje) — 255 = tam sme model spremeniti. Uporablja se
+  // za OpenAI kot maska, za oba ponudnika pa kot osnova za OBJEKTIVNO preverbo,
+  // koliko je model spremenil zunaj ograje.
+  let maskData: Buffer | null = null;
+  if (maskDataUrl) {
+    const m = parseDataUrl(maskDataUrl);
+    if (m) maskData = Buffer.from(m.base64, 'base64');
+  }
 
   try {
     if (cfg.provider === 'gemini') {
@@ -89,12 +136,19 @@ export async function POST(req: NextRequest) {
           { status: 502 },
         );
       }
+      const drift = await outsideDrift(imageDataUrl, dataUrl, maskData);
       return NextResponse.json({
         dataUrl,
         provider: cfg.provider,
         model: cfg.model,
         label: AI_RESULT_LABEL,
-        note: 'Fotografija je odposlana ponudniku modela; ključ oziroma slika se ne shranjujeta.',
+        driftOutside: drift?.drift ?? null,
+        changedOutsidePct: drift?.changedPct ?? null,
+        note:
+          'Fotografija je odposlana ponudniku modela; ključ oziroma slika se ne shranjujeta.' +
+          (drift && drift.changedPct > 10
+            ? ` Opozorilo: model je spremenil tudi okolico (${drift.changedPct} % pikslov zunaj ograje) — slika ni zanesljiva predstavitev.`
+            : ''),
       });
     }
 
@@ -104,10 +158,22 @@ export async function POST(req: NextRequest) {
     form.append('prompt', prompt);
     form.append('size', '1024x1024');
     const img = parseDataUrl(imageDataUrl)!;
-    form.append('image', new Blob([Buffer.from(img.base64, 'base64')], { type: img.mimeType }), 'photo.jpg');
-    if (maskDataUrl) {
-      const m = parseDataUrl(maskDataUrl);
-      if (m) form.append('mask', new Blob([Buffer.from(m.base64, 'base64')], { type: m.mimeType }), 'mask.png');
+    form.append('image', new Blob([new Uint8Array(Buffer.from(img.base64, 'base64'))], { type: img.mimeType }), 'photo.jpg');
+    if (maskData) {
+      // OpenAI maska: PROZORNO tam, kjer sme model spremeniti (bela = ograja).
+      const src = await sharp(maskData).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const out = Buffer.alloc(src.info.width * src.info.height * 4);
+      for (let i = 0; i < src.info.width * src.info.height; i++) {
+        const white = src.data[i * 4] > 127; // R kanal: 255 = ograja
+        out[i * 4] = 0;
+        out[i * 4 + 1] = 0;
+        out[i * 4 + 2] = 0;
+        out[i * 4 + 3] = white ? 0 : 255; // prozorno = tu sme model zamenjati
+      }
+      const maskPng = await sharp(out, { raw: { width: src.info.width, height: src.info.height, channels: 4 } })
+        .png()
+        .toBuffer();
+      form.append('mask', new Blob([new Uint8Array(maskPng)], { type: 'image/png' }), 'mask.png');
     }
     const res = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
@@ -123,12 +189,19 @@ export async function POST(req: NextRequest) {
     if (!dataUrl) {
       return NextResponse.json({ error: 'OpenAI ni vrnil slike.' }, { status: 502 });
     }
+    const drift = await outsideDrift(imageDataUrl, dataUrl, maskData);
     return NextResponse.json({
       dataUrl,
       provider: cfg.provider as AiProvider,
       model: cfg.model,
       label: AI_RESULT_LABEL,
-      note: 'Fotografija je odposlana ponudniku modela; ključ oziroma slika se ne shranjujeta.',
+      driftOutside: drift?.drift ?? null,
+      changedOutsidePct: drift?.changedPct ?? null,
+      note:
+        'Fotografija je odposlana ponudniku modela; ključ oziroma slika se ne shranjujeta.' +
+        (drift && drift.changedPct > 10
+          ? ` Opozorilo: model je spremenil tudi okolico (${drift.changedPct} % pikslov zunaj ograje) — slika ni zanesljiva predstavitev.`
+          : ''),
     });
   } catch (e) {
     // KLJUČA NE LOGIRAMO — samo razlog brez njega.

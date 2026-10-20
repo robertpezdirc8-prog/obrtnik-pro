@@ -1165,6 +1165,28 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       } catch {
         referenceDataUrl = null; // referenca je priročna, ne blokira
       }
+      // Maska stare ograje (255 = ograja) → PNG za ponudnika in za objektivno
+      // preverbo, koliko je model spremenil zunaj območja.
+      let maskDataUrl: string | null = null;
+      const om = oldMaskRef.current;
+      if (om) {
+        const c = document.createElement('canvas');
+        c.width = om.w;
+        c.height = om.h;
+        const cx = c.getContext('2d')!;
+        const img = cx.createImageData(om.w, om.h);
+        // Zapis je EKSPLICITEN: R/G/B = 255 tam, kjer je ograja, 0 sicer;
+        // alfa je vedno 255 (prosojnost bi pomenila »tu ni podatka«).
+        for (let i = 0; i < om.w * om.h; i++) {
+          const v = om.data[i] > 127 ? 255 : 0;
+          img.data[i * 4] = v;
+          img.data[i * 4 + 1] = v;
+          img.data[i * 4 + 2] = v;
+          img.data[i * 4 + 3] = 255;
+        }
+        cx.putImageData(img, 0, 0);
+        maskDataUrl = c.toDataURL('image/png');
+      }
       const xs = (quadPct ?? []).map(([x]) => x);
       const ys = (quadPct ?? []).map(([, y]) => y);
       const regionHint = xs.length
@@ -1175,6 +1197,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageDataUrl,
+          maskDataUrl,
           referenceDataUrl,
           profileLabel: selProfile?.label ?? 'ROKSAL WPC ograja',
           colourLabel: null,

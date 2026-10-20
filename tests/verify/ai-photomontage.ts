@@ -9,6 +9,7 @@
 import {
   AI_RESULT_LABEL,
   buildAiPrompt,
+  computeOutsideDrift,
   buildGeminiRequest,
   parseDataUrl,
   parseGeminiResponse,
@@ -95,7 +96,31 @@ console.log('AI fotomontaža (ai-photomontage) — navodilo, ključ, odgovor, oz
   check('oznaka pove, da mere so iz drugega izračuna', AI_RESULT_LABEL.includes('determinističnega izračuna'), AI_RESULT_LABEL);
 }
 
-// ── 6) data URL ──────────────────────────────────────────────────
+// ── 6) Objektivno merilo: koliko je model spremenil zunaj ograje ──
+{
+  const w = 4, h = 2;
+  const orig = new Uint8ClampedArray(w * h * 4).fill(100);
+  const mask = new Uint8ClampedArray(w * h * 4).fill(0);
+  // prva dva stolpca sta znotraj ograje (masko 255), ostala sta zunaj
+  for (let y = 0; y < h; y++) for (let x = 0; x < 2; x++) mask[(y * w + x) * 4] = 255;
+  const aiInside = orig.slice();
+  for (let y = 0; y < h; y++) for (let x = 0; x < 2; x++) aiInside[(y * w + x) * 4] = 200; // samo ZNOTRAJ
+  const d1 = computeOutsideDrift({ original: orig, ai: aiInside, mask, width: w, height: h });
+  check('sprememba samo ZNOTRAJ ograje → drift 0', d1.drift === 0 && d1.changedPct === 0, d1);
+  const aiOutside = orig.slice();
+  for (let y = 0; y < h; y++) for (let x = 2; x < w; x++) {
+    const o = (y * w + x) * 4;
+    aiOutside[o] = 0; aiOutside[o + 1] = 0; aiOutside[o + 2] = 0; // samo ZUNAJ
+  }
+  const d2 = computeOutsideDrift({ original: orig, ai: aiOutside, mask, width: w, height: h });
+  check('sprememba ZUNAJ ograje → drift ≈ 0,39 (100/255)', d2.drift > 0.38 && d2.drift < 0.4, d2);
+  // Odstotek je med PRIMERJANIMI pikslji (tistimi zunaj območja): tu 4/4.
+  check('sprememba ZUNAJ ograje → % spremenjenih (med primerjanimi)', d2.changedPct === 100, d2);
+  const d3 = computeOutsideDrift({ original: orig, ai: orig, mask: null, width: w, height: h });
+  check('brez maske → drift 0 (ničesar ne preverjamo)', d3.drift === 0, d3);
+}
+
+// ── 7) data URL ──────────────────────────────────────────────────
 {
   check('data URL se razčleni', parseDataUrl(PNG)?.mimeType === 'image/png', parseDataUrl(PNG));
   check('smetje ni data URL', parseDataUrl('hello') === null);
