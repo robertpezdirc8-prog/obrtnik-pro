@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
-  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Ruler, Save, ShoppingCart, Upload, ZoomIn,
+  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Ruler, Save, ScanSearch, ShoppingCart, Upload, ZoomIn,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -63,6 +63,7 @@ import { buildBomFromMeta } from '@/lib/photo-bom';
 import { InstallerSheetPanel } from './installer-sheet-panel';
 import { fasteningSpec, maxPostSpacingCm } from '@/lib/roksal-fastening';
 import { officialColourOf, referencesForColour } from '@/lib/roksal-catalogue';
+import { analyseOldFence, type OldFenceFinding } from '@/lib/old-fence-analysis';
 import { profileKindForCatalog } from '@/lib/roksal-span-rules';
 import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
@@ -870,6 +871,24 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   };
 
   // ── Korak 3: samodejni predlog + čopič + ovire ──
+  // ── PREPOZNAJ STARO OGRAJO: kaj kamera gleda ─────────────────────────
+  const [oldFence, setOldFence] = useState<OldFenceFinding | null>(null);
+  const [oldFenceBusy, setOldFenceBusy] = useState(false);
+  const onRecogniseOldFence = () => {
+    const work = workCanvasRef.current;
+    if (!work || !quadPct) return;
+    setOldFenceBusy(true);
+    try {
+      const ctx = work.getContext('2d', { willReadFrequently: true })!;
+      const img = ctx.getImageData(0, 0, work.width, work.height);
+      setOldFence(analyseOldFence({ rgba: new Uint8Array(img.data.buffer.slice(0)), W: work.width, H: work.height, quadPct }));
+    } catch {
+      setOldFence(null);
+    } finally {
+      setOldFenceBusy(false);
+    }
+  };
+
   const onAutoSuggest = () => {
     const work = workCanvasRef.current;
     const q = quadPx;
@@ -1880,6 +1899,69 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               <Paintbrush className="mr-2 h-4 w-4" />
               Samodejno predlagaj
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRecogniseOldFence}
+              disabled={!quadPx || oldFenceBusy}
+              data-testid="fr-recognise"
+            >
+              <ScanSearch className="mr-2 h-4 w-4" />
+              Prepoznaj staro ograjo
+            </Button>
+            {oldFence && (
+              <div className="w-full rounded-lg border bg-muted/30 p-2.5 text-[11px] space-y-1" data-testid="fr-recognise-result">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px]" data-testid="fr-recognise-material">
+                    material: {oldFence.material}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]" data-testid="fr-recognise-orientation">
+                    deske: {oldFence.orientation}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]" data-testid="fr-recognise-screws">
+                    vijaki: {oldFence.screws.length}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]" data-testid="fr-recognise-confidence">
+                    zanesljivost: {oldFence.confidence}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground">{oldFence.materialEvidence}</p>
+                <p className="text-muted-foreground">{oldFence.orientationEvidence}</p>
+                <p className="text-muted-foreground">{oldFence.screwEvidence}</p>
+                <p>
+                  <b>Predlog družine:</b>{' '}
+                  {oldFence.family === 'polna' ? 'POLNA (pokončne deske)' : oldFence.family === 'romb' ? 'ROMB' : 'ni zadostnih znakov'}
+                  {' — '}
+                  {oldFence.familyReason}
+                </p>
+                {oldFence.notes.map((n) => (
+                  <p key={n} className="text-amber-800">{n}</p>
+                ))}
+                <p className="text-muted-foreground">
+                  Barvo izbereš sam; analiza predlaga le družino profila, ne barve.
+                </p>
+                {oldFence.family && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px]"
+                    data-testid="fr-recognise-apply"
+                    onClick={() => {
+                      setProfileId(oldFence.family === 'romb' ? 'romb-67' : 'polna-100');
+                      toast({
+                        title: 'Profil predlagan',
+                        description:
+                          oldFence.family === 'romb'
+                            ? 'ROMB DESKA-67 — zdaj izberi barvo.'
+                            : 'POLNA DESKA-100 — zdaj izberi barvo.',
+                      });
+                    }}
+                  >
+                    Uporabi predlog profila
+                  </Button>
+                )}
+              </div>
+            )}
             {autoInfo && (
               <Badge variant="secondary" className="text-[10px]" data-testid="fr-auto-note">
                 zanesljivost {Math.round(autoInfo.confidence * 100)} %

@@ -317,6 +317,17 @@ async function main(): Promise<void> {
     check('prava fotka: obnova vrne ENO iskreno vej (ok ali ročno)', inp.includes('Ozadje obnovljeno') || inp.includes('ročni'), inp.slice(0, 200));
     await shot('e2e-real-04-obnova.png');
 
+    // ── 4b) PREPOZNAJ STARO OGRAJO (kaj kamera gleda) ──
+    check('prepoznavanje: gumb je', (await clickTestid('fr-recognise')) === 'OK', 'klik');
+    await sleep(700);
+    const recMat = await textOf('fr-recognise-material');
+    const recOri = await textOf('fr-recognise-orientation');
+    const recScr = await textOf('fr-recognise-screws');
+    check('prepoznavanje: material je povedan', recMat.startsWith('material:'), recMat);
+    check('prepoznavanje: orientacija je povedana', recOri.startsWith('deske:'), recOri);
+    check('prepoznavanje: vijaki so prešteti', recScr.startsWith('vijaki:'), recScr);
+    check('prepoznavanje: zanesljivost je navedena', (await textOf('fr-recognise-confidence')).startsWith('zanesljivost:'), '');
+
     // ── 5) profil + razmak stebrov + 6) izris ──
     const pid = 'fr-profile-polna-100';
     check('prava fotka: profil polna-100 na voljo', await exists(pid), pid);
