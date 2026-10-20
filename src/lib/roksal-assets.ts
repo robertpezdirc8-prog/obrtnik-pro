@@ -787,7 +787,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // katalog (#6); catalogSku je null (SKU se ne izmišljuje).
   {
     id: 'kubo-80-42', label: 'KUBO profil 80/42 (pokončno) — dekor 1/4 Amazon wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DK20 / DK25 / DK60',
     plankCm: 8, gapCm: 0.5,
     orientation: 'vertical',
     textureId: 'tex-roksal-kubo-dekor-2',
@@ -841,7 +841,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   {
     id: 'roksal-deka-150',
     label: 'TERASNI profil WPC deka 150 — dekor 1/7 Amazon wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DT400K / DT400R',
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
     textureId: 'tex-roksal-deka-dekor-1',
@@ -926,7 +926,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // kot pri KUBO/deka; parjenje z vgradnjo bi bilo sklepanje).
   {
     id: 'polna-57-32', label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 1/3 Amazon wood (uradna lestvica, kot KUBO)',
-    catalogSku: null,
+    catalogSku: 'DP57/32K',
     plankCm: 5.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-kubo-dekor-1',
@@ -956,7 +956,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100', label: 'ROKSAL polna deska 100 (pokončno) — dekor 1/8 Amazon wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100K / DP100R',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-foto-dekor-1',
@@ -966,7 +966,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-2', label: 'ROKSAL polna deska 100 (pokončno) — dekor 2/8 Ash wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100K',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-foto-dekor-2',
@@ -976,7 +976,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-3', label: 'ROKSAL polna deska 100 (pokončno) — dekor 3/8 Golden teak (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100K',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-dekor-3',
@@ -986,7 +986,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-4', label: 'ROKSAL polna deska 100 (pokončno) — dekor 4/8 Burma teak (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100K',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-dekor-4',
@@ -996,7 +996,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-5', label: 'ROKSAL polna deska 100 (pokončno) — dekor 5/8 Oak wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100K',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-dekor-5',
@@ -1006,7 +1006,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-6', label: 'ROKSAL polna deska 100 (pokončno) — dekor 6/8 White (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100R',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-dekor-6',
@@ -1016,7 +1016,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-7', label: 'ROKSAL polna deska 100 (pokončno) — dekor 7/8 Rustic oak (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100R',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-dekor-7',
@@ -1026,7 +1026,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-100-dekor-8', label: 'ROKSAL polna deska 100 (pokončno) — dekor 8/8 Rustic walnut (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP100R',
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna100-dekor-8',
@@ -1036,7 +1036,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'polna-128', label: 'ROKSAL polna deska 128 (pokončno) — dekor 1/5 Amazon wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DP128K / DP128R',
     plankCm: 12.8, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-polna128-dekor-1',
@@ -1086,7 +1086,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67', label: 'ROKSAL romb deska 67 (pokončno) — dekor 1/7 Amazon wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580K / DR580R',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-1',
@@ -1096,7 +1096,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67-dekor-2', label: 'ROKSAL romb deska 67 (pokončno) — dekor 2/7 Ash wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580K',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-2',
@@ -1106,7 +1106,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67-dekor-3', label: 'ROKSAL romb deska 67 (pokončno) — dekor 3/7 Golden teak (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580K',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-3',
@@ -1116,7 +1116,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67-dekor-4', label: 'ROKSAL romb deska 67 (pokončno) — dekor 4/7 Burma teak (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580K',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-4',
@@ -1126,7 +1126,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67-dekor-5', label: 'ROKSAL romb deska 67 (pokončno) — dekor 5/7 Oak wood (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580K',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-5',
@@ -1136,7 +1136,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67-dekor-6', label: 'ROKSAL romb deska 67 (pokončno) — dekor 6/7 Rustic oak (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580R',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-6',
@@ -1146,7 +1146,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'romb-67-dekor-7', label: 'ROKSAL romb deska 67 (pokončno) — dekor 7/7 Rustic walnut (uradna lestvica)',
-    catalogSku: null,
+    catalogSku: 'DR580R',
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
     textureId: 'tex-roksal-romb67-dekor-7',

@@ -180,7 +180,10 @@ console.log('Montažni list za monterja (photo-install-sheet) — deterministič
   check('HTML: celote in deske', html.includes('Celote in deske'));
   check('HTML: rezalni načrt', html.includes('Rezalni načrt'));
   check('HTML: viri (ROKSAL citat)', html.includes('spajajo na dolžino obvezno na stebru'));
-  check('HTML: ni cene (nobene številke €)', !html.includes('€'), 'vsebuje €');
+  // List ZDAJ vsebuje uradni ROKSAL cenik (referenca z datumom) — ponudba pa
+  // ostaja brez cene (ceno vpiše obrtnik; glej tests/verify/photo-bom.ts).
+  check('HTML: uradni cenik je naveden s kodo in datumom', /DP100K/.test(html) && html.includes('1. 01. 2026'), 'cenik');
+  check('HTML: cenik je označen kot referenca', /referenca/i.test(html) && /vpiše obrtnik/i.test(html), 'označba');
   check('HTML: determinističen', html === buildInstallerSheetHtml(b, { datum: '2026-10-19', obrtnik: 'ROKSAL Kranj — montaža', objekt: 'Novo mesto 12' }));
   check('HTML: escaper', buildInstallerSheetHtml(a, { obrtnik: '<script>x</script>' }).includes('&lt;script&gt;'), 'ni escapano');
 
