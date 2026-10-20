@@ -61,6 +61,8 @@ import {
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
 import { InstallerSheetPanel } from './installer-sheet-panel';
+import { fasteningSpec, maxPostSpacingCm } from '@/lib/roksal-fastening';
+import { profileKindForCatalog } from '@/lib/roksal-span-rules';
 import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
 import { suggestBandQuadPct, type BandSuggestion } from '@/lib/band-suggest';
@@ -527,7 +529,15 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
 
   // Razmak stebrov (cm) — vnos monterja. null = brez modeliranih stebrov
   // (takrat render nima stebrov in spoja, kar je iskreno zapisano v opombah).
-  const [postEveryInput, setPostEveryInput] = useState('');
+  const [postEveryInput, setPostEveryInput] = useState('150');
+  // URADNI podatki o pritrjevanju za izbrani profil (null, če jih ni).
+  const fastening = useMemo(
+    () => fasteningSpec(profileKindForCatalog(selProfile?.id ?? '')),
+    [selProfile?.id],
+  );
+  // AI fotomontaža je OPT-IN in brez ključa ni vklopljena — polje se zato
+  // sploh ne prikaže (ne tepe obljubimo, česar ni).
+  const [aiEnabled, setAiEnabled] = useState(false);
   // ── AI fotomontaža (generativna zamenjava ograje) ──
   const [aiBusy, setAiBusy] = useState(false);
   const [aiInstruction, setAiInstruction] = useState('');
@@ -949,6 +959,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       const vizTexId = profile.textureId ? vizTextureIdFor(profile.textureId) : null;
       if (vizTexId) await preloadVizTextures([vizTexId]);
 
+      // URADNI podatki o pritrjevanju za ta profil (null, če jih ni).
+      const spec = fasteningSpec(profileKindForCatalog(profile.id));
+
       // plast nove ograje iz profila (obstoječi renderer viz.ts izriše deske/reže/teksturo)
       const fenceLayer: VizLayer = {
         id: 'fr-fence',
@@ -970,6 +983,17 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           // njena višina ni objavljena — ne izmišljamo konstrukcije.
           boardToneJitter: profile.pattern === 'vertikalne' ? 0.05 : 0,
           railBottomCm: profile.pattern === 'vertikalne' ? 4 : 0,
+          // Konstrukcija iz URADNIH podatkov ROKSAL (roksal.com »Načini
+          // pritrjevanja«): nosilci (vodoravne cevi) na uradnem razmaku, vijaki
+          // vidni z lica pri POLNA-100/128, odmik od roba reza po pravilu.
+          ...(spec
+            ? {
+                screwVisible: spec.screwsVisible,
+                railSpacingCm: spec.railSpacingCmMax,
+                screwEdgeCm: spec.screwEdgeMaxCm,
+                screwMinEdgeCm: spec.screwEdgeMinCm,
+              }
+            : {}),
         },
       };
 
@@ -1143,6 +1167,15 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
 
   // AI fotomontaža: generativna zamenjava ograje (Gemini/OpenAI). Ključ je na
   // strežniku; od tod gre samo fotka + navodilo + referenca ROKSAL ograje.
+  useEffect(() => {
+    let cancel = false;
+    fetch('/api/ai-photomontage')
+      .then((r) => r.json())
+      .then((d: { enabled?: boolean }) => { if (!cancel) setAiEnabled(d?.enabled === true); })
+      .catch(() => { if (!cancel) setAiEnabled(false); });
+    return () => { cancel = true; };
+  }, []);
+
   const onAiPhotomontage = async () => {
     const work = workCanvasRef.current;
     if (!work) return;
@@ -2174,6 +2207,12 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               {postEveryCm === null
                 ? 'Brez razmaka stebrov render nima stebrov in spoja — deske so skozi celotno ravnino. Vpiši izmerjen razmak, da se deske spajajo na stebru.'
                 : `Strebri na vsakih ${postEveryCm} cm; deske se spajajo na stebru. Razmak je tvoj vnos — če ni izmerjen, ga na listu označi kot PREDLOG.`}
+              {fastening && (
+                <> {' '}Uradno za ta profil: nosilci (vodoravne cevi) največ{' '}
+                <b>{fastening.railSpacingCmMax} cm</b>, stebri največ{' '}
+                <b>{maxPostSpacingCm(fastening, planeCm?.hCm ?? null) ?? '—'} cm</b>,
+                {fastening.screwsVisible ? ' vijaki so vidni z lica' : ' vijaki so skriti'}. Vir: roksal.com.</>
+              )}
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -2218,6 +2257,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               </div>
 
               {/* ── AI fotomontaža (generativna zamenjava ograje) ── */}
+              {aiEnabled && (
               <div className="rounded-lg border border-dashed bg-muted/20 p-3 space-y-2" data-testid="fr-ai-box">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold">AI zamenjaj ograjo</span>
@@ -2259,6 +2299,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

@@ -57,6 +57,16 @@ async function outsideDrift(
   }
 }
 
+/** Ali je AI pot vklopljena (ponudnik + ključ)? Uporabnik sprašuje samo to. */
+export async function GET() {
+  const cfg = readAiConfig();
+  return NextResponse.json({
+    enabled: cfg !== null,
+    provider: cfg?.provider ?? null,
+    model: cfg?.model ?? null,
+  });
+}
+
 export async function POST(req: NextRequest) {
   const zavrnjen = await requireAccess(req, 'photos', 'POST');
   if (zavrnjen) return zavrnjen;

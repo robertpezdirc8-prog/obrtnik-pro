@@ -243,6 +243,14 @@ export interface VizParams {
   railBottomCm?: number;
   /** Odstopanje tona po deski (0 = vse deske enako). 0.05 = ±5 %. */
   boardToneJitter?: number;
+  /** Vidni vijaki (ROKSAL: pri POLNA-100/128 so vijaki vidni z lica). */
+  screwVisible?: boolean;
+  /** Razmak med nosilci (vodoravnimi cevmi) v cm — URADNO število. */
+  railSpacingCm?: number;
+  /** Odmik vijaka od roba reza v cm (spodaj in zgoraj). */
+  screwEdgeCm?: number;
+  /** Najmanjši odmik vijaka od roba reza v cm (ROKSAL: 3 cm). */
+  screwMinEdgeCm?: number;
 }
 
 export const DEFAULT_VIZ_PARAMS: VizParams = {
@@ -855,6 +863,45 @@ export function buildPatternCanvas(
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(light, 0, 0);
     ctx.restore();
+  }
+
+  // ── Vidni vijaki (ROKSAL: POLNA-100 in 128 imata vijake vidne z lica) ──
+  // Položaj je IZ URADNIH podatkov: nosilci (vodoravne cevi) na razmaku
+  // `railSpacingCm`, vijak pa največ `screwEdgeCm` od roba reza (balkon na
+  // plošči) in najmanj `screwMinEdgeCm`.
+  if (pattern === 'vertikalne' && params.screwVisible && (params.railSpacingCm ?? 0) > 0) {
+    const rail = params.railSpacingCm as number;
+    const edge = params.screwEdgeCm ?? 15;
+    const minEdge = Math.min(params.screwMinEdgeCm ?? 3, edge);
+    const gap = Math.max(2, params.spacingCm * pxPerCm);
+    const w = Math.max(1, params.elementCm * pxPerCm);
+    const topEdgeCm = (params.quadHeightCm ?? 0) > 0 ? (params.quadHeightCm as number) : 0;
+    // položaji nosilcev od spodnjega roba: spodnji (edge cm), nato vsak `rail` cm
+    const railYs: number[] = [];
+    if (topEdgeCm > 0) {
+      const bottom = H - edge * pxPerCm;
+      railYs.push(bottom);
+      for (let y = bottom - rail * pxPerCm; y > edge * pxPerCm; y -= rail * pxPerCm) railYs.push(y);
+      railYs.push(edge * pxPerCm);
+    }
+    const r = Math.max(0.8, Math.min(2.2, pxPerCm * 0.18));
+    ctx.save();
+    for (const y of railYs) {
+      if (y < 0 || y > H) continue;
+      for (let x = 0; x < W; x += gap + w) {
+        const cx = x + w / 2;
+        const g = ctx.createRadialGradient(cx - r * 0.3, y - r * 0.3, 0, cx, y, r);
+        g.addColorStop(0, 'rgba(228,228,230,0.95)');
+        g.addColorStop(0.55, 'rgba(120,122,126,0.95)');
+        g.addColorStop(1, 'rgba(48,50,52,0.85)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    void minEdge;
   }
   return tex;
 }
