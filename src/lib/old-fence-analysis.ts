@@ -14,6 +14,7 @@
 // (lahko je katera koli). Zanesljivost je vedno navedena.
 
 import { extractFeatures, type RgbaImage } from './cv-engine';
+import { detectPatternInQuad } from './pattern-detect';
 
 export type OldFenceMaterial = 'les' | 'kovina' | 'mešano' | 'ni jasno';
 export type OldFenceOrientation = 'pokončno' | 'vodoravno' | 'ni jasno';
@@ -216,16 +217,29 @@ export function analyseOldFence(input: OldFenceInput): OldFenceFinding {
   }
 
   // ── orientacija ──
+  // Vir: detektor periodične strukture v ravnini (pattern-detect) — boljši od
+  // glega Houghovih premic, ker pri ograji močno prevladujejo vodoravni robovi
+  // (zgoraj in spodaj), navpične pa so tanjše.
+  const struct = detectPatternInQuad(
+    { data: new Uint8ClampedArray(crop.data), width: crop.W, height: crop.H },
+    input.quadPct.map(([x, y]) => ({ x, y })),
+  );
   const v = f.verticals.length;
   const h = f.horizontals.length;
   let orientation: OldFenceOrientation = 'ni jasno';
   let orientationEvidence = `navpičnih premic ${v}, vodoravnih ${h}`;
-  if (v >= 6 && v >= h * 1.6) {
+  if (struct?.pattern === 'vertikalne') {
     orientation = 'pokončno';
-    orientationEvidence += ' — prevladujejo navpične deske';
+    orientationEvidence += ` — periodična struktura je navpična (korak ${struct.pitchPx ?? '—'} px)`;
+  } else if (struct?.pattern === 'horizontalne') {
+    orientation = 'vodoravno';
+    orientationEvidence += ` — periodična struktura je vodoravna (korak ${struct.pitchPx ?? '—'} px)`;
+  } else if (v >= 6 && v >= h * 1.6) {
+    orientation = 'pokončno';
+    orientationEvidence += ' — prevladujejo navpične premice';
   } else if (h >= 6 && h >= v * 1.6) {
     orientation = 'vodoravno';
-    orientationEvidence += ' — prevladujejo vodoravne deske';
+    orientationEvidence += ' — prevladujejo vodoravne premice';
   }
 
   // ── vijaki ──
