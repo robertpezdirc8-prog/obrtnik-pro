@@ -12,7 +12,7 @@
 //
 // Zagon: bun tools/depth-ab.ts   (zahteva onnxruntime-node + model v /tmp/hf)
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 const require = createRequire('/workspace/');
 const sharp = require('sharp');
 const ORT_PATH = process.env.ORT_PATH ?? '/tmp/hf/node_modules/onnxruntime-node/dist/index.js';
@@ -20,7 +20,17 @@ const ort = await import(/* @vite-ignore */ ORT_PATH);
 const { extractFeatures } = await import('../src/lib/cv-engine');
 const { suggestBand } = await import('../src/lib/band-suggest');
 
-const MODEL = '/tmp/hf/model_quantized.onnx';
+// Model se prenese, če manjka (Hugging Face, brez ključa, ~27 MB) — skript je
+// tako ponovljiv na vsaki napravi, ne le tam, kjer je /tmp že pripravljen.
+const MODEL_DIR = process.env.DEPTH_DIR ?? '/tmp/hf';
+const MODEL = `${MODEL_DIR}/model_quantized.onnx`;
+if (!existsSync(MODEL)) {
+  console.log('Model manjka — prenašam z Hugging Face (~27 MB)…');
+  mkdirSync(MODEL_DIR, { recursive: true });
+  const r = await fetch('https://huggingface.co/Xenova/depth-anything-small-hf/resolve/main/onnx/model_quantized.onnx');
+  if (!r.ok) throw new Error(`Prenos modela ni uspel: HTTP ${r.status}`);
+  writeFileSync(MODEL, Buffer.from(await r.arrayBuffer()));
+}
 const S = 518;
 
 type Case = { file: string; tapPct: [number, number]; gt: [number, number]; opis: string };

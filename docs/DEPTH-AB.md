@@ -36,3 +36,20 @@ različica. Zato rezultat ne pravi »globina ne more pomagati«, temveč
 SAM 2 ali Grounding DINO za »segmentacija ograje« — in na vsaj treh realnih
 fotkah z ročno označenim GT. Takrat je primerjava poštena, ker obe strani
 iščeta ISTO stvar.
+
+## Drugi A/B: segmentacijski model (SlimSAM 77 uniform, ONNX)
+
+Isti štirikotnik, ista metrika (pokritost štirikotnika) — `tools/sam-ab.ts`:
+
+| Metoda | Pokritost štirikotnika | Čas (CPU) | RAM |
+|---|---|---|---|
+| hevristika robov (v aplikaciji) | **71 %** | ~1 ms | ~0 MB |
+| SlimSAM, prompt = 4 oglišča | 0,6 % | 20,3 s | ~2,0 GB |
+| SlimSAM, prompt = 1 točka na ograji | 3,0 % | 22,4 s | ~2,0 GB |
+
+**Sklep:** segmentacijski model s promptom na železni ograji objekt **ne
+ujame** (0,6–3 % namesto 71 %) in je pri 20+ sekundah latence neuporaben za
+interaktivno označevanje v terenu. Skupaj z globinskim modelom je odgovor
+enak: **v aplikaciji ostane deterministična hevristika**, oba modela pa sta
+dokumentirana kot izmerjena možnost za prihodnje delo (npr. kot pomožnik za
+predlog, ne kot odločitev).

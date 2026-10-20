@@ -38,7 +38,7 @@ import {
   paymentStatus,
   type PaymentInvoice,
 } from '@/lib/payment-tracking';
-import { openOfferPDF, openHandoverPrint, openInvoicePDF } from '@/lib/pdf';
+import { openOfferPDF, openHandoverPrint, openInvoicePDF, openOfferWithSheetPDF } from '@/lib/pdf';
 import { validUntil } from '@/lib/pdf';
 import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
 import { useChangeOrders, type ChangeOrderEntry } from '@/lib/store';
@@ -108,8 +108,9 @@ ${ownerName || companyName}${companyName ? `, ${companyName}` : ''}`;
 export function OffersList() {
   const { toast } = useToast();
 
-  // Montazni list za ponudbo (iz shranjene fotomontaze). Razmak stebrov je
-  // VNOS: 150 cm je privzeta vrednost in je na listu označen kot PREDLOG.
+  // Ponudba + MONTAŽNI LIST v enem PDF (stranka dobi ponudbo, monter list).
+  // Razmak stebrov je VNOS: 150 cm je privzeta vrednost in je na listu
+  // označen kot PREDLOG (ni izmerjen) — meri ga monter.
   const printInstallerSheet = async (offer: OfferDTO): Promise<void> => {
     try {
       const r = await fetch(`/api/offers/${offer.id}/sheet?bay=150`);
@@ -118,6 +119,14 @@ export function OffersList() {
         toast({ title: 'Montažnega lista ni', description: d.error ?? 'Ponudba ni nastala iz fotomontaže.', variant: 'destructive' });
         return;
       }
+      if (settings) {
+        const ok = openOfferWithSheetPDF(offer, settings, d.html);
+        if (!ok) {
+          toast({ title: 'Preprečeno okno za tiskanje', description: 'Dovoli pojavna okna in poskusi znova.', variant: 'destructive' });
+        }
+        return;
+      }
+      // Brez nastavitev (levo naloženih) je mogoče natisniti SAMO list.
       const w = window.open('', '_blank', 'width=860,height=1000');
       if (!w) {
         toast({ title: 'Okno je blokirano', description: 'Dovoli pojavna okna za tiskanje.', variant: 'destructive' });
@@ -530,10 +539,10 @@ export function OffersList() {
                         className="min-h-9"
                         onClick={() => printInstallerSheet(offer)}
                         data-testid={`offer-sheet-${offer.number}`}
-                        title="Montažni list za monterja (iz fotomontaže)"
+                        title="Ponudba z vgrajenim montažnim listom (iz fotomontaže)"
                       >
                         <Ruler className="mr-1.5 h-4 w-4" />
-                        Montažni list
+                        Ponudba + list
                       </Button>
                     )}
                     <Button

@@ -13,6 +13,8 @@ import {
   type StoredMontage,
 } from '../../src/lib/offer-sheet';
 import type { ReplaceMetadata } from '../../src/lib/photo-replace-core';
+import { buildOfferHTML, buildOfferWithSheetHTML } from '../../src/lib/pdf';
+import type { OfferDTO, SettingsDTO } from '../../src/lib/types';
 
 let pass = 0, fail = 0;
 const check = (name: string, cond: boolean, info?: unknown) => {
@@ -86,6 +88,59 @@ console.log('Montažni list, povezan s ponudbo (offer-sheet) — čisto in iskre
   const assumed = buildOfferSheet(offer, parseMontageJson({ meta: META }), { bayCm: 150, baySource: 'assumed' });
   check('predlog razmaka je označen kot PREDLOG', (assumed?.html ?? '').includes('PREDLOG'), 'oznaka');
   check('predlog razmaka ima opozorilo', (assumed?.sheet.warnings ?? []).some((w) => w.includes('PREDLOG')), assumed?.sheet.warnings);
+}
+
+// ── 4) Ponudba + list v enem PDF-ju ─────────────────────────────────
+{
+  const offer = {
+    number: '2026-042',
+    customerName: 'Stranka za PDF',
+    customerAddress: 'Cesta 1',
+    customerPhone: '040 000 000',
+    customerEmail: 'x@y.si',
+    objectAddress: 'Balkon',
+    note: null,
+    status: 'draft',
+    sentAt: null,
+    decidedAt: null,
+    followUpAt: null,
+    subtotal: 625,
+    vatRate: 22,
+    vatAmount: 137.5,
+    total: 762.5,
+    createdAt: '2026-10-19T10:00:00.000Z',
+    items: [{ id: 'i1', name: 'Polna deska 100', description: null, quantity: 50, unit: 'kos', unitPrice: 12.5, total: 625, sortOrder: 0 }],
+  } as unknown as OfferDTO;
+  const settings = {
+    companyName: 'ROKSAL Kranj',
+    ownerName: '',
+    address: 'Savska Loka 21',
+    phone: '064 123 030',
+    email: 'info@roksal.com',
+    taxNumber: '',
+    iban: '',
+    vatRate: 22,
+    laborRate: 35,
+    quoteValidDays: 14,
+    depositPercent: null,
+    paymentDays: null,
+    logoUrl: null,
+  } as unknown as SettingsDTO;
+
+  const plain = buildOfferHTML(offer, settings);
+  const brezLista = buildOfferWithSheetHTML(offer, settings, null);
+  check('brez lista → dokument je POVSEMO enak ponudbi', brezLista === plain);
+  check('brez lista → ni lažne prazne strani', !brezLista.includes('page-break-before'));
+
+  const sheet = buildOfferSheet(offer, parseMontageJson({ meta: META }), { bayCm: 150, baySource: 'measured' });
+  const sest = buildOfferWithSheetHTML(offer, settings, sheet?.html ?? null);
+  check('s listom → vsebuje ponudbo', sest.includes('PONUDBA 2026-042'));
+  check('s listom → vsebuje postavke', sest.includes('Polna deska 100'));
+  check('s listom → vsebuje MONTAŽNI LIST', sest.includes('MONTAŽNI LIST ZA MONTERJA'));
+  check('s listom → vsebuje lege stebrov', sest.includes('Lega stebrov'));
+  check('s listom → lista je nova stran (page-break)', sest.includes('page-break-before: always'));
+  check('s listom → ponudbina HTML ostane cel', sest.includes('</body>') && sest.includes('</html>'));
+  check('determinizem', buildOfferWithSheetHTML(offer, settings, sheet?.html ?? null) === sest);
 }
 
 console.log(`\n${pass} OK · ${fail} NAPAK`);
