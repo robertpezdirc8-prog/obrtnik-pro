@@ -170,3 +170,44 @@ export function catalogueFor(id: string): CatalogueFamily | null {
   const base = id.replace(/-dekor-\d+$/, '');
   return ROKSAL_CATALOGUE[base] ?? null;
 }
+
+/**
+ * PRAVI ROKSALOVI REFERENČNI OBJEKTI (roksal.com/de/referenz-wpc-dielen/,
+ * prebrano 19. 10. 2026). Uporabni iz dveh razlogov:
+ *  1. potrjujejo, da so imena odtenkov res URADNA (uporabljena v lastnih
+ *     referencah podjetja);
+ *  2. obrtniku pokažejo, kaj je ROKSAL v istem odtenku ŽE postavil — to je
+ *     najmočnejši argument pri stranki.
+ */
+export interface RoksalReference {
+  /** objekt (javno dostopen) */
+  place: string;
+  /** kaj je bilo narejeno */
+  what: string;
+  /** uradni odtenek */
+  colour: string;
+  /** leto postavitve */
+  year: string;
+}
+
+export const ROKSAL_REFERENCES: RoksalReference[] = [
+  { place: 'Pizzeria Olivia, Trzin', what: 'terasa', colour: 'Rustic Walnut', year: '2026' },
+  { place: 'Zen Smaragd, Most na Soči', what: 'terasa', colour: 'Rustic Oak', year: '2026' },
+  { place: 'Feuerwehr Britof', what: 'zaščitna ograja (polna deska)', colour: 'Amazon Wood', year: '2026' },
+  { place: 'Čevabdžinica Erniša, Fokovci', what: 'terasa (gladka stran navzgor)', colour: 'Rustic Walnut', year: '2025' },
+  { place: 'Chalet Zana, Bled', what: 'terasa', colour: 'Ash Wood', year: '2025' },
+  { place: 'Promenada Burger, Bled', what: 'terasa', colour: 'Burma Teak', year: '2025' },
+  { place: 'Orhideja Caffe, Kamnik', what: 'vertikalna ograja 10 cm', colour: 'Ash Wood', year: '2025' },
+  { place: 'Butik, Murska Sobota', what: 'fasada', colour: 'Rustic Oak', year: '2024' },
+  { place: 'Vrtec St. Marien, Cerklje', what: 'terasa in vertikalna ograja', colour: 'Burma Teak', year: '2024' },
+  { place: 'Café in Bar Panorama, Kranj', what: 'terasa', colour: 'Ash Wood', year: '2023' },
+  { place: 'Kofi bar, Kranj', what: 'terasa, stopnica, romb profil 67', colour: 'Burma Teak', year: '2023' },
+  { place: 'Občina Trbovlje', what: 'vertikalna ograja, polni profil 100', colour: 'Burma Teak', year: '2022' },
+  { place: 'Intersport BTC, Ljubljana', what: 'vertikalna fasada, romb profil 67', colour: 'Oak Wood', year: '2022' },
+  { place: 'Železnina Kljukca, Kranj', what: 'fasada in vertikalna ograja', colour: 'Oak Wood', year: '2019' },
+  { place: 'Bunny Bar, Ljubljana', what: 'romb profil 67, klopi', colour: 'Burma Teak', year: '2015/2020' },
+  { place: 'Roksal, Zgornje Bitnje 186 (sedež)', what: 'terasa', colour: 'Golden Teak', year: '2006' },
+];
+
+/** Vsa uradna imena odtenkov, ki se pojavljajo v ROKSALOVIH referencah. */
+export const REFERENCE_COLOURS: string[] = [...new Set(ROKSAL_REFERENCES.map((r) => r.colour))];

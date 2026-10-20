@@ -6,7 +6,7 @@
 //   2) Širina deske v registru je enaka uradni širini profila.
 //   3) Vsak kataloški vnos ima dobesedni citat in vir.
 // Zagon: bun tests/verify/roksal-catalogue.ts
-import { ROKSAL_CATALOGUE, catalogueFor, RUSTIC_NOTE, COLOUR_BATCH_NOTE, COLOUR_BATCH_NOTE_PAGE } from '../../src/lib/roksal-catalogue';
+import { ROKSAL_CATALOGUE, catalogueFor, RUSTIC_NOTE, COLOUR_BATCH_NOTE, COLOUR_BATCH_NOTE_PAGE, ROKSAL_REFERENCES, REFERENCE_COLOURS } from '../../src/lib/roksal-catalogue';
 import { ROKSAL_PROFILES } from '../../src/lib/roksal-assets';
 
 let pass = 0, fail = 0;
@@ -85,7 +85,24 @@ console.log('Uradni katalog ROKSAL — barve, mere, citati (roksal.com)\n');
   }
 }
 
-// ── 5) Katalog za družino ─────────────────────────────────────────
+// ── 5) Referenčni objekti ROKSAL (imena odtenkov so potrjena v praksi) ──
+{
+  check('referenc je vsaj 10', ROKSAL_REFERENCES.length >= 10, ROKSAL_REFERENCES.length);
+  check('vsaka referenca ima objekt, uporabo, odtenek in leto',
+    ROKSAL_REFERENCES.every((r) => r.place.length > 3 && r.what.length > 3 && r.colour.length > 3 && r.year.length >= 4));
+  // Vsa uradna imena, ki jih uporablja aplikacija, se morajo pojaviti tudi v
+  // ROKSALOVIH referencah (ali v njegovih uradnih lestvicah) — sicer je ime
+  // izmišljeno.
+  const used = ['Amazon Wood', 'Ash Wood', 'Golden Teak', 'Burma Teak', 'Oak Wood', 'Rustic Oak', 'Rustic Walnut'];
+  const missing = used.filter((n) => !REFERENCE_COLOURS.some((r) => r.toLowerCase() === n.toLowerCase()));
+  check('vsa uporabljena imena odtenkov so potrjena v ROKSALOVIH referencah', missing.length === 0, missing);
+  // terasna družina uporablja ista imena
+  const dekaLabels = ROKSAL_PROFILES.filter((p) => p.id === 'roksal-deka-150' || p.id.startsWith('roksal-deka-150-dekor-')).map((p) => p.label);
+  const dekaMissing = used.filter((n) => n !== 'White' && !dekaLabels.some((l) => l.toLowerCase().includes(n.toLowerCase())));
+  check('terasna družina uporablja vsa 7 uradnih imen (brez White)', dekaMissing.length === 0, dekaMissing);
+}
+
+// ── 6) Katalog za družino ─────────────────────────────────────────
 {
   check('catalogueFor polna-100 → POLNA DESKA-100', catalogueFor('polna-100')?.officialName === 'POLNA DESKA-100');
   check('catalogueFor polna-100-dekor-3 → POLNA DESKA-100', catalogueFor('polna-100-dekor-3')?.officialName === 'POLNA DESKA-100');

@@ -155,7 +155,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
   // NE uradna trditev. Merilo dekorja na lestvici NI objavljeno →
   // realCm 45 je IZRECNO označen privzetek.
   {
-    id: 'tex-roksal-deka-dekor-1', kind: 'texture', label: 'DEKA dekor 1/7 — temno sivi, rebra (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-1', kind: 'texture', label: 'DEKA dekor 1/7 — Amazon wood (uradna lestvica)',
     src: '/roksal/deka/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -163,7 +163,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 7, z leve) iz URADNE ROKSAL barvne lestvice terasnih desk (BARVNA_LESTVICA_1-terasa4.png, 2560×680). IMENA odtenkov terasnega profila so v lestvici (belo besedilo), a jih po barvi ne morem zanesljivo ločiti — površina rebra svetli, zato so imena v tej družini še opisna; barve pa so resnične. + zasuk 90° (žira/rebra na lestvici vodoravna; konvencija tlakov v viz.ts je NAVPIČNA žira — vodoravne deke renderer zasuka sam) → ENOJNI NEPREKINJEN IZREZ 256×256 (tests/make-deka-tiles.ts, deterministično; 0 skoraj-črnih pikslov; brez notranjega zrcaljenja; rebra preverjena kot periodična — avtentična površina KLASIK deske). Imena dekorjev niso objavljena → oznaka po POLOŽAJU (1/7); "temno sivi, rebra" je opisno, NE trgovsko ime. Povprečje RGB(97,100,104). Merilo NI objavljeno → realCm 45 privzetek.',
   },
   {
-    id: 'tex-roksal-deka-dekor-2', kind: 'texture', label: 'DEKA dekor 2/7 — svetlo sivi, rebra (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-2', kind: 'texture', label: 'DEKA dekor 2/7 — Ash wood (uradna lestvica)',
     src: '/roksal/deka/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -171,7 +171,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (enojni ne-zrcaljen izrez 256×256, zasuk 90°, tests/make-deka-tiles.ts). Povprečje RGB(161,163,163).',
   },
   {
-    id: 'tex-roksal-deka-dekor-3', kind: 'texture', label: 'DEKA dekor 3/7 — bakreno-peščeni, rebra (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-3', kind: 'texture', label: 'DEKA dekor 3/7 — Golden teak (uradna lestvica)',
     src: '/roksal/deka/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -179,7 +179,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1. Povprečje RGB(201,153,128).',
   },
   {
-    id: 'tex-roksal-deka-dekor-4', kind: 'texture', label: 'DEKA dekor 4/7 — rožnato-bež, rebra (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-4', kind: 'texture', label: 'DEKA dekor 4/7 — Burma teak (uradna lestvica)',
     src: '/roksal/deka/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -187,7 +187,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1. Povprečje RGB(177,146,130).',
   },
   {
-    id: 'tex-roksal-deka-dekor-5', kind: 'texture', label: 'DEKA dekor 5/7 — svetlo zlati, rebra (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-5', kind: 'texture', label: 'DEKA dekor 5/7 — Oak wood (uradna lestvica)',
     src: '/roksal/deka/dekor-5.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -195,7 +195,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1. Povprečje RGB(212,172,131).',
   },
   {
-    id: 'tex-roksal-deka-dekor-6', kind: 'texture', label: 'DEKA dekor 6/7 — srednje rjavi, fina tekstura (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-6', kind: 'texture', label: 'DEKA dekor 6/7 — Rustic oak (uradna lestvica)',
     src: '/roksal/deka/dekor-6.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -203,7 +203,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1. POVRAŠINA BREZ GROBIH REBER (0 polnih temnih črt) — skladno z uradnim opisom RUSTIC ("izgled STARAN LES, na eni strani gladka"), a povezava dekor 6–7 ↔ RUSTIC je SKLEPANJE iz opisa površin, NE uradna trditev. Povprečje RGB(156,129,98).',
   },
   {
-    id: 'tex-roksal-deka-dekor-7', kind: 'texture', label: 'DEKA dekor 7/7 — temno sivo-rjavi, fina tekstura (uradna lestvica)',
+    id: 'tex-roksal-deka-dekor-7', kind: 'texture', label: 'DEKA dekor 7/7 — Rustic walnut (uradna lestvica)',
     src: '/roksal/deka/dekor-7.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki", TERASNI profil)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -840,7 +840,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // null (SKU se ne izmišljuje).
   {
     id: 'roksal-deka-150',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 1/7 uradne lestvice',
+    label: 'TERASNI profil WPC deka 150 — dekor 1/7 Amazon wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
@@ -851,7 +851,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'roksal-deka-150-dekor-2',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 2/7 (svetlo sivi)',
+    label: 'TERASNI profil WPC deka 150 — dekor 2/7 Ash wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
@@ -862,7 +862,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'roksal-deka-150-dekor-3',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 3/7 (bakreno-peščeni)',
+    label: 'TERASNI profil WPC deka 150 — dekor 3/7 Golden teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
@@ -873,7 +873,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'roksal-deka-150-dekor-4',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 4/7 (rožnato-bež)',
+    label: 'TERASNI profil WPC deka 150 — dekor 4/7 Burma teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
@@ -884,7 +884,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'roksal-deka-150-dekor-5',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 5/7 (svetlo zlati)',
+    label: 'TERASNI profil WPC deka 150 — dekor 5/7 Oak wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
@@ -895,7 +895,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'roksal-deka-150-dekor-6',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 6/7 (fina tekstura, brez reber)',
+    label: 'TERASNI profil WPC deka 150 — dekor 6/7 Rustic oak (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
@@ -906,7 +906,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   },
   {
     id: 'roksal-deka-150-dekor-7',
-    label: 'ROKSAL terasna deka 150×25 (vodoravno) — dekor 7/7 (fina tekstura, brez reber)',
+    label: 'TERASNI profil WPC deka 150 — dekor 7/7 Rustic walnut (uradna lestvica)',
     catalogSku: null,
     plankCm: 15, gapCm: 0.4,
     orientation: 'horizontal',
