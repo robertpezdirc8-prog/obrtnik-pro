@@ -116,8 +116,16 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
 export const RUSTIC_NOTE =
   'Pri odtenkih Rustic Oak in Rustic Walnut, ki imata večbarvni videz, lahko odtenek in razpored lis med deskami in serijami opazneje variirata.';
 
-/** Barva posamezne deske se lahko med serijami razlikuje — zato odstopanje tona po deski. */
+/**
+ * Barva posamezne deske se lahko med serijami razlikuje — zato odstopanje
+ * tona po deski v renderju. Vir: OPOMBA POD URADNIMI BARVNIMI LESTVICAMI
+ * (BARVNA_LESTVICA_*.png) in stran »Barvni odtenki«.
+ */
 export const COLOUR_BATCH_NOTE =
+  'Zaradi dodajanja naravnega materiala s proizvodnim procesom barvanja, lahko barvni odtenki desk med posameznimi dobavami malenkost variirajo.';
+
+/** Dodatna izjava s strani »Barvni odtenki«. */
+export const COLOUR_BATCH_NOTE_PAGE =
   'Barva posamezne deske lahko med serijami variira in se lahko razlikuje od vzorca.';
 
 /** Katalog za družino ali null. */

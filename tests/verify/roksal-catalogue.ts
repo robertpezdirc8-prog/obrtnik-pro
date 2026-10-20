@@ -6,7 +6,7 @@
 //   2) Širina deske v registru je enaka uradni širini profila.
 //   3) Vsak kataloški vnos ima dobesedni citat in vir.
 // Zagon: bun tests/verify/roksal-catalogue.ts
-import { ROKSAL_CATALOGUE, catalogueFor, RUSTIC_NOTE, COLOUR_BATCH_NOTE } from '../../src/lib/roksal-catalogue';
+import { ROKSAL_CATALOGUE, catalogueFor, RUSTIC_NOTE, COLOUR_BATCH_NOTE, COLOUR_BATCH_NOTE_PAGE } from '../../src/lib/roksal-catalogue';
 import { ROKSAL_PROFILES } from '../../src/lib/roksal-assets';
 
 let pass = 0, fail = 0;
@@ -64,11 +64,27 @@ console.log('Uradni katalog ROKSAL — barve, mere, citati (roksal.com)\n');
     check(`${cat.officialName}: uradno ime ni prazno`, cat.officialName.length > 3, cat.officialName);
   }
   check('Rustic opomba je dobesedna', RUSTIC_NOTE.includes('Rustic Oak') && RUSTIC_NOTE.includes('variirata'), RUSTIC_NOTE);
-  check('opomba o serijah je dobesedna', COLOUR_BATCH_NOTE.includes('med serijami variira'), COLOUR_BATCH_NOTE);
+  check('opomba o serijah je dobesedna (lestvica)', COLOUR_BATCH_NOTE.includes('med posameznimi dobavami malenkost variirajo'), COLOUR_BATCH_NOTE);
+  check('opomba o serijah je dobesedna (stran)', COLOUR_BATCH_NOTE_PAGE.includes('med serijami variira'), COLOUR_BATCH_NOTE_PAGE);
   check('terasni profil ima tri površine', (ROKSAL_CATALOGUE['terasna-150'].surfaces.length ?? 0) === 3, ROKSAL_CATALOGUE['terasna-150'].surfaces);
 }
 
-// ── 4) Katalog za družino ─────────────────────────────────────────
+// ── 4) Uradna imena odtenkov so v oznakah ─────────────────────────
+{
+  const OFFICIAL: Record<string, string[]> = {
+    'polna-100': ['Amazon wood', 'Ash wood', 'Golden teak', 'Burma teak', 'Oak wood', 'White', 'Rustic oak', 'Rustic walnut'],
+    'polna-128': ['Amazon wood', 'Ash wood', 'Burma teak', 'Oak wood', 'Rustic oak'],
+    'romb-67': ['Amazon wood', 'Ash wood', 'Golden teak', 'Burma teak', 'Oak wood', 'Rustic oak', 'Rustic walnut'],
+    'kubo-80-42': ['Amazon wood', 'Oak wood', 'Rustic oak', 'Rustic walnut'],
+  };
+  for (const [fam, names] of Object.entries(OFFICIAL)) {
+    const labels = ROKSAL_PROFILES.filter((p) => p.id === fam || p.id.startsWith(fam + '-dekor-')).map((p) => p.label);
+    const missing = names.filter((n) => !labels.some((l) => l.includes(n)));
+    check(`${fam}: vsa uradna imena odtenkov so v oznakah`, missing.length === 0, missing);
+  }
+}
+
+// ── 5) Katalog za družino ─────────────────────────────────────────
 {
   check('catalogueFor polna-100 → POLNA DESKA-100', catalogueFor('polna-100')?.officialName === 'POLNA DESKA-100');
   check('catalogueFor polna-100-dekor-3 → POLNA DESKA-100', catalogueFor('polna-100-dekor-3')?.officialName === 'POLNA DESKA-100');

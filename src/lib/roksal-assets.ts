@@ -244,7 +244,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
   // dekorjih je IZRECNO označen privzetek (isti kot ostali WPC tile-i
   // kataloga), samo za približek tlakovanja — NI izmerjeno.
   {
-    id: 'tex-roksal-kubo-dekor-1', kind: 'texture', label: 'KUBO dekor 1/4 — temno sivi (uradna lestvica)',
+    id: 'tex-roksal-kubo-dekor-1', kind: 'texture', label: 'KUBO dekor 1/4 — Amazon wood (uradna lestvica)',
     src: '/roksal/kubo/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -252,7 +252,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 4, z leve) iz URADNE ROKSAL barvne lestvice profila KUBO (BARVNA_LESTVICA_5-kubo4.png, 2217×675) + zasuk 90° (žira na lestvici vodoravna |dy|>|dx|, KUBO se vgrajuje pokončno) → ENOJNI NEPREKINJEN IZREZ 256×256 (priprava tests/make-kubo-tiles.ts, deterministično; 0 skoraj-črnih pikslov = brez ozadja lestvice; brez notranjega zrcaljenja — zrcalno tlakovanje na nivoju vzorca zagotavlja renderer drawMirroredTexture; prejšnja 2×2 zrcalna različica je metuljasto simetrijo vidno podvajala). Imena dekorjev na lestvici NISO objavljena → dekor je označen po POLOŽAJU (1/4); barvni opis "temno sivi" je opisni, NE trgovsko ime. Povprečje RGB(95,94,97). Merilo dekorja NI objavljeno → realCm 45 je privzetek (glej komentar sekcije).',
   },
   {
-    id: 'tex-roksal-kubo-dekor-2', kind: 'texture', label: 'KUBO dekor 2/3 — svetli zlati (uradna lestvica)',
+    id: 'tex-roksal-kubo-dekor-2', kind: 'texture', label: 'KUBO dekor 2/4 — Oak wood (uradna lestvica)',
     src: '/roksal/kubo/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -260,7 +260,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (izrez + zasuk 90°, enojni ne-zrcaljen izrez 256×256, tests/make-kubo-tiles.ts). Povprečje RGB(177,148,125) — svetel zlato-rjavi odtenek, najbolj podoben dekorju na uradni fotki profila KUBO (profil-deske.jpg) → PRIVZETI dekor profila kubo-80-42.',
   },
   {
-    id: 'tex-roksal-kubo-dekor-3', kind: 'texture', label: 'KUBO dekor 3/3 — zlati teak (uradna lestvica)',
+    id: 'tex-roksal-kubo-dekor-3', kind: 'texture', label: 'KUBO dekor 3/4 — Rustic oak (uradna lestvica)',
     src: '/roksal/kubo/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -268,7 +268,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (izrez + zasuk 90°, enojni ne-zrcaljen izrez 256×256, tests/make-kubo-tiles.ts). Povprečje RGB(154,127,97).',
   },
   {
-    id: 'tex-roksal-kubo-dekor-4', kind: 'texture', label: 'KUBO dekor 4/4 — temno rjavo-sivi (uradna lestvica)',
+    id: 'tex-roksal-kubo-dekor-4', kind: 'texture', label: 'KUBO dekor 4/4 — Rustic walnut (uradna lestvica)',
     src: '/roksal/kubo/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "Barvni odtenki")',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/barvni-odtenki/',
@@ -343,7 +343,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
   // (deterministično — enojni neprekinjen izrez 256×256, zasuk 90°,
   // brez notranjega zrcaljenja; 0 skoraj-črnih pikslov).
   {
-    id: 'tex-roksal-romb67-dekor-1', kind: 'texture', label: 'ROMB-67 dekor 1/7 — temno sivi (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-1', kind: 'texture', label: 'ROMB-67 dekor 1/7 — Amazon wood (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -351,7 +351,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 7, z leve) iz URADNE ROKSAL barvne lestvice romb deske (BARVNA_LESTVICA_3-rombi4.png, 2560×669) + zasuk 90° (žira na lestvici vodoravna; konvencija tlakov v viz.ts je NAVPIČNA) → ENOJNI NEPREKINJEN IZREZ 256×256 (tests/make-ograje-tiles.ts, deterministično; 0 skoraj-črnih pikslov; brez notranjega zrcaljenja). Imena dekorjev niso objavljena → oznaka po POLOŽAJU (1/7); "temno sivi" je opisno, NE trgovsko ime. Povprečje RGB(95,94,97). Merilo NI objavljeno → realCm 45 privzetek. ROMB DESKA-67 je uradno 67 × 26 mm Z ALU CEVJO (obvezna, vključena v ceno) — renderer riše pravokotne deske, kosooglatega preseka in alu cevi med deskami NE riše (reže iskreno kažejo ozadje).',
   },
   {
-    id: 'tex-roksal-romb67-dekor-2', kind: 'texture', label: 'ROMB-67 dekor 2/7 — svetlo sivi (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-2', kind: 'texture', label: 'ROMB-67 dekor 2/7 — Ash wood (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -359,7 +359,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(147,145,146).',
   },
   {
-    id: 'tex-roksal-romb67-dekor-3', kind: 'texture', label: 'ROMB-67 dekor 3/7 — rožnato-rjavi (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-3', kind: 'texture', label: 'ROMB-67 dekor 3/7 — Golden teak (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -367,7 +367,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(162,125,116).',
   },
   {
-    id: 'tex-roksal-romb67-dekor-4', kind: 'texture', label: 'ROMB-67 dekor 4/7 — rjavo-bež (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-4', kind: 'texture', label: 'ROMB-67 dekor 4/7 — Burma teak (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -375,7 +375,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(143,119,110).',
   },
   {
-    id: 'tex-roksal-romb67-dekor-5', kind: 'texture', label: 'ROMB-67 dekor 5/7 — svetli zlati (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-5', kind: 'texture', label: 'ROMB-67 dekor 5/7 — Oak wood (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-5.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -383,7 +383,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(177,147,125).',
   },
   {
-    id: 'tex-roksal-romb67-dekor-6', kind: 'texture', label: 'ROMB-67 dekor 6/7 — zlati teak (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-6', kind: 'texture', label: 'ROMB-67 dekor 6/7 — Rustic oak (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-6.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -391,7 +391,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(156,128,98).',
   },
   {
-    id: 'tex-roksal-romb67-dekor-7', kind: 'texture', label: 'ROMB-67 dekor 7/7 — temno rjavo-sivi (uradna lestvica)',
+    id: 'tex-roksal-romb67-dekor-7', kind: 'texture', label: 'ROMB-67 dekor 7/7 — Rustic walnut (uradna lestvica)',
     src: '/roksal/ograje/romb-67/dekor-7.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", ROMB DESKA-67)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -399,7 +399,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(110,99,89).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-1', kind: 'texture', label: 'POLNA-100 dekor 1/8 — temno sivi (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-1', kind: 'texture', label: 'POLNA-100 dekor 1/8 — Amazon wood (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -439,7 +439,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'URADNA fotografija vgrajene POLNA-100 ograje (svetlo sivi dekor), posneta od spodaj. Vir merila za tile foto-dekor-2.',
   },
   {
-    id: 'tex-roksal-polna100-dekor-2', kind: 'texture', label: 'POLNA-100 dekor 2/8 — svetlo sivi (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-2', kind: 'texture', label: 'POLNA-100 dekor 2/8 — Ash wood (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -447,7 +447,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(147,146,146).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-3', kind: 'texture', label: 'POLNA-100 dekor 3/8 — rožnato-rjavi (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-3', kind: 'texture', label: 'POLNA-100 dekor 3/8 — Golden teak (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -455,7 +455,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(162,125,116).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-4', kind: 'texture', label: 'POLNA-100 dekor 4/8 — rjavo-bež (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-4', kind: 'texture', label: 'POLNA-100 dekor 4/8 — Burma teak (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -463,7 +463,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(143,119,110).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-5', kind: 'texture', label: 'POLNA-100 dekor 5/8 — svetli zlati (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-5', kind: 'texture', label: 'POLNA-100 dekor 5/8 — Oak wood (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-5.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -471,7 +471,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(177,148,125).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-6', kind: 'texture', label: 'POLNA-100 dekor 6/8 — beli (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-6', kind: 'texture', label: 'POLNA-100 dekor 6/8 — White (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-6.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -479,7 +479,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(199,198,197) — najsvetlejši dekor vseh lestvic; "beli" je opisno, NE uradno ime (uradna stran ročaja omenja WHITE odtenek, povezava z dekorjem 6 je SKLEPANJE).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-7', kind: 'texture', label: 'POLNA-100 dekor 7/8 — zlati teak (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-7', kind: 'texture', label: 'POLNA-100 dekor 7/8 — Rustic oak (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-7.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -487,7 +487,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(154,127,98).',
   },
   {
-    id: 'tex-roksal-polna100-dekor-8', kind: 'texture', label: 'POLNA-100 dekor 8/8 — temno rjavo-sivi (uradna lestvica)',
+    id: 'tex-roksal-polna100-dekor-8', kind: 'texture', label: 'POLNA-100 dekor 8/8 — Rustic walnut (uradna lestvica)',
     src: '/roksal/ograje/polna-100/dekor-8.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-100)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -495,7 +495,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(110,99,89).',
   },
   {
-    id: 'tex-roksal-polna128-dekor-1', kind: 'texture', label: 'POLNA-128 dekor 1/5 — temno sivi (uradna lestvica)',
+    id: 'tex-roksal-polna128-dekor-1', kind: 'texture', label: 'POLNA-128 dekor 1/6 — Amazon wood (uradna lestvica)',
     src: '/roksal/ograje/polna-128/dekor-1.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-128)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -503,7 +503,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Izrez VPISANEGA kvadrata kroga dekorja 1 (od 6, z leve) iz URADNE ROKSAL barvne lestvice polne deske 128 (BARVNA_LESTVICA_4-polna-128-4.png, 2560×683; uradni opis: "šestimi barvami") + zasuk 90° → ENOJNI NEPREKINJEN IZREZ 256×256 (tests/make-ograje-tiles.ts, deterministično; 0 skoraj-črnih pikslov; brez notranjega zrcaljenja). Oznaka po POLOŽAJU (1/6); "temno sivi" je opisno. Povprečje RGB(95,94,97). Merilo NI objavljeno → realCm 45 privzetek.',
   },
   {
-    id: 'tex-roksal-polna128-dekor-2', kind: 'texture', label: 'POLNA-128 dekor 2/5 — svetlo sivi (uradna lestvica)',
+    id: 'tex-roksal-polna128-dekor-2', kind: 'texture', label: 'POLNA-128 dekor 2/6 — Ash wood (uradna lestvica)',
     src: '/roksal/ograje/polna-128/dekor-2.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-128)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -511,7 +511,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(147,145,146).',
   },
   {
-    id: 'tex-roksal-polna128-dekor-3', kind: 'texture', label: 'POLNA-128 dekor 3/5 — rjavo-bež (uradna lestvica)',
+    id: 'tex-roksal-polna128-dekor-3', kind: 'texture', label: 'POLNA-128 dekor 3/6 — Burma teak (uradna lestvica)',
     src: '/roksal/ograje/polna-128/dekor-3.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-128)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -519,7 +519,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(143,119,110).',
   },
   {
-    id: 'tex-roksal-polna128-dekor-4', kind: 'texture', label: 'POLNA-128 dekor 4/5 — svetli zlati (uradna lestvica)',
+    id: 'tex-roksal-polna128-dekor-4', kind: 'texture', label: 'POLNA-128 dekor 4/6 — Oak wood (uradna lestvica)',
     src: '/roksal/ograje/polna-128/dekor-4.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-128)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -527,7 +527,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(177,148,125).',
   },
   {
-    id: 'tex-roksal-polna128-dekor-5', kind: 'texture', label: 'POLNA-128 dekor 5/5 — zlati teak (uradna lestvica)',
+    id: 'tex-roksal-polna128-dekor-5', kind: 'texture', label: 'POLNA-128 dekor 5/6 — Rustic oak (uradna lestvica)',
     src: '/roksal/ograje/polna-128/dekor-5.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-128)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -535,7 +535,7 @@ export const ROKSAL_ASSETS: RoksalAsset[] = [
     note: 'Enak postopek kot dekor 1 (tests/make-ograje-tiles.ts). Povprečje RGB(156,129,98).',
   },
   {
-    id: 'tex-roksal-polna128-dekor-6', kind: 'texture', label: 'POLNA-128 dekor 6/6 — temno rjavo-sivi (v lestvici, a NE ponujen: ROKSAL ponuja 5 barv)',
+    id: 'tex-roksal-polna128-dekor-6', kind: 'texture', label: 'POLNA-128 dekor 6/6 — Rustic walnut (v lestvici, a NE ponujen: ROKSAL ponuja 6 barv) — v lestvici, a NE ponujen: ROKSAL ponuja 5 barv)',
     src: '/roksal/ograje/polna-128/dekor-6.png', realCm: 45, origin: 'roksal-original', verification: 'unverified',
     license: 'Gradivo ROKSAL (roksal.com — stran "WPC deske za pokončno ograjo", POLNA DESKA-128)',
     sourceUrl: 'https://roksal.com/woodcore-wpc-deske/balkonske-ograje-in-dvoriscne-ograje/wpc-ograja-pokoncna/',
@@ -786,30 +786,27 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // privzetka (ocenjena z uradne fotke vgradnje) — čakata ROKSAL
   // katalog (#6); catalogSku je null (SKU se ne izmišljuje).
   {
-    id: 'kubo-80-42',
-    label: 'KUBO profil 80/42 (pokončno) — dekor 2/3 uradne lestvice',
+    id: 'kubo-80-42', label: 'KUBO profil 80/42 (pokončno) — dekor 1/4 Amazon wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 8, gapCm: 0.5,
     orientation: 'vertical',
     textureId: 'tex-roksal-kubo-dekor-2',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Uradne mere profila: vidna širina 80 mm (ali 42 mm — druga vgradnja), WPC z alu cevjo, skrito vijačenje (roksal.com). PRIVZETI dekor = 2/4 (svetli zlati — najbolj podoben dekorju na uradni fotki profila). gapCm 0,5 je privzetek izračuna: ROKSAL za KUBO izrecno objavi, da je „razmak med deskami poljuben“ (pogosta vprašanja, FASADE) — številke torej ni treba iskati, aplikacija pa je ne more prikazati kot ROKSALov predpis. postCm 6 je privzetek izračuna, ocenjen z uradne fotke vgradnje — čaka ROKSAL katalog (#6).',
+    note: 'Uradne mere profila: vidna širina 80 mm (ali 42 mm — druga vgradnja), WPC z alu cevjo, skrito vijačenje (roksal.com). PRIVZETI dekor = 1/4 (Amazon wood — prvi odtenek uradne lestvice). gapCm 0,5 je privzetek izračuna: ROKSAL za KUBO izrecno objavi, da je „razmak med deskami poljuben“ (pogosta vprašanja, FASADE) — številke torej ni treba iskati, aplikacija pa je ne more prikazati kot ROKSALov predpis. postCm 6 je privzetek izračuna, ocenjen z uradne fotke vgradnje — čaka ROKSAL katalog (#6).',
   },
   {
-    id: 'kubo-80-42-dekor-1',
-    label: 'KUBO profil 80/42 (pokončno) — dekor 1/4 uradne lestvice (temno sivi)',
+    id: 'kubo-80-42-dekor-2', label: 'KUBO profil 80/42 (pokončno) — dekor 2/4 Oak wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 8, gapCm: 0.5,
     orientation: 'vertical',
-    textureId: 'tex-roksal-kubo-dekor-1',
+    textureId: 'tex-roksal-kubo-dekor-2',
     postCm: 6,
     pattern: 'vertikalne',
-    note: 'Barvna različica profila kubo-80-42: dekor 1/4 uradne lestvice (temno sivi — kot na uradni fotki vgradnje pregradne stene).',
+    note: 'Barvna različica profila kubo-80-42: dekor 2/4 uradne lestvice (Oak wood).',
   },
   {
-    id: 'kubo-80-42-dekor-3',
-    label: 'KUBO profil 80/42 (pokončno) — dekor 3/3 uradne lestvice (zlati teak)',
+    id: 'kubo-80-42-dekor-3', label: 'KUBO profil 80/42 (pokončno) — dekor 3/4 Rustic oak (uradna lestvica)',
     catalogSku: null,
     plankCm: 8, gapCm: 0.5,
     orientation: 'vertical',
@@ -819,8 +816,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila kubo-80-42: dekor 3/3 uradne lestvice.',
   },
   {
-    id: 'kubo-80-42-dekor-4',
-    label: 'KUBO profil 80/42 (pokončno) — dekor 4/4 uradne lestvice (temno rjavo-sivi)',
+    id: 'kubo-80-42-dekor-4', label: 'KUBO profil 80/42 (pokončno) — dekor 4/4 Rustic walnut (uradna lestvica)',
     catalogSku: null,
     plankCm: 8, gapCm: 0.5,
     orientation: 'vertical',
@@ -929,8 +925,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
   // PRIVZETI dekor = 1 (temno sivi — prvi na vseh uradnih lestvicah,
   // kot pri KUBO/deka; parjenje z vgradnjo bi bilo sklepanje).
   {
-    id: 'polna-57-32',
-    label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 1/3 uradne lestvice (ROKSAL ponuja 3 barve)',
+    id: 'polna-57-32', label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 1/3 Amazon wood (uradna lestvica, kot KUBO)',
     catalogSku: null,
     plankCm: 5.7, gapCm: 2,
     orientation: 'vertical',
@@ -940,8 +935,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Uradne mere: 57 × 32 × 5800 mm, "naleganje je lahko na 57 ali 32" (tu na širini 57 mm = plankCm 5,7); max razmak nosilcev 100 cm (edini objavljen razmak nosilcev vseh profilov). Barvne različice = "štiri barve" — uradna stran ZA TA PROFIL uporablja KUBO lestvico (BARVNA_LESTVICA_5-kubo4) → teksture = obstoječi KUBO dekorji 1–4 (parjenje uradno, na strani). gapCm 2 je PRIVZETEK IZRAČUNA — ROKSAL reže za 57/32 NE objavlja (pas 0,5–3 cm velja samo profiloma 100 in 128); postCm 6 tipen.',
   },
   {
-    id: 'polna-57-32-dekor-2',
-    label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 2/3 uradne lestvice (kot KUBO)',
+    id: 'polna-57-32-dekor-2', label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 2/3 Ash wood (uradna lestvica, kot KUBO)',
     catalogSku: null,
     plankCm: 5.7, gapCm: 2,
     orientation: 'vertical',
@@ -951,8 +945,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-57-32: dekor 2/3 (isti dekor kot KUBO dekor 2 — uradno parjenje lestvice).',
   },
   {
-    id: 'polna-57-32-dekor-3',
-    label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 3/3 uradne lestvice (kot KUBO)',
+    id: 'polna-57-32-dekor-3', label: 'ROKSAL polna deska 57/32 (pokončno) — dekor 3/3 Oak wood (uradna lestvica, kot KUBO)',
     catalogSku: null,
     plankCm: 5.7, gapCm: 2,
     orientation: 'vertical',
@@ -962,8 +955,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-57-32: dekor 3/3 (isti dekor kot KUBO dekor 3 — uradno parjenje lestvice).',
   },
   {
-    id: 'polna-100',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 1/8 (amazon) iz uradne fotografije vgradnje',
+    id: 'polna-100', label: 'ROKSAL polna deska 100 (pokončno) — dekor 1/8 Amazon wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -973,8 +965,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Uradne mere: 100 × 12 × 5800 mm, "samo za POKONČNO ograjo" (roksal.com); razmika nosilcev ROKSAL za ta profil NE objavi (stran napoti na navodila stroke — prej je ta note trdil „80 cm“, kar ni v nobeni objavi); barvne različice = "osmimi barvami" (uradna lestvica TOČNO 8 krogov). gapCm 2 znotraj OBJAVLJENEGA pasu 0,5–3 cm; postCm 6 tipen. Uradni presek profila roksal.com NE objavlja (#6, vpisano kot manjkajoče gradivo).',
   },
   {
-    id: 'polna-100-dekor-2',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 2/8 (svetlo sivi) iz uradne fotografije vgradnje',
+    id: 'polna-100-dekor-2', label: 'ROKSAL polna deska 100 (pokončno) — dekor 2/8 Ash wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -984,8 +975,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 2/8 uradne lestvice.',
   },
   {
-    id: 'polna-100-dekor-3',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 3/8 uradne lestvice (rožnato-rjavi)',
+    id: 'polna-100-dekor-3', label: 'ROKSAL polna deska 100 (pokončno) — dekor 3/8 Golden teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -995,8 +985,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 3/8 uradne lestvice.',
   },
   {
-    id: 'polna-100-dekor-4',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 4/8 uradne lestvice (rjavo-bež)',
+    id: 'polna-100-dekor-4', label: 'ROKSAL polna deska 100 (pokončno) — dekor 4/8 Burma teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -1006,8 +995,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 4/8 uradne lestvice.',
   },
   {
-    id: 'polna-100-dekor-5',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 5/8 uradne lestvice (svetli zlati)',
+    id: 'polna-100-dekor-5', label: 'ROKSAL polna deska 100 (pokončno) — dekor 5/8 Oak wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -1017,8 +1005,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 5/8 uradne lestvice.',
   },
   {
-    id: 'polna-100-dekor-6',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 6/8 uradne lestvice (beli)',
+    id: 'polna-100-dekor-6', label: 'ROKSAL polna deska 100 (pokončno) — dekor 6/8 White (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -1028,8 +1015,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 6/8 uradne lestvice (RGB(199,198,197) — najsvetlejši dekor vseh lestvic).',
   },
   {
-    id: 'polna-100-dekor-7',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 7/8 uradne lestvice (zlati teak)',
+    id: 'polna-100-dekor-7', label: 'ROKSAL polna deska 100 (pokončno) — dekor 7/8 Rustic oak (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -1039,8 +1025,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 7/8 uradne lestvice.',
   },
   {
-    id: 'polna-100-dekor-8',
-    label: 'ROKSAL polna deska 100 (pokončno) — dekor 8/8 uradne lestvice (temno rjavo-sivi)',
+    id: 'polna-100-dekor-8', label: 'ROKSAL polna deska 100 (pokončno) — dekor 8/8 Rustic walnut (uradna lestvica)',
     catalogSku: null,
     plankCm: 10, gapCm: 2,
     orientation: 'vertical',
@@ -1050,8 +1035,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-100: dekor 8/8 uradne lestvice.',
   },
   {
-    id: 'polna-128',
-    label: 'ROKSAL polna deska 128 (pokončno) — dekor 1/5 uradne lestvice (ROKSAL ponuja 5 barv)',
+    id: 'polna-128', label: 'ROKSAL polna deska 128 (pokončno) — dekor 1/5 Amazon wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 12.8, gapCm: 2,
     orientation: 'vertical',
@@ -1061,8 +1045,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Uradne mere: 128 × 16 × 2200 mm (pokončno); roksal.com uradno omogoča TUDI prečno vgradnjo (128 × 16,5 × 2200) — prečna različica NI registrirana kot ločen profil (obstoječi vodoravni vzorci: roksal-deka-150, fasadna-obloga-8); objavljeni meji STEBRIČKOV: 180 cm do 150 cm višine / 150 cm nad njo (pokončno) in 110 cm za vodoravno postavitev (prečno); razmika nosilcev stran ne objavi; barvne različice = "šestimi barvami" (uradna lestvica TOČNO 6 krogov). gapCm 2 znotraj OBJAVLJENEGA pasu 0,5–3 cm; postCm 6 tipen.',
   },
   {
-    id: 'polna-128-dekor-2',
-    label: 'ROKSAL polna deska 128 (pokončno) — dekor 2/5 uradne lestvice (svetlo sivi)',
+    id: 'polna-128-dekor-2', label: 'ROKSAL polna deska 128 (pokončno) — dekor 2/5 Ash wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 12.8, gapCm: 2,
     orientation: 'vertical',
@@ -1072,8 +1055,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-128: dekor 2/5 uradne lestvice.',
   },
   {
-    id: 'polna-128-dekor-3',
-    label: 'ROKSAL polna deska 128 (pokončno) — dekor 3/5 uradne lestvice (rjavo-bež)',
+    id: 'polna-128-dekor-3', label: 'ROKSAL polna deska 128 (pokončno) — dekor 3/5 Burma teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 12.8, gapCm: 2,
     orientation: 'vertical',
@@ -1083,8 +1065,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-128: dekor 3/5 uradne lestvice.',
   },
   {
-    id: 'polna-128-dekor-4',
-    label: 'ROKSAL polna deska 128 (pokončno) — dekor 4/5 uradne lestvice (svetli zlati)',
+    id: 'polna-128-dekor-4', label: 'ROKSAL polna deska 128 (pokončno) — dekor 4/5 Oak wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 12.8, gapCm: 2,
     orientation: 'vertical',
@@ -1094,8 +1075,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-128: dekor 4/5 uradne lestvice.',
   },
   {
-    id: 'polna-128-dekor-5',
-    label: 'ROKSAL polna deska 128 (pokončno) — dekor 5/5 uradne lestvice (zlati teak)',
+    id: 'polna-128-dekor-5', label: 'ROKSAL polna deska 128 (pokončno) — dekor 5/5 Rustic oak (uradna lestvica)',
     catalogSku: null,
     plankCm: 12.8, gapCm: 2,
     orientation: 'vertical',
@@ -1105,8 +1085,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila polna-128: dekor 5/5 uradne lestvice.',
   },
   {
-    id: 'romb-67',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 1/7 uradne lestvice',
+    id: 'romb-67', label: 'ROKSAL romb deska 67 (pokončno) — dekor 1/7 Amazon wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
@@ -1116,8 +1095,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Uradne mere: 67 × 26 × 5800 mm Z ALU CEVJO v sredini romba (obvezna, vključena v ceno — nakup brez alu cevi ni mogoč); objavljena meja STEBRIČKOV je samo 145 cm in samo z L-kotnikom na levi IN desni strani stebra (prečna postavitev); 110 cm pa NI ROMBOVA meja — to je DESKA-128. Barvne različice = "sedmimi barvami" (uradna lestvica TOČNO 7 krogov). RENDER: vizualizer riše pravokotne deske — kosooglati presek in alu cev med deskami NE sta rišana (pri pokončni postavitvi je cev uradno vidna med deskami; tu reže iskreno kažejo ozadje fotke). gapCm 2 je PRIVZETEK IZRAČUNA (reže ROKSAL za ROMB ne objavi, pri fasadi le opomoni „večji razmak ⇒ viden fasadni klip“); postCm 6 tipen.',
   },
   {
-    id: 'romb-67-dekor-2',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 2/7 uradne lestvice (svetlo sivi)',
+    id: 'romb-67-dekor-2', label: 'ROKSAL romb deska 67 (pokončno) — dekor 2/7 Ash wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
@@ -1127,8 +1105,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila romb-67: dekor 2/7 uradne lestvice.',
   },
   {
-    id: 'romb-67-dekor-3',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 3/7 uradne lestvice (rožnato-rjavi)',
+    id: 'romb-67-dekor-3', label: 'ROKSAL romb deska 67 (pokončno) — dekor 3/7 Golden teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
@@ -1138,8 +1115,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila romb-67: dekor 3/7 uradne lestvice.',
   },
   {
-    id: 'romb-67-dekor-4',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 4/7 uradne lestvice (rjavo-bež)',
+    id: 'romb-67-dekor-4', label: 'ROKSAL romb deska 67 (pokončno) — dekor 4/7 Burma teak (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
@@ -1149,8 +1125,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila romb-67: dekor 4/7 uradne lestvice.',
   },
   {
-    id: 'romb-67-dekor-5',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 5/7 uradne lestvice (svetli zlati)',
+    id: 'romb-67-dekor-5', label: 'ROKSAL romb deska 67 (pokončno) — dekor 5/7 Oak wood (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
@@ -1160,8 +1135,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila romb-67: dekor 5/7 uradne lestvice.',
   },
   {
-    id: 'romb-67-dekor-6',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 6/7 uradne lestvice (zlati teak)',
+    id: 'romb-67-dekor-6', label: 'ROKSAL romb deska 67 (pokončno) — dekor 6/7 Rustic oak (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
@@ -1171,8 +1145,7 @@ export const ROKSAL_PROFILES: RoksalProfile[] = [
     note: 'Barvna različica profila romb-67: dekor 6/7 uradne lestvice.',
   },
   {
-    id: 'romb-67-dekor-7',
-    label: 'ROKSAL romb deska 67 (pokončno) — dekor 7/7 uradne lestvice (temno rjavo-sivi)',
+    id: 'romb-67-dekor-7', label: 'ROKSAL romb deska 67 (pokončno) — dekor 7/7 Rustic walnut (uradna lestvica)',
     catalogSku: null,
     plankCm: 6.7, gapCm: 2,
     orientation: 'vertical',
