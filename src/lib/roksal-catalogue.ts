@@ -32,6 +32,10 @@ export interface CatalogueFamily {
   /** površine (terasna profil: rebrasta / gladka / Rustic) */
   surfaces: string[];
   surfacesQuote?: string;
+  /** URADNO: največji razmak med stebri pri PREČNI ograji / pregradni steni (cm) */
+  postSpacingCmMaxHorizontal: number | null;
+  /** citat za prečno postavitev (prečne ograje / pregradne stene) */
+  horizontalQuote?: string;
   source: string;
 }
 
@@ -50,7 +54,10 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     colours: 8,
     coloursQuote: 'Pri deskah s polnim profilom lahko izbirate med spodnjimi osmimi barvami:',
     surfaces: [],
-    source: `${SRC_COLOUR} · ${SRC_VERTICAL}`,
+    postSpacingCmMaxHorizontal: null,
+    horizontalQuote:
+      'profil POLNA DESKA - 128 — Maksimalnim razmakom med stebrički je 110 cm. Vijačenje je vidno iz sprednje strani.',
+    source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/precne-deske/`,
   },
   'polna-128': {
     id: 'polna-128',
@@ -62,6 +69,7 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     colours: 5,
     coloursQuote: 'Ta profil se lahko uporabi pri prečni ali pokončni ograji. Izbirate lahko med spodnjimi petimi barvami:',
     surfaces: [],
+    postSpacingCmMaxHorizontal: 110,
     source: `${SRC_COLOUR} · ${SRC_VERTICAL}`,
   },
   'polna-57-32': {
@@ -74,7 +82,10 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     colours: 3,
     coloursQuote: 'Te deske so primerne samo za pokončne ograje . Trenutno so na voljo tri barve:',
     surfaces: [],
-    source: `${SRC_COLOUR} · ${SRC_VERTICAL}`,
+    postSpacingCmMaxHorizontal: null,
+    horizontalQuote:
+      'profil ROMB DESKA - 67 — Maksimalnim razmakom med stebrički je 145 cm … Vijačenje ni vidno iz sprednje strani.',
+    source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/precne-deske/`,
   },
   'romb-67': {
     id: 'romb-67',
@@ -86,7 +97,10 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     colours: 7,
     coloursQuote: 'Pri deskah s profilom ROMB lahko izbirate med spodnjimi sedmimi barvami:',
     surfaces: [],
-    source: `${SRC_COLOUR} · ${SRC_VERTICAL}`,
+    postSpacingCmMaxHorizontal: 145,
+    horizontalQuote:
+      'profil ROMB DESKA - 67 — Maksimalnim razmakom med stebrički je 145 cm … Vijačenje ni vidno iz sprednje strani.',
+    source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/precne-deske/`,
   },
   'kubo-80-42': {
     id: 'kubo-80-42',
@@ -98,6 +112,7 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     colours: 4,
     coloursQuote: 'Pri deskah s profilom KUBO lahko izbirate med spodnjimi štirimi barvami:',
     surfaces: [],
+    postSpacingCmMaxHorizontal: null,
     source: `${SRC_COLOUR}`,
   },
   'fasada-romb': {
@@ -114,6 +129,7 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     surfacesQuote:
       'Za fasado se naredi najprej izolacija, na njo se privijači podložna letev debeline 4 cm, širine 6 cm iz macesna v razmakih 70 – 80 cm. ' +
       'Na njo se pritrdi romb debeline 2,6 cm + debelina pritrdilnega sistema je 0,5 cm. Skupna debelina na izolaciji je 7,1 cm.',
+    postSpacingCmMaxHorizontal: null,
     source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/wpc-deske-za-fasado/`,
   },
   'fasada-polna-100': {
@@ -131,6 +147,7 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
       'Polne deske se lahko montirajo horizontalno ali vertikalno na pripravljeno izolacijo … ' +
       'Na izolacijo se v razmakih 70–80 cm pritrdijo macesnove letve dimenzije 4 × 7 cm … ' +
       'Pri vertikalni postavitvi desk se dodatno montira še horizontalne letve 2 × 7 cm v razmaku do 50cm.',
+    postSpacingCmMaxHorizontal: null,
     source: `${SRC_COLOUR} · roksal.com/woodcore-wpc-deske/wpc-deske-za-fasado/`,
   },
   'terasna-150': {
@@ -145,6 +162,7 @@ export const ROKSAL_CATALOGUE: Record<string, CatalogueFamily> = {
     surfaces: ['rebra bolj na gosto', 'rebra bolj na široko', 'Rustic (popolnoma gladko na eni strani)'],
     surfacesQuote:
       'Deske imajo na eni strani rebra bolj na gosto, na drugi pa na široko. Le Rustic deske so na eni strani popolnoma gladke, na drugi strani pa gosto rebričene.',
+    postSpacingCmMaxHorizontal: 130,
     source: `${SRC_COLOUR}`,
   },
 };

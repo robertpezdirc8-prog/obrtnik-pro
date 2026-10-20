@@ -888,12 +888,20 @@ export function buildPatternCanvas(
     ctx.save();
     for (const y of railYs) {
       if (y < 0 || y > H) continue;
-      for (let x = 0; x < W; x += gap + w) {
+      let bi = 0;
+      for (let x = 0; x < W; x += gap + w, bi++) {
         const cx = x + w / 2;
-        const g = ctx.createRadialGradient(cx - r * 0.3, y - r * 0.3, 0, cx, y, r);
-        g.addColorStop(0, 'rgba(228,228,230,0.95)');
-        g.addColorStop(0.55, 'rgba(120,122,126,0.95)');
-        g.addColorStop(1, 'rgba(48,50,52,0.85)');
+        // Vijak je kovinski in SVETI: glava z obrobkom, senca pod njo (deska je
+        // nad njim) in odtenek, ki se malce razlikuje od deske do deske.
+        const tone = 0.9 + (((bi * 2654435761) % 1000) / 1000 - 0.5) * 0.2;
+        ctx.fillStyle = `rgba(24,24,26,${0.22 * tone})`;
+        ctx.beginPath();
+        ctx.arc(cx + r * 0.35, y + r * 0.45, r * 0.95, 0, Math.PI * 2);
+        ctx.fill();
+        const g = ctx.createRadialGradient(cx - r * 0.35, y - r * 0.4, 0, cx, y, r);
+        g.addColorStop(0, `rgba(236,237,239,${0.95 * tone})`);
+        g.addColorStop(0.5, `rgba(138,140,144,${0.95 * tone})`);
+        g.addColorStop(1, `rgba(44,46,48,${0.9 * tone})`);
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(cx, y, r, 0, Math.PI * 2);
