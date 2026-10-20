@@ -28,7 +28,7 @@
 // Vse so čiste funkcije: isti vhodi → identičen list (determinizem).
 
 import type { ReplaceMetadata } from './photo-replace-core';
-import { cenikFor, CENIK_DATE, CENIK_SOURCE } from './roksal-cenik-2026';
+import { cenikFor, CENIK_SOURCE } from './roksal-katalog-2026';
 import { ROKSAL_PROFILES } from './roksal-assets';
 import { maxAllowedSpan } from './roksal-span-rules';
 
@@ -127,8 +127,8 @@ export interface InstallerSheet {
   extraWasteCm: number;
   /** rezalni načrt po deskah (za žago) */
   cutList: CutListRow[];
-  /** uradni ROKSAL cenik za izbrani profil (orientacija, ne avtomatska cena) */
-  cenik: { code: string; name: string; unit: string; net: number; gross: number; date: string; source: string } | null;
+  /** uradna ROKSAL KODA izdelka (brez cene — ceno vpiše obrtnik) */
+  sku: { code: string; name: string; source: string } | null;
   span: SpanCheck;
   /** list NI narejen — monter mora najprej izmeriti/odločiti */
   blockers: string[];
@@ -244,7 +244,7 @@ export function buildInstallerSheet(input: InstallerSheetInput): InstallerSheet 
     singleRun: { boards: 0, cutLenCm: 0, totalMeters: 0, stocks: [] },
     extraWasteCm: 0,
     cutList: [],
-    cenik: null,
+    sku: null,
     span: { maxSpanCm: 0, status: 'unknown', quote: null, source: null },
     blockers,
     warnings,
@@ -400,23 +400,16 @@ export function buildInstallerSheet(input: InstallerSheetInput): InstallerSheet 
     };
   });
 
-  // Uradni cenik (orientacija): prva vnosna družina profila.
+  // Uradna ROKSAL KODA (brez cene): ceno vpiše obrtnik, tu je samo oznaka
+  // izdelka, da se ne naroča napačna stvar.
   const family = meta.profileId.replace(/-dekor-\d+$/, '');
-  const cenikItem = cenikFor(family)[0] ?? null;
+  const skuItem = cenikFor(family)[0] ?? null;
 
   return {
     ...base,
     cutList,
-    cenik: cenikItem
-      ? {
-          code: cenikItem.code,
-          name: cenikItem.name,
-          unit: cenikItem.unit,
-          net: cenikItem.net,
-          gross: cenikItem.gross,
-          date: CENIK_DATE,
-          source: CENIK_SOURCE.fences,
-        }
+    sku: skuItem
+      ? { code: skuItem.code, name: skuItem.name, source: CENIK_SOURCE.fences }
       : null,
     postPositionsCm: positions,
     postCount: positions.length,
@@ -545,9 +538,11 @@ razlika v odpadku: <b>${sheet.extraWasteCm > 0 ? '+' : ''}${cm(sheet.extraWasteC
 
 ${warnings}
 
-${sheet.cenik ? `<section><h2>Uradni ROKSAL cenik (orientacija)</h2>
-<p><b>${esc(sheet.cenik.code)}</b> — ${esc(sheet.cenik.name)}: ${sheet.cenik.net.toFixed(2).replace('.', ',')} € neto / ${sheet.cenik.gross.toFixed(2).replace('.', ',')} € brutto na ${esc(sheet.cenik.unit)}.
-Cenik z dne ${esc(sheet.cenik.date)} — ${esc(sheet.cenik.source)}. V ponudbo ceno vpiše obrtnik; tu je le referenca.</p></section>` : ''}
+
+
+${sheet.sku ? `<section><h2>Izdelek (uradna ROKSAL koda)</h2>
+<p><b>${esc(sheet.sku.code)}</b> — ${esc(sheet.sku.name)}<br /><span class="muted">Vir: ${esc(sheet.sku.source)}</span></p>
+<p class="muted">Cene ni na listu — jo vpiše obrtnik.</p></section>` : ''}
 
 <section><h2>Opomnik za monterja (ni kosovnica)</h2>
 <ul class="muted">
