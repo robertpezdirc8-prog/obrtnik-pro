@@ -191,6 +191,15 @@ export function InstallerSheetPanel({ meta, imageDataUrl, datum, obrtnik }: Inst
         </p>
       )}
 
+      {typeof meta.params?.measureCheck === 'string' && meta.params.measureCheck && (
+        <p
+          className="rounded border border-stone-300 bg-background p-2 text-[11px]"
+          data-testid="fr-sheet-measure-check"
+        >
+          {meta.params.measureCheck}
+        </p>
+      )}
+
       <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         Stebri in pritrdila niso kosovnica — upodobitev jih ne modelira. Cene niso del lista.

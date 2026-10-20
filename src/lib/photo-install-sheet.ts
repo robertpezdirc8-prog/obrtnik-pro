@@ -117,6 +117,8 @@ export interface InstallerSheet {
   warnings: string[];
   /** dobesedni viri, na katere se list sklicuje */
   sources: string[];
+  /** merilna kontrola vnesene širine proti strukturi ograje (iz metapodatkov) */
+  measureCheck?: string | null;
 }
 
 const r1 = (n: number): number => Math.round(n * 10) / 10;
@@ -227,6 +229,10 @@ export function buildInstallerSheet(input: InstallerSheetInput): InstallerSheet 
     blockers,
     warnings,
     sources,
+    measureCheck:
+      typeof meta.params?.measureCheck === 'string' && meta.params.measureCheck
+        ? meta.params.measureCheck
+        : null,
   };
 
   if (runCm === null) {
@@ -489,6 +495,7 @@ ${warnings}
   <li>Stebri: ${sheet.postCm > 0 ? `profil stebra ${cm(sheet.postCm)}` : 'profil stebra ni znan'} — količino vpiši iz kataloga.</li>
   <li>Pritrdila: predvrtanje je obvezno, luknja 1 mm večja od vijaka (ROKSAL FAQ).</li>
   <li>Deske se spajajo na dolžino obvezno na stebru; stebri morajo biti v ravnini.</li>
+  ${sheet.measureCheck ? `<li>${esc(sheet.measureCheck)}</li>` : ''}
 </ul></section>
 
 <section class="src"><h2>Viri</h2><ul>${sheet.sources.map((s) => `<li>${esc(s)}</li>`).join('')}</ul></section>

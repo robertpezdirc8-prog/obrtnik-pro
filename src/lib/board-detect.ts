@@ -35,9 +35,27 @@ export function findBoard(
     if (d >= opts.minPitch && d <= opts.maxPitch) gaps.push(d);
   }
   if (gaps.length === 0) return null;
-  gaps.sort((a, b) => a - b);
-  const pitch = gaps[Math.floor(gaps.length / 2)];
-  // par šprinj s korakom najbliž medianu
+  // MODE, ne mediana: stebri in drugi široki elementi dajo redke, a velike
+  // "reže", ki bi pri mediani premagale pravi korak desk. Pravi korak se
+  // pojavi VELIKOKRAT (vsaka deska), zato je najpogostejša razdalja pravilna.
+  const hist = new Map<number, number>();
+  for (const g of gaps) hist.set(g, (hist.get(g) ?? 0) + 1);
+  // Najbolj groba DOBRO PODPIRANA perioda: deska se ponovi vsakič (veliko
+  // ponovitev), robovi in obrisi pa dajo drobne razdalje. Zato vzamemo
+  // največji korak, ki se pojavi vsaj trikrat.
+  let pitch = 0;
+  let bestCount = 0;
+  for (const [g, n] of hist) {
+    if (n < 3) continue;
+    if (g > pitch) { pitch = g; bestCount = n; }
+  }
+  if (pitch === 0) {
+    // ni nobene dovolj podprte periode — vzamemo najpogostejšo (za diagnostiko)
+    for (const [g, n] of hist) {
+      if (n > bestCount) { bestCount = n; pitch = g; }
+    }
+  }
+  // par šprinj s korakom najbliž izbraniemu (mode) koraku
   let best: [number, number] | null = null;
   let bestD = Infinity;
   for (let i = 1; i < mins.length; i++) {

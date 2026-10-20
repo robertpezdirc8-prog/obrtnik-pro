@@ -335,6 +335,10 @@ async function main(): Promise<void> {
     check('MERITEV: 28 m desk', /Skupaj\s*28 m/.test(kpi), kpi);
     check('MERITEV: 6 nabavnih kosov (580 cm, rez 100 cm)', /Nabavnih kosov\s*6/.test(kpi), kpi);
     check('MERITEV: odpad 680 cm', /Odpad\s*680 cm/.test(kpi), kpi);
+    // Merilna negotovost + informativno število desk v fotografiji
+    const mchk = await textOf('fr-sheet-measure-check');
+    check('MERITEV: navedena je merilna negotovost (± cm in %)', /Merilna negotovost[^.]*±[0-9.]+ cm/.test(mchk), mchk.slice(0, 200));
+    check('MERITEV: navedeno je število desk v fotografiji', /približno \d+ desk/.test(mchk), mchk.slice(0, 240));
     console.log(`  MERILNI IZPIS (sintetika): ${kpi.replace(/\s+/g, ' ')}`);
 
     // ── 6) prepoznava stare ograje (povezan z isto meritvijo) ──

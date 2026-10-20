@@ -64,6 +64,7 @@ import { InstallerSheetPanel } from './installer-sheet-panel';
 import { fasteningSpec, maxPostSpacingCm } from '@/lib/roksal-fastening';
 import { officialColourOf, referencesForColour } from '@/lib/roksal-catalogue';
 import { analyseOldFence, type OldFenceFinding } from '@/lib/old-fence-analysis';
+import { countBoardsInPlane, describeStructure, measurementUncertainty } from '@/lib/measure-verify';
 import { profileKindForCatalog } from '@/lib/roksal-span-rules';
 import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
@@ -1141,6 +1142,36 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       const warnings = [...layout.warnings];
       if (inpaintRes && inpaintRes.status !== 'ok') warnings.push('Ozadje pod novo ograjo ni v celoti obnovljeno — reže lahko pokažejo staro ograjo.');
       if (!frontUsed) warnings.push('Frontalni okluziji so prazni — nič ni narisano pred novo ograjo.');
+      // ── MERILNA KONTROLA: vneseno širino preverimo z neodvisno oceno iz strukture
+      // ograje v isti fotografiji (korak med deskami). Ne popravlja vnos, temveč
+      // pove, ali se števili ujemata — to loči napako v vnosu od programske.
+      let measureCheck = '';
+      try {
+        const ctxw = work.getContext('2d', { willReadFrequently: true })!;
+        const imgw = ctxw.getImageData(0, 0, work.width, work.height);
+        const topPx = Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+        const botPx = Math.hypot(q.br.x - q.bl.x, q.br.y - q.bl.y);
+        const unc = measurementUncertainty({
+          widthCm: pc.wCm,
+          quadWidthPx: (topPx + botPx) / 2,
+        });
+        const boards = countBoardsInPlane({
+          rgba: new Uint8Array(imgw.data.buffer.slice(0)),
+          W: work.width,
+          H: work.height,
+          quadPct: qp,
+        });
+        measureCheck = [
+          `Merilna negotovost širine: ${unc.reason}.`,
+          describeStructure({ boardsDetected: boards.boards, plankCm: profile.plankCm, gapCm: profile.gapCm }),
+        ]
+          .filter(Boolean)
+          .join(' ');
+      } catch (e) {
+        // Ne prikrijemo napake: uporabnik mora vedeti, da preverjanje ni delalo.
+        measureCheck = `Merilna negotovost ni bila izračunana (${e instanceof Error ? e.message : String(e)}).`;
+      }
+
       const meta = buildReplaceMetadata({
         profileId: profile.id,
         profileLabel: profile.label,
@@ -1156,6 +1187,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           quadWidthCm: pc.wCm === null ? 'ni izmerjena' : Math.round(pc.wCm),
           postEveryCm: 'null',
           materialHonesty: readiness.honestyLabel, // iskrenost gradiva v metapodatkih (original vs. realna fotka)
+          measureCheck, // merilna kontrola vnesene širine proti strukturi ograje
         },
         mask,
         layout,
