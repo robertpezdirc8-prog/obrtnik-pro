@@ -14,7 +14,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Printer, FileDown, Ruler, TriangleAlert, Info } from 'lucide-react';
+import { Printer, FileDown, Ruler, TriangleAlert, Info, MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { ReplaceMetadata } from '@/lib/photo-replace-core';
 import {
@@ -22,6 +22,7 @@ import {
   buildInstallerSheetHtml,
   type InstallerSheet,
 } from '@/lib/photo-install-sheet';
+import { buildInstallerSheetMessage } from '@/lib/install-sheet-message';
 import { formatNum } from '@/lib/format';
 
 interface InstallerSheetPanelProps {
@@ -83,6 +84,17 @@ export function InstallerSheetPanel({ meta, imageDataUrl, datum, obrtnik }: Inst
     URL.revokeObjectURL(a.href);
   };
 
+  // Kratko sporočilo za monterja (SMS/WhatsApp) — ista številka kot v listu.
+  const onCopyMessage = async () => {
+    const text = buildInstallerSheetMessage({ sheet, obrtnik: obrtnik ?? null });
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Sporočilo za monterja kopirano ✓', description: 'Prilepi v SMS ali WhatsApp.' });
+    } catch {
+      toast({ title: 'Odložišče ni dostopno', variant: 'destructive' });
+    }
+  };
+
   const ready = sheet.blockers.length === 0;
 
   return (
@@ -123,6 +135,16 @@ export function InstallerSheetPanel({ meta, imageDataUrl, datum, obrtnik }: Inst
         </Button>
         <Button size="sm" variant="outline" className="h-8" onClick={onDownload} data-testid="fr-sheet-download">
           <FileDown className="mr-1.5 h-4 w-4" /> Prenesi HTML
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8"
+          disabled={!ready}
+          onClick={onCopyMessage}
+          data-testid="fr-sheet-message"
+        >
+          <MessageSquare className="mr-1.5 h-4 w-4" /> Sporočilo monterju
         </Button>
       </div>
 
