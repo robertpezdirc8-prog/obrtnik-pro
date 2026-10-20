@@ -1,0 +1,12 @@
+[
+  {
+    "_pojasnilo": "Zapis za terensko preverjanje meril. Vnesi svojo fotko, ki jo boš preveril z metrom, in zapiši DEJANSKO izmerjeno širino/višino ograje. Različica: deltaCm = izmerjeno − aplikacija (pozitivno = aplikacija podcenjuje).",
+    "file": "tests/fixtures/hisa-balkon-parkgate.jpg",
+    "planePct": [[57.5, 50.5], [87, 45.5], [87, 52.5], [57.5, 57]],
+    "trueWidthCm": 350,
+    "trueHeightCm": 100,
+    "note": "balkonska ograja, hiša z balkonom (Parkgate) — širina ocenjena, ne izmerjena",
+    "by": "",
+    "date": ""
+  }
+]

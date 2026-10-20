@@ -359,7 +359,11 @@ async function main(): Promise<void> {
     await sleep(500);
     const kpi = await textOf('fr-sheet-kpi');
     check('prava fotka: KPI lista izračunan', /Stebrov\s*4/.test(kpi) && /Celot\s*3/.test(kpi) && /Desk\s*28/.test(kpi), kpi);
-    check('prava fotka: gumb za sporočilo monterju je', (await disabledOf('fr-sheet-message')) === false, 'fr-sheet-message');
+
+    // ── MERILNI IZPIS (za terensko preverjanje z metrom) ──
+    // Te številke primerjaj z metrom in zapiši odstopanje v
+    // tests/fixtures/meritve-gt.json (oblika je tam opisana).
+    console.log(`  MERILNI IZPIS: ${kpi.replace(/\s+/g, ' ')}`);    check('prava fotka: gumb za sporočilo monterju je', (await disabledOf('fr-sheet-message')) === false, 'fr-sheet-message');
     check('prava fotka: gumb za prenos HTML je', (await disabledOf('fr-sheet-download')) === false, 'fr-sheet-download');
     // Posnetek panela z listom (za dokumentacijo v PR-ju)
     await evaluate(`(() => { const e = document.querySelector('[data-testid="fr-installer-sheet"]'); if (e) e.scrollIntoView({ block: 'center' }); return 'OK'; })()`);
