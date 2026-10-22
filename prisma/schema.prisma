@@ -171,6 +171,10 @@ model Offer {
   vatRate         Float
   vatAmount       Float
   total           Float
+  /// Metapodatki fotomontaže (JSON) — izvor MONTAŽNEGA LISTA za monterja.
+  /// Null = ponudba ni nastala iz fotomontaže in lista ni; poljuben JSON se
+  /// ne tlači v bazo brez preverjanja (glej src/lib/offer-sheet.ts).
+  montageJson     String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   items           OfferItem[]

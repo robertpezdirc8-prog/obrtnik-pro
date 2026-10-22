@@ -62,6 +62,8 @@ export interface OfferDTO {
   decidedAt: string | null;
   /** Wiedervorlage — datum ročnega opomnika za follow-up. */
   followUpAt: string | null;
+  /** Ali je ponudba nastala iz fotomontaže (ponujen je montažni list). */
+  hasMontage?: boolean;
   subtotal: number;
   vatRate: number;
   vatAmount: number;

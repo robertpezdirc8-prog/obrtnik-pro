@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
-  Check, FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy,
+  Check, FileDown, Loader2, FileText, Trash2, Inbox, BellRing, Copy, Ruler,
   MessageCircle, FilePlus2, FileCheck2, Receipt, FileCode2,
 } from 'lucide-react';
 import { formatDate, formatEUR, formatNum, STATUS_LABELS } from '@/lib/format';
@@ -38,7 +38,7 @@ import {
   paymentStatus,
   type PaymentInvoice,
 } from '@/lib/payment-tracking';
-import { openOfferPDF, openHandoverPrint, openInvoicePDF } from '@/lib/pdf';
+import { openOfferPDF, openHandoverPrint, openInvoicePDF, openOfferWithSheetPDF } from '@/lib/pdf';
 import { validUntil } from '@/lib/pdf';
 import { buildOfferShareText, buildChangeOrderText, buildHandoverDoc, changeOrderNumber } from '@/lib/paperwork';
 import { useChangeOrders, type ChangeOrderEntry } from '@/lib/store';
@@ -107,6 +107,39 @@ ${ownerName || companyName}${companyName ? `, ${companyName}` : ''}`;
 
 export function OffersList() {
   const { toast } = useToast();
+
+  // Ponudba + MONTAŽNI LIST v enem PDF (stranka dobi ponudbo, monter list).
+  // Razmak stebrov je VNOS: 150 cm je privzeta vrednost in je na listu
+  // označen kot PREDLOG (ni izmerjen) — meri ga monter.
+  const printInstallerSheet = async (offer: OfferDTO): Promise<void> => {
+    try {
+      const r = await fetch(`/api/offers/${offer.id}/sheet?bay=150`);
+      const d = (await r.json()) as { hasMontage?: boolean; html?: string; error?: string };
+      if (!r.ok || !d.html) {
+        toast({ title: 'Montažnega lista ni', description: d.error ?? 'Ponudba ni nastala iz fotomontaže.', variant: 'destructive' });
+        return;
+      }
+      if (settings) {
+        const ok = openOfferWithSheetPDF(offer, settings, d.html);
+        if (!ok) {
+          toast({ title: 'Preprečeno okno za tiskanje', description: 'Dovoli pojavna okna in poskusi znova.', variant: 'destructive' });
+        }
+        return;
+      }
+      // Brez nastavitev (levo naloženih) je mogoče natisniti SAMO list.
+      const w = window.open('', '_blank', 'width=860,height=1000');
+      if (!w) {
+        toast({ title: 'Okno je blokirano', description: 'Dovoli pojavna okna za tiskanje.', variant: 'destructive' });
+        return;
+      }
+      w.document.open();
+      w.document.write(d.html);
+      w.document.close();
+      w.setTimeout(() => { w.focus(); w.print(); }, 250);
+    } catch {
+      toast({ title: 'Montažnega lista ni', description: 'Napaka pri pripravi lista.', variant: 'destructive' });
+    }
+  };
   // Vloga (Task 97): montir ponudbe VIDI, ustvarja pa jih lastnik —
   // prazno stanje zato ne svetuje kalkulatorja, ki bi se končal z 403.
   const isMontir = normalizeRole(useSessionGate()?.user.role) === 'montir';
@@ -499,6 +532,19 @@ export function OffersList() {
                       <FileDown className="mr-1.5 h-4 w-4" />
                       PDF
                     </Button>
+                    {offer.hasMontage && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-9"
+                        onClick={() => printInstallerSheet(offer)}
+                        data-testid={`offer-sheet-${offer.number}`}
+                        title="Ponudba z vgrajenim montažnim listom (iz fotomontaže)"
+                      >
+                        <Ruler className="mr-1.5 h-4 w-4" />
+                        Ponudba + list
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"

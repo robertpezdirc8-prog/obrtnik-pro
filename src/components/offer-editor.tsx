@@ -49,6 +49,7 @@ export function OfferEditor() {
   const setView = useDraftSafe();
   const goAddItems = useAddItemsNav();
   const items = useDraft((s) => s.items);
+  const montage = useDraft((s) => s.montage);
   const customerName = useDraft((s) => s.customerName);
   const customerEmail = useDraft((s) => s.customerEmail);
   const customerPhone = useDraft((s) => s.customerPhone);
@@ -233,6 +234,7 @@ export function OfferEditor() {
           objectAddress,
           note,
           vatRate: ddv.value,
+          montage: montage ? { meta: montage.meta } : null,
           items: items.map((i) => ({
             name: i.name,
             description: i.description ?? null,

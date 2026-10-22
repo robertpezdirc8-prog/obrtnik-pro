@@ -74,6 +74,12 @@ const tmpDir = (name: string): string => {
     resolvePhotoDir({ DATABASE_URL: 'file:/data/db/custom.db' }, '/x') === '/data/db/photos');
   check('DATABASE_URL relativen (file:./db/custom.db) → cwd/db/photos',
     resolvePhotoDir({ DATABASE_URL: 'file:./db/custom.db' }, '/projekt') === '/projekt/db/photos');
+  // NADGRADNJA: pot iz DATABASE_URL ne sme pobegniti iz projekta (EACCES).
+  check('DATABASE_URL z `..` ne pobegne iz projekta',
+    resolvePhotoDir({ DATABASE_URL: 'file:../db/custom.db' }, '/projekt') === '/projekt/db/photos',
+    resolvePhotoDir({ DATABASE_URL: 'file:../db/custom.db' }, '/projekt'));
+  check('absolutna pot ob bazi ostane absolutna',
+    resolvePhotoDir({ DATABASE_URL: 'file:/data/db/custom.db' }, '/projekt') === '/data/db/photos');
   check('brez obojega → cwd/db/photos',
     resolvePhotoDir({}, '/projekt') === '/projekt/db/photos');
   check('nobena pot ni vezana na razvojni stroj (/home/z ali C:\\)',

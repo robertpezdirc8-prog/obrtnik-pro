@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import sharp from 'sharp';
+import { deleteRemote, getRemote, photoRemoteConfigured, putRemote } from './photo-remote';
 
 /** Znane končnice (samo te smejo biti na disku). */
 const EXT_BY_MIME: Record<string, string> = {
@@ -38,7 +39,15 @@ const MIME_BY_EXT: Record<string, string> = {
 
 /** Privzeta mapa: PHOTO_DIR, če je nastavljen; sicer mapa ob bazi
  *  (DATABASE_URL=file:.../db/custom.db → .../db/photos); sicer
- *  <cwd>/db/photos. Vsak korak je opisaljen in preverljiv. */
+ *  <cwd>/db/photos. Vsak korak je opisaljen in preverljiv.
+ *
+ *  POPRAVEK (2026-10-19, najden z E2E dnevnikom): pot iz `DATABASE_URL` je
+ *  lahko RELATIVNA in z `..` (`file:../db/custom.db` iz .env.example) — pri
+ *  reševanju glede na cwd je taka pot pobegnila IZ projekta (v `/db/photos`)
+ *  in pisanje je padlo z EACCES. Zato se pot ZADRŽI v projektu: če bi
+ *  pobegnila, se uporabi <cwd>/db/photos. Baza je sicer v prisma/db (Prisma
+ *  razrešuje relativne poti glede na mapo sheme) — fotografije pa živijo v
+ *  mapi ob bazi, kar je v tem projektu ravno <cwd>/db/photos. */
 export function resolvePhotoDir(
   env: Record<string, string | undefined> = process.env,
   cwd: string = process.cwd(),
@@ -50,8 +59,16 @@ export function resolvePhotoDir(
   if (m) {
     let p = m[1];
     // prisma: file:./db/custom.db (relativno na shemo/cwd) ali file:/abs/db/custom.db
-    if (p.startsWith('./') || p.startsWith('../')) p = resolve(cwd, p);
-    return join(p === '' ? cwd : p, '..', 'photos');
+    const relativen = p.startsWith('./') || p.startsWith('../');
+    if (relativen) p = resolve(cwd, p);
+    const base = join(p === '' ? cwd : p, '..', 'photos');
+    // Pot NE sme pobegniti iz projekta (EACCES pri zapisu na /db/photos) —
+    // to velja samo za RELATIVNE poti; absolutna pot ob bazi je legitima.
+    if (relativen) {
+      const inside = base === cwd || base.startsWith(cwd.endsWith('/') ? cwd : cwd + '/');
+      if (!inside) return join(cwd, 'db', 'photos');
+    }
+    return base;
   }
   return join(cwd, 'db', 'photos');
 }
@@ -160,10 +177,16 @@ export interface SavedPhoto {
   /** Sličica kot dataURL (ali null, če sharpa ni uspel). */
   thumb: string | null;
   sha256: string;
+  /** Ali je bila vsebina naložena TUDI v trajno shrambo (Supabase Storage). */
+  remote?: boolean;
+  /** Razlog, kadar trajna shramba ni uspela — klicatelj sme opozoriti. */
+  remoteError?: string;
 }
 
 /** Shrani vsebino na disk pod `<id><ext>` in vrne ime + sličico.
- *  Mapa se po potrebi ustvari (mkdirSync recursive). */
+ *  Mapa se po potrebi ustvari (mkdirSync recursive).
+ *  Če je nastavljena trajna shramba (Supabase Storage), se ista vsebina
+ *  naloži še tja (write-through) — disk ostane hitri predpomnilnik. */
 export async function savePhoto(
   dataUrl: string,
   id: string,
@@ -176,7 +199,14 @@ export async function savePhoto(
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, fileName), decoded.bytes);
   const thumb = await makeThumb(decoded.bytes);
-  return { fileName, thumb, sha256: decoded.sha256 };
+  let remote: boolean | undefined;
+  let remoteError: string | undefined;
+  if (photoRemoteConfigured()) {
+    const up = await putRemote(fileName, decoded.bytes, decoded.mime);
+    remote = up.ok;
+    if (!up.ok) remoteError = up.error ?? 'neznana napaka shrambe';
+  }
+  return { fileName, thumb, sha256: decoded.sha256, remote, remoteError };
 }
 
 /** Preberi datoteko nazaj kot dataURL. Vrne null, če datoteka
@@ -203,6 +233,41 @@ export function readPhotoBytes(fileName: string, dir: string): Buffer | null {
   } catch {
     return null;
   }
+}
+
+// ─── Asinhrone različice: disk → trajna shramba ───────────────────────────
+// Zakaj ločeni imeni in ne sprememba obstoječih: sinhroni klici (npr. v
+// preverbah) morajo ostati sinhroni. Poti v API-jih so asinhrone, zato
+// uporabljajo te — najprej disk (hiter predpomnilnik), nato Supabase.
+
+/** Preberi kot dataURL: disk, nato trajna shramba. */
+export async function readPhotoAsDataUrlAsync(fileName: string, dir: string): Promise<string | null> {
+  const local = readPhotoAsDataUrl(fileName, dir);
+  if (local !== null) return local;
+  const safe = safeFileName(fileName);
+  if (!safe) return null;
+  const mime = mimeOfFileName(safe);
+  if (!mime) return null;
+  const bytes = await getRemote(safe);
+  if (!bytes) return null;
+  return `data:${mime};base64,${bytes.toString('base64')}`;
+}
+
+/** Preberi surove bajte: disk, nato trajna shramba. */
+export async function readPhotoBytesAsync(fileName: string, dir: string): Promise<Buffer | null> {
+  const local = readPhotoBytes(fileName, dir);
+  if (local !== null) return local;
+  const safe = safeFileName(fileName);
+  if (!safe) return null;
+  return getRemote(safe);
+}
+
+/** Izbriši: disk IN trajna shramba (obe najboljše prizadevanje). */
+export async function deletePhotoFileAsync(fileName: string, dir: string): Promise<boolean> {
+  const local = deletePhotoFile(fileName, dir);
+  const safe = safeFileName(fileName);
+  const remote = safe ? await deleteRemote(safe) : false;
+  return local || remote;
 }
 
 /** Izbriši datoteko (najboljše prizadevanje): ENOENT je tiho OK —

@@ -237,6 +237,20 @@ export interface VizParams {
   quadHeightCm?: number;
   /** fasadna obloga: navpična smer lamel (privzeto vodoravno) */
   oblogaVert?: boolean;
+  /** Letvi ograje: nosilna zgoraj in podložna spodaj (cm). 0 = brez letve.
+   *  Uporablja ju le fotomontaža ograje (RokSAL profil), ne vizualizer. */
+  railTopCm?: number;
+  railBottomCm?: number;
+  /** Odstopanje tona po deski (0 = vse deske enako). 0.05 = ±5 %. */
+  boardToneJitter?: number;
+  /** Vidni vijaki (ROKSAL: pri POLNA-100/128 so vijaki vidni z lica). */
+  screwVisible?: boolean;
+  /** Razmak med nosilci (vodoravnimi cevmi) v cm — URADNO število. */
+  railSpacingCm?: number;
+  /** Odmik vijaka od roba reza v cm (spodaj in zgoraj). */
+  screwEdgeCm?: number;
+  /** Najmanjši odmik vijaka od roba reza v cm (ROKSAL: 3 cm). */
+  screwMinEdgeCm?: number;
 }
 
 export const DEFAULT_VIZ_PARAMS: VizParams = {
@@ -568,17 +582,64 @@ export function buildPatternCanvas(
     }
     case 'vertikalne': {
       baseFill(0); // prozorno ozadje (vidi se scena skozi reže)
+      // … nato pa temna notranjost + nosilna letva (risana na vrhu prozornega)
+      const dark2 = ctx.createLinearGradient(0, 0, 0, H);
+      dark2.addColorStop(0, 'rgb(44,46,48)');
+      dark2.addColorStop(1, 'rgb(26,27,29)');
+      ctx.fillStyle = dark2;
+      ctx.fillRect(0, 0, W, H);
+      const railCm1 = params.railSpacingCm ?? 0;
+      if (railCm1 > 0 && (params.quadHeightCm ?? 0) > 0) {
+        const railH1 = Math.max(1, 0.6 * pxPerCm);
+        for (let y = (params.quadHeightCm as number) * pxPerCm - 4 * pxPerCm; y > 0; y -= railCm1 * pxPerCm) {
+          const yTop1 = Math.max(0, Math.min(H - railH1, y));
+          const g3 = ctx.createLinearGradient(0, yTop1, 0, yTop1 + railH1);
+          g3.addColorStop(0, 'rgb(132,134,136)');
+          g3.addColorStop(0.5, 'rgb(96,98,100)');
+          g3.addColorStop(1, 'rgb(58,60,62)');
+          ctx.fillStyle = g3;
+          ctx.fillRect(0, yTop1, W, railH1);
+        }
+      }
       const gap = Math.max(2, params.spacingCm * pxPerCm);
       const w = Math.max(1, params.elementCm * pxPerCm);
+      // Ton po deski: vsaka deska je iz drugega zložka, zato je malce
+      // svetlejša ali temnejša. Odstopanje je DETERMINISTIČNO (od indeksa),
+      // zato isti vhodi → isti izris.
+      const jitter = params.boardToneJitter ?? 0;
+      let bi = 0;
       for (let x = 0; x < W; x += gap + w) {
         // palica s cilindričnim sencenjem (svetel sredinski pas)
         const g = ctx.createLinearGradient(x, 0, x + w, 0);
-        g.addColorStop(0, shade(rgb, 0.72));
-        g.addColorStop(0.45, shade(rgb, 1.12));
-        g.addColorStop(1, shade(rgb, 0.62));
+        const t = jitter > 0 ? 1 + (((bi * 2654435761) % 1000) / 1000 - 0.5) * 2 * jitter : 1;
+        g.addColorStop(0, shade(rgb, 0.72 * t));
+        g.addColorStop(0.45, shade(rgb, 1.12 * t));
+        g.addColorStop(1, shade(rgb, 0.62 * t));
         ctx.fillStyle = g;
         ctx.fillRect(x, 0, w, H);
         mark(x, 0, w, H);
+        bi += 1;
+      }
+      // Letvi (nosilna zgoraj, podložna spodaj) — del prave ROKSAL ograje.
+      // Risani so ČEZ deske (so pred njimi) in so kovinske, ne lesene.
+      const railTopCm = params.railTopCm ?? 0;
+      const railBottomCm = params.railBottomCm ?? 0;
+      if (railTopCm > 0 || railBottomCm > 0) {
+        const metal = 'rgb(126,128,130)';
+        const rail = (yTop: number, hPx: number): void => {
+          if (hPx <= 0.5) return;
+          const g = ctx.createLinearGradient(0, yTop, 0, yTop + hPx);
+          g.addColorStop(0, 'rgb(158,160,162)');
+          g.addColorStop(0.5, metal);
+          g.addColorStop(1, 'rgb(92,94,96)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, yTop, W, hPx);
+          // spodnji rob temnejši (kontaktna senca na deske)
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.fillRect(0, yTop + hPx - 1, W, 1);
+        };
+        if (railTopCm > 0) rail(0, (railTopCm * pxPerCm));
+        if (railBottomCm > 0) rail(H - railBottomCm * pxPerCm, railBottomCm * pxPerCm);
       }
       break;
     }
@@ -821,6 +882,53 @@ export function buildPatternCanvas(
     ctx.globalCompositeOperation = 'multiply';
     ctx.drawImage(light, 0, 0);
     ctx.restore();
+  }
+
+  // ── Vidni vijaki (ROKSAL: POLNA-100 in 128 imata vijake vidne z lica) ──
+  // Položaj je IZ URADNIH podatkov: nosilci (vodoravne cevi) na razmaku
+  // `railSpacingCm`, vijak pa največ `screwEdgeCm` od roba reza (balkon na
+  // plošči) in najmanj `screwMinEdgeCm`.
+  if (pattern === 'vertikalne' && params.screwVisible && (params.railSpacingCm ?? 0) > 0) {
+    const rail = params.railSpacingCm as number;
+    const edge = params.screwEdgeCm ?? 15;
+    const minEdge = Math.min(params.screwMinEdgeCm ?? 3, edge);
+    const gap = Math.max(2, params.spacingCm * pxPerCm);
+    const w = Math.max(1, params.elementCm * pxPerCm);
+    const topEdgeCm = (params.quadHeightCm ?? 0) > 0 ? (params.quadHeightCm as number) : 0;
+    // položaji nosilcev od spodnjega roba: spodnji (edge cm), nato vsak `rail` cm
+    const railYs: number[] = [];
+    if (topEdgeCm > 0) {
+      const bottom = H - edge * pxPerCm;
+      railYs.push(bottom);
+      for (let y = bottom - rail * pxPerCm; y > edge * pxPerCm; y -= rail * pxPerCm) railYs.push(y);
+      railYs.push(edge * pxPerCm);
+    }
+    const r = Math.max(0.8, Math.min(2.2, pxPerCm * 0.18));
+    ctx.save();
+    for (const y of railYs) {
+      if (y < 0 || y > H) continue;
+      let bi = 0;
+      for (let x = 0; x < W; x += gap + w, bi++) {
+        const cx = x + w / 2;
+        // Vijak je kovinski in SVETI: glava z obrobkom, senca pod njo (deska je
+        // nad njim) in odtenek, ki se malce razlikuje od deske do deske.
+        const tone = 0.9 + (((bi * 2654435761) % 1000) / 1000 - 0.5) * 0.2;
+        ctx.fillStyle = `rgba(24,24,26,${0.22 * tone})`;
+        ctx.beginPath();
+        ctx.arc(cx + r * 0.35, y + r * 0.45, r * 0.95, 0, Math.PI * 2);
+        ctx.fill();
+        const g = ctx.createRadialGradient(cx - r * 0.35, y - r * 0.4, 0, cx, y, r);
+        g.addColorStop(0, `rgba(236,237,239,${0.95 * tone})`);
+        g.addColorStop(0.5, `rgba(138,140,144,${0.95 * tone})`);
+        g.addColorStop(1, `rgba(44,46,48,${0.9 * tone})`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    void minEdge;
   }
   return tex;
 }

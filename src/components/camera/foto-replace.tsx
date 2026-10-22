@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
-  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Ruler, Save, ShoppingCart, Upload, ZoomIn,
+  ChevronDown, ChevronUp, Columns2, Download, Eraser, ImagePlus, Paintbrush, RotateCcw, Ruler, Save, ScanSearch, ShoppingCart, Upload, ZoomIn,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -60,6 +60,12 @@ import {
 } from '@/lib/viz';
 import { getTextureById, preloadVizTextures } from '@/lib/viz-textures';
 import { buildBomFromMeta } from '@/lib/photo-bom';
+import { InstallerSheetPanel } from './installer-sheet-panel';
+import { fasteningSpec, maxPostSpacingCm } from '@/lib/roksal-fastening';
+import { officialColourOf, referencesForColour } from '@/lib/roksal-catalogue';
+import { analyseOldFence, type OldFenceFinding } from '@/lib/old-fence-analysis';
+import { countBoardsInPlane, describeStructure, measurementUncertainty } from '@/lib/measure-verify';
+import { profileKindForCatalog } from '@/lib/roksal-span-rules';
 import { plural } from '@/lib/install-plan';
 import { calibratePlane, planeDistanceCm } from '@/lib/homography';
 import { suggestBandQuadPct, type BandSuggestion } from '@/lib/band-suggest';
@@ -125,7 +131,6 @@ const PROFILE_COLOR_ID: Record<string, string> = {
   'polna-57-32': 'wpc-antracit',           // dekor 1/4 (temno sivi, kot KUBO dekor-1)
   'polna-57-32-dekor-2': 'wpc-svetli-les', // dekor 2/4 (kot KUBO dekor-2, d≈15)
   'polna-57-32-dekor-3': 'wpc-tikovina',   // dekor 3/4 (kot KUBO dekor-3, d≈36)
-  'polna-57-32-dekor-4': 'wpc-oreh',       // dekor 4/4 (kot KUBO dekor-4 — semantično)
   'polna-100': 'wpc-antracit',             // dekor 1/8 (temno sivi, RGB(95,94,97))
   'polna-100-dekor-2': 'wpc-siva',         // dekor 2/8 (svetlo sivi, d≈7)
   'polna-100-dekor-3': 'wpc-svetli-les',   // dekor 3/8 (rožnato-rjavi, d≈38)
@@ -139,7 +144,6 @@ const PROFILE_COLOR_ID: Record<string, string> = {
   'polna-128-dekor-3': 'wpc-tikovina',     // dekor 3/6 (rjavo-bež, d≈40)
   'polna-128-dekor-4': 'wpc-svetli-les',   // dekor 4/6 (svetli zlati, d≈15)
   'polna-128-dekor-5': 'wpc-tikovina',     // dekor 5/6 (zlati teak, d≈39)
-  'polna-128-dekor-6': 'wpc-tikovina',     // dekor 6/6 (temno rjavo-sivi, d≈33)
   'romb-67': 'wpc-antracit',               // dekor 1/7 (temno sivi, RGB(95,94,97))
   'romb-67-dekor-2': 'wpc-siva',           // dekor 2/7 (svetlo sivi, d≈6)
   'romb-67-dekor-3': 'wpc-svetli-les',     // dekor 3/7 (rožnato-rjavi, d≈38)
@@ -258,6 +262,7 @@ function thumbDataUrl(c: HTMLCanvasElement, maxW: number): string {
 export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   const { toast } = useToast();
   const addDraftItems = useDraft((s) => s.addItems);
+  const setMontage = useDraft((s) => s.setMontage);
   const setView = useView((s) => s.setView);
   const setActiveCraft = useView((s) => s.setActiveCraft);
 
@@ -523,6 +528,26 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
     }
   }, [measurePlane, dims, measurePts]);
 
+  // Razmak stebrov (cm) — vnos monterja. null = brez modeliranih stebrov
+  // (takrat render nima stebrov in spoja, kar je iskreno zapisano v opombah).
+  const [postEveryInput, setPostEveryInput] = useState('150');
+  // URADNI podatki o pritrjevanju za izbrani profil (null, če jih ni).
+  const fastening = useMemo(
+    () => fasteningSpec(profileKindForCatalog(selProfile?.id ?? '')),
+    [selProfile?.id],
+  );
+  // AI fotomontaža je OPT-IN in brez ključa ni vklopljena — polje se zato
+  // sploh ne prikaže (ne tepe obljubimo, česar ni).
+  const [aiEnabled, setAiEnabled] = useState(false);
+  // ── AI fotomontaža (generativna zamenjava ograje) ──
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [aiResult, setAiResult] = useState<{ dataUrl: string; label: string; note: string; model: string } | null>(null);
+  const postEveryCm = useMemo<number | null>(() => {
+    const v = Number(postEveryInput.replace(',', '.'));
+    return Number.isFinite(v) && v >= 20 && v <= 400 ? v : null;
+  }, [postEveryInput]);
+
   const layoutInfo = useMemo<{ layout: LayoutResult | null; error: string | null }>(() => {
     if (!quadPct || !planeCm || !dims) return { layout: null, error: null };
     const p = selProfile ?? ROKSAL_PROFILES[0];
@@ -535,7 +560,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
         gapCm: p.gapCm,
         orientation: p.orientation,
         postCm: p.postCm,
-        postEveryCm: null, // vmesni stebri v tej različici niso modelirani (iskreno v opombah)
+        postEveryCm, // vneseni razmak stebrov (ali null = brez stebrov)
       });
       return { layout, error: null };
     } catch (e) {
@@ -847,6 +872,24 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
   };
 
   // ── Korak 3: samodejni predlog + čopič + ovire ──
+  // ── PREPOZNAJ STARO OGRAJO: kaj kamera gleda ─────────────────────────
+  const [oldFence, setOldFence] = useState<OldFenceFinding | null>(null);
+  const [oldFenceBusy, setOldFenceBusy] = useState(false);
+  const onRecogniseOldFence = () => {
+    const work = workCanvasRef.current;
+    if (!work || !quadPct) return;
+    setOldFenceBusy(true);
+    try {
+      const ctx = work.getContext('2d', { willReadFrequently: true })!;
+      const img = ctx.getImageData(0, 0, work.width, work.height);
+      setOldFence(analyseOldFence({ rgba: new Uint8Array(img.data.buffer.slice(0)), W: work.width, H: work.height, quadPct }));
+    } catch {
+      setOldFence(null);
+    } finally {
+      setOldFenceBusy(false);
+    }
+  };
+
   const onAutoSuggest = () => {
     const work = workCanvasRef.current;
     const q = quadPx;
@@ -935,6 +978,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       const vizTexId = profile.textureId ? vizTextureIdFor(profile.textureId) : null;
       if (vizTexId) await preloadVizTextures([vizTexId]);
 
+      // URADNI podatki o pritrjevanju za ta profil (null, če jih ni).
+      const spec = fasteningSpec(profileKindForCatalog(profile.id));
+
       // plast nove ograje iz profila (obstoječi renderer viz.ts izriše deske/reže/teksturo)
       const fenceLayer: VizLayer = {
         id: 'fr-fence',
@@ -951,6 +997,22 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           // privzete širine (defaultQuadWidthCm), ne iz izmišljene mere te ograje.
           quadWidthCm: pc.wCm ?? 0,
           quadHeightCm: pc.hCm, // prava višina ravnine → pravo število elementov navpično (skladno s postavitvijo po homografiji)
+          // Realizem prave ROKSAL ograje: ton po deski (vsaka iz drugega
+          // zložka) in podložna letva spodaj. VRHNJE letve ne rišemo, ker
+          // njena višina ni objavljena — ne izmišljamo konstrukcije.
+          boardToneJitter: profile.pattern === 'vertikalne' ? 0.05 : 0,
+          railBottomCm: profile.pattern === 'vertikalne' ? 4 : 0,
+          // Konstrukcija iz URADNIH podatkov ROKSAL (roksal.com »Načini
+          // pritrjevanja«): nosilci (vodoravne cevi) na uradnem razmaku, vijaki
+          // vidni z lica pri POLNA-100/128, odmik od roba reza po pravilu.
+          ...(spec
+            ? {
+                screwVisible: spec.screwsVisible,
+                railSpacingCm: spec.railSpacingCmMax,
+                screwEdgeCm: spec.screwEdgeMaxCm,
+                screwMinEdgeCm: spec.screwEdgeMinCm,
+              }
+            : {}),
         },
       };
 
@@ -961,6 +1023,27 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       const octx = off.getContext('2d', { willReadFrequently: true })!;
       octx.drawImage(work, 0, 0);
       drawLayersOnQuad(octx, work, [fenceLayer], craft);
+
+      // Stebri: aluminijski profili (postCm) na mestih, kjer se deske spajajo.
+      // Risani so PRED ambientnim ujemanjem, zato dobijo enako svetlobo kot
+      // deske. Brez vnesenega razmaka jih ni (null → layout.posts je prazen).
+      for (const post of layout.posts) {
+        const pq = post.quad;
+        octx.save();
+        octx.beginPath();
+        octx.moveTo(pq.tl.x, pq.tl.y);
+        octx.lineTo(pq.tr.x, pq.tr.y);
+        octx.lineTo(pq.br.x, pq.br.y);
+        octx.lineTo(pq.bl.x, pq.bl.y);
+        octx.closePath();
+        const g = octx.createLinearGradient(pq.tl.x, pq.tl.y, pq.tr.x, pq.tr.y);
+        g.addColorStop(0, 'rgb(154,156,158)');
+        g.addColorStop(0.45, 'rgb(120,122,124)');
+        g.addColorStop(1, 'rgb(88,90,92)');
+        octx.fillStyle = g;
+        octx.fill();
+        octx.restore();
+      }
 
       // 3) ambientno ujemanje: faktor iz obroča okoli štirikotnika ORIGINALNE (delovne) fotke,
       //    pomnožijo se SAMO opačni piksli novih elementov (masa desk + stebrov iz postavitve)
@@ -1059,6 +1142,36 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       const warnings = [...layout.warnings];
       if (inpaintRes && inpaintRes.status !== 'ok') warnings.push('Ozadje pod novo ograjo ni v celoti obnovljeno — reže lahko pokažejo staro ograjo.');
       if (!frontUsed) warnings.push('Frontalni okluziji so prazni — nič ni narisano pred novo ograjo.');
+      // ── MERILNA KONTROLA: vneseno širino preverimo z neodvisno oceno iz strukture
+      // ograje v isti fotografiji (korak med deskami). Ne popravlja vnos, temveč
+      // pove, ali se števili ujemata — to loči napako v vnosu od programske.
+      let measureCheck = '';
+      try {
+        const ctxw = work.getContext('2d', { willReadFrequently: true })!;
+        const imgw = ctxw.getImageData(0, 0, work.width, work.height);
+        const topPx = Math.hypot(q.tr.x - q.tl.x, q.tr.y - q.tl.y);
+        const botPx = Math.hypot(q.br.x - q.bl.x, q.br.y - q.bl.y);
+        const unc = measurementUncertainty({
+          widthCm: pc.wCm,
+          quadWidthPx: (topPx + botPx) / 2,
+        });
+        const boards = countBoardsInPlane({
+          rgba: new Uint8Array(imgw.data.buffer.slice(0)),
+          W: work.width,
+          H: work.height,
+          quadPct: qp,
+        });
+        measureCheck = [
+          `Merilna negotovost širine: ${unc.reason}.`,
+          describeStructure({ boardsDetected: boards.boards, plankCm: profile.plankCm, gapCm: profile.gapCm }),
+        ]
+          .filter(Boolean)
+          .join(' ');
+      } catch (e) {
+        // Ne prikrijemo napake: uporabnik mora vedeti, da preverjanje ni delalo.
+        measureCheck = `Merilna negotovost ni bila izračunana (${e instanceof Error ? e.message : String(e)}).`;
+      }
+
       const meta = buildReplaceMetadata({
         profileId: profile.id,
         profileLabel: profile.label,
@@ -1074,6 +1187,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           quadWidthCm: pc.wCm === null ? 'ni izmerjena' : Math.round(pc.wCm),
           postEveryCm: 'null',
           materialHonesty: readiness.honestyLabel, // iskrenost gradiva v metapodatkih (original vs. realna fotka)
+          measureCheck, // merilna kontrola vnesene širine proti strukturi ograje
         },
         mask,
         layout,
@@ -1098,6 +1212,92 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
         },
         dataUrl,
       };
+    }
+  };
+
+  // AI fotomontaža: generativna zamenjava ograje (Gemini/OpenAI). Ključ je na
+  // strežniku; od tod gre samo fotka + navodilo + referenca ROKSAL ograje.
+  useEffect(() => {
+    let cancel = false;
+    fetch('/api/ai-photomontage')
+      .then((r) => r.json())
+      .then((d: { enabled?: boolean }) => { if (!cancel) setAiEnabled(d?.enabled === true); })
+      .catch(() => { if (!cancel) setAiEnabled(false); });
+    return () => { cancel = true; };
+  }, []);
+
+  const onAiPhotomontage = async () => {
+    const work = workCanvasRef.current;
+    if (!work) return;
+    setAiBusy(true);
+    setAiResult(null);
+    try {
+      const imageDataUrl = work.toDataURL('image/jpeg', 0.9);
+      // Referenca: uradna fotografija vgrajene ROKSAL ograje (»naredi tako«).
+      let referenceDataUrl: string | null = null;
+      try {
+        const ref = await fetch('/roksal/ograje/polna-100/vgradnja-polna-amazon.jpg');
+        if (ref.ok) {
+          const blob = await ref.blob();
+          referenceDataUrl = await new Promise<string>((res) => {
+            const fr = new FileReader();
+            fr.onload = () => res(String(fr.result));
+            fr.readAsDataURL(blob);
+          });
+        }
+      } catch {
+        referenceDataUrl = null; // referenca je priročna, ne blokira
+      }
+      // Maska stare ograje (255 = ograja) → PNG za ponudnika in za objektivno
+      // preverbo, koliko je model spremenil zunaj območja.
+      let maskDataUrl: string | null = null;
+      const om = oldMaskRef.current;
+      if (om) {
+        const c = document.createElement('canvas');
+        c.width = om.w;
+        c.height = om.h;
+        const cx = c.getContext('2d')!;
+        const img = cx.createImageData(om.w, om.h);
+        // Zapis je EKSPLICITEN: R/G/B = 255 tam, kjer je ograja, 0 sicer;
+        // alfa je vedno 255 (prosojnost bi pomenila »tu ni podatka«).
+        for (let i = 0; i < om.w * om.h; i++) {
+          const v = om.data[i] > 127 ? 255 : 0;
+          img.data[i * 4] = v;
+          img.data[i * 4 + 1] = v;
+          img.data[i * 4 + 2] = v;
+          img.data[i * 4 + 3] = 255;
+        }
+        cx.putImageData(img, 0, 0);
+        maskDataUrl = c.toDataURL('image/png');
+      }
+      const xs = (quadPct ?? []).map(([x]) => x);
+      const ys = (quadPct ?? []).map(([, y]) => y);
+      const regionHint = xs.length
+        ? `x ${Math.round(Math.min(...xs))}–${Math.round(Math.max(...xs))} %, y ${Math.round(Math.min(...ys))}–${Math.round(Math.max(...ys))} %`
+        : '';
+      const res = await fetch('/api/ai-photomontage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageDataUrl,
+          maskDataUrl,
+          referenceDataUrl,
+          profileLabel: selProfile?.label ?? 'ROKSAL WPC ograja',
+          colourLabel: null,
+          instruction: aiInstruction,
+          regionHint,
+        }),
+      });
+      const d = (await res.json()) as { dataUrl?: string; label?: string; note?: string; model?: string; error?: string };
+      if (!res.ok || !d.dataUrl) {
+        toast({ title: 'AI fotomontaža ni uspela', description: d.error ?? 'Neznano napaka.', variant: 'destructive' });
+        return;
+      }
+      setAiResult({ dataUrl: d.dataUrl, label: d.label ?? '', note: d.note ?? '', model: d.model ?? '' });
+    } catch (e) {
+      toast({ title: 'AI fotomontaža ni uspela', description: e instanceof Error ? e.message : String(e), variant: 'destructive' });
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -1144,7 +1344,7 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
           layout = computePlankLayouts({
             quadPct: qp, imgSize: d, planeCm: pc,
             plankCm: p.plankCm, gapCm: p.gapCm, orientation: p.orientation,
-            postCm: p.postCm, postEveryCm: null, // iskreno: vmesni stebri niso modelirani
+            postCm: p.postCm, postEveryCm, // vneseni razmak stebrov (ali null)
           });
         } catch (e) { cards.push(blocked(e instanceof Error ? e.message : String(e))); continue; }
         try {
@@ -1251,6 +1451,9 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
       return;
     }
     addDraftItems(bom.items);
+    // Metapodatki fotomontaže se shranijo skupaj z osnutkom ponudbe —
+    // od tod je pozneje mogoč natisniti MONTAŽNI LIST za monterja.
+    setMontage({ meta: result.meta });
     toast({
       title: `Material v ponudbo: ${bom.items.length} ${plural(bom.items.length, ['postavka', 'postavki', 'postavke', 'postavk'])} ✓`,
       description:
@@ -1728,6 +1931,69 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               <Paintbrush className="mr-2 h-4 w-4" />
               Samodejno predlagaj
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRecogniseOldFence}
+              disabled={!quadPx || oldFenceBusy}
+              data-testid="fr-recognise"
+            >
+              <ScanSearch className="mr-2 h-4 w-4" />
+              Prepoznaj staro ograjo
+            </Button>
+            {oldFence && (
+              <div className="w-full rounded-lg border bg-muted/30 p-2.5 text-[11px] space-y-1" data-testid="fr-recognise-result">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px]" data-testid="fr-recognise-material">
+                    material: {oldFence.material}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]" data-testid="fr-recognise-orientation">
+                    deske: {oldFence.orientation}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]" data-testid="fr-recognise-screws">
+                    vijaki: {oldFence.screws.length}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]" data-testid="fr-recognise-confidence">
+                    zanesljivost: {oldFence.confidence}
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground">{oldFence.materialEvidence}</p>
+                <p className="text-muted-foreground">{oldFence.orientationEvidence}</p>
+                <p className="text-muted-foreground">{oldFence.screwEvidence}</p>
+                <p>
+                  <b>Predlog družine:</b>{' '}
+                  {oldFence.family === 'polna' ? 'POLNA (pokončne deske)' : oldFence.family === 'romb' ? 'ROMB' : 'ni zadostnih znakov'}
+                  {' — '}
+                  {oldFence.familyReason}
+                </p>
+                {oldFence.notes.map((n) => (
+                  <p key={n} className="text-amber-800">{n}</p>
+                ))}
+                <p className="text-muted-foreground">
+                  Barvo izbereš sam; analiza predlaga le družino profila, ne barve.
+                </p>
+                {oldFence.family && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px]"
+                    data-testid="fr-recognise-apply"
+                    onClick={() => {
+                      setProfileId(oldFence.family === 'romb' ? 'romb-67' : 'polna-100');
+                      toast({
+                        title: 'Profil predlagan',
+                        description:
+                          oldFence.family === 'romb'
+                            ? 'ROMB DESKA-67 — zdaj izberi barvo.'
+                            : 'POLNA DESKA-100 — zdaj izberi barvo.',
+                      });
+                    }}
+                  >
+                    Uporabi predlog profila
+                  </Button>
+                )}
+              </div>
+            )}
             {autoInfo && (
               <Badge variant="secondary" className="text-[10px]" data-testid="fr-auto-note">
                 zanesljivost {Math.round(autoInfo.confidence * 100)} %
@@ -1972,6 +2238,16 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                         {!r.canRender && (
                           <span className="mt-1 block text-[10px] text-destructive">{r.honestyLabel}</span>
                         )}
+                        {(() => {
+                          const refs = referencesForColour(officialColourOf(s.profile.label));
+                          if (refs.length === 0) return null;
+                          return (
+                            <span className="mt-1 block text-[10px] text-muted-foreground">
+                              ROKSAL v tem odtenku že: {refs[0].place} ({refs[0].what}, {refs[0].year})
+                              {refs.length > 1 ? ` in ${refs.length - 1} drugih` : ''}
+                            </span>
+                          );
+                        })()}
                       </button>
                     );
                   })}
@@ -2038,6 +2314,30 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
               );
             })}
           </div>
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-2.5">
+            <label className="text-[11px] text-muted-foreground">
+              Razmak stebrov (cm)
+              <input
+                value={postEveryInput}
+                onChange={(e) => setPostEveryInput(e.target.value)}
+                inputMode="numeric"
+                placeholder="npr. 150"
+                className="mt-1 h-8 w-24 rounded-md border bg-background px-2 text-sm"
+                data-testid="fr-post-every"
+              />
+            </label>
+            <p className="max-w-md text-[11px] text-muted-foreground">
+              {postEveryCm === null
+                ? 'Brez razmaka stebrov render nima stebrov in spoja — deske so skozi celotno ravnino. Vpiši izmerjen razmak, da se deske spajajo na stebru.'
+                : `Strebri na vsakih ${postEveryCm} cm; deske se spajajo na stebru. Razmak je tvoj vnos — če ni izmerjen, ga na listu označi kot PREDLOG.`}
+              {fastening && (
+                <> {' '}Uradno za ta profil: nosilci (vodoravne cevi) največ{' '}
+                <b>{fastening.railSpacingCmMax} cm</b>, stebri največ{' '}
+                <b>{maxPostSpacingCm(fastening, planeCm?.hCm ?? null) ?? '—'} cm</b>,
+                {fastening.screwsVisible ? ' vijaki so vidni z lica' : ' vijaki so skriti'}. Vir: roksal.com.</>
+              )}
+            </p>
+          </div>
           <p className="text-xs text-muted-foreground">
             Izvoznik izda NARAVNO fotografijo materiala, kjer original ROKSAL posnetek manjka — izvoz z oznako original je dokler gradivo manjka blokiran (iskrenost registra).
           </p>
@@ -2078,6 +2378,51 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
                 </Button>
                 <span className="text-xs text-muted-foreground">Ista ravnina + ista maska → vse omogočene barve/materiali za izbiro stranke.</span>
               </div>
+
+              {/* ── AI fotomontaža (generativna zamenjava ograje) ── */}
+              {aiEnabled && (
+              <div className="rounded-lg border border-dashed bg-muted/20 p-3 space-y-2" data-testid="fr-ai-box">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold">AI zamenjaj ograjo</span>
+                  <Badge variant="outline" className="text-[10px]">generativno — slika ni načrt</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Model (Gemini ali OpenAI) dobi tvojo fotko, območje ograje in referenčno fotografijo ROKSAL ograje ter vrne
+                  zamenjano sliko. Fotografija odpotuje ponudniku modela. <b>Meritve se ne spremenijo</b> — ostanejo iz
+                  umerjene ravnine in razmaka stebrov.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-[11px] text-muted-foreground">
+                    Navodilo (npr. svetlo siva, alu stebri)
+                    <input
+                      value={aiInstruction}
+                      onChange={(e) => setAiInstruction(e.target.value)}
+                      placeholder="npr. amazon, temno sivi, alu stebri"
+                      className="mt-1 h-8 w-64 rounded-md border bg-background px-2 text-sm"
+                      data-testid="fr-ai-instruction"
+                    />
+                  </label>
+                  <Button
+                    variant="outline"
+                    onClick={() => void onAiPhotomontage()}
+                    disabled={aiBusy}
+                    data-testid="fr-ai-run"
+                  >
+                    {aiBusy ? 'Generiram…' : 'Generiraj zamenjavo'}
+                  </Button>
+                </div>
+                {aiResult && (
+                  <div className="space-y-2" data-testid="fr-ai-result">
+                    <img src={aiResult.dataUrl} alt="AI fotomontaža" className="w-full rounded-lg border" />
+                    <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                      {aiResult.label}
+                      {aiResult.model ? ` (model: ${aiResult.model})` : ''}
+                    </p>
+                    {aiResult.note && <p className="text-[11px] text-muted-foreground">{aiResult.note}</p>}
+                  </div>
+                )}
+              </div>
+              )}
             </div>
           )}
 
@@ -2232,6 +2577,10 @@ export function FotoReplace({ photo, craft }: FotoReplaceProps) {
             <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-2.5 text-xs text-destructive" data-testid="fr-export-blocked">
               {exportBlocked}
             </p>
+          )}
+
+          {result && (
+            <InstallerSheetPanel meta={result.meta} imageDataUrl={result.dataUrl} />
           )}
 
           {result && (

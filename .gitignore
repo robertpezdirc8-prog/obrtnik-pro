@@ -62,3 +62,6 @@ tool-results/
 # CI prehodna baza
 prisma/db/
 verify-sweep.log
+
+# Predpomnilnik za raziskavo galerijskih fotografij (velike datoteke)
+tests/fixtures/galerija-cache/

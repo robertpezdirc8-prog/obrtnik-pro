@@ -188,6 +188,48 @@ export function openOfferPDF(offer: OfferDTO, settings: SettingsDTO): boolean {
   return true;
 }
 
+/**
+ * PONUDBA + MONTAŽNI LIST v enem dokumentu (za oddajo in za monterja).
+ *
+ * Lista je druga stran (page-break) — stranka dobi ponudbo, monter pa v
+ * istem PDF-ju tudi rezalni načrt in lege stebrov. Če lista ni (ponudba ni
+ * iz fotomontaže), je dokument samo ponudba — brez lažnih praznih strani.
+ */
+export function buildOfferWithSheetHTML(
+  offer: OfferDTO,
+  settings: SettingsDTO,
+  sheetHtml: string | null,
+): string {
+  const base = buildOfferHTML(offer, settings);
+  if (!sheetHtml) return base;
+  // Vstavimo liste na KONEC dokumenta: ponudbina HTML je celoten <html>
+  // dokument, zato ga razcepimo in list pripnemo pred </body>.
+  const marker = '</body>';
+  const i = base.lastIndexOf(marker);
+  if (i < 0) return base + sheetHtml;
+  const sheet = `<div style="page-break-before: always; padding: 0; margin: 0;">${sheetHtml}</div>`;
+  return base.slice(0, i) + sheet + base.slice(i);
+}
+
+/** Odpri PDF ponudbe; če je `sheetHtml` podan, je list druga stran. */
+export function openOfferWithSheetPDF(
+  offer: OfferDTO,
+  settings: SettingsDTO,
+  sheetHtml: string | null,
+): boolean {
+  const html = buildOfferWithSheetHTML(offer, settings, sheetHtml);
+  const w = window.open('', '_blank', 'width=900,height=1000');
+  if (!w) return false;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  w.setTimeout(() => {
+    w.focus();
+    w.print();
+  }, 400);
+  return true;
+}
+
 /** Zapisnik o predaji dela — odpre okno za tisk (istega obdobja kot
  *  PDF ponudbe). Vsebino gradi čista funkcija buildHandoverDoc. */
 export function openHandoverPrint(offer: OfferDTO, settings: SettingsDTO, opts: {
